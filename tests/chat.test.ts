@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {Store} from '../core/store';
+import {discussion} from '../core/chat';
+import {requestModel,structured} from '../core/model';
+import {batchSchema,type Conversation} from '../core/schema';
+import {topic,plan} from './fixtures';
+test('讨论取消保留部分正文，释放锁并持久化',async()=>{const dir=mkdtempSync(path.join(tmpdir(),'draftdesk-chat-')),db=new Store(dir);try{const controller=new AbortController();const fake=(async(_db,_messages,options)=>{options.onText?.('已收到的回复');controller.abort();throw new Error('aborted');}) as typeof requestModel;const events:any[]=[];await discussion(db,{id:'test-conversation',message:'帮我讨论'},controller.signal,e=>events.push(e),fake);const c=db.get<Conversation>('conversations','test-conversation')!;assert.equal(c.messages.at(-1)?.status,'stopped');assert.equal(c.messages.at(-1)?.content,'已收到的回复');assert.equal(events.at(-1).type,'done');db.lock('chat-test-conversation');db.unlock('chat-test-conversation');const reopened=new Store(dir);assert.equal(reopened.get<Conversation>('conversations','test-conversation')!.messages.length,2);reopened.close();}finally{db.close();rmSync(dir,{recursive:true,force:true});}});
+test('结构错误最多修复一次，不接受第二次错误',async()=>{const dir=mkdtempSync(path.join(tmpdir(),'draftdesk-repair-')),db=new Store(dir);try{db.put('config','main',{...db.config(),apiKey:'test'});db.put('plans',plan.id,plan);const j=db.enqueue(plan.id)!;let calls=0;const fake=(async()=>({text:++calls===1?'invalid':JSON.stringify({items:[topic],rejected:[]}),usage:0,reservation:0})) as typeof requestModel;const result=await structured(db,j,'test',{},batchSchema,new AbortController().signal,fake);assert.equal(calls,2);assert.equal(result.items.length,1);calls=0;await assert.rejects(()=>structured(db,j,'test',{},batchSchema,new AbortController().signal,(async()=>{calls++;return {text:'{}',usage:0,reservation:0};}) as typeof requestModel),/连续两次/);assert.equal(calls,2);}finally{db.close();rmSync(dir,{recursive:true,force:true});}});

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "submissionId": "research-example-20260921",
+  "producer": { "name": "hermes", "version": "user-configured" },
+  "evidence": [
+    {
+      "id": "source-one",
+      "title": "示例：替换为实际来源标题",
+      "url": "https://example.com/research",
+      "excerpt": "此处必须替换为实际取得的公开短片段；该文件仅为协议示例，不是真实研究结果。",
+      "collectedAt": "2026-09-21T00:00:00Z",
+      "sourceType": "official",
+      "region": "未知",
+      "language": "zh",
+      "contentLevel": "excerpt"
+    }
+  ],
+  "drafts": []
+}

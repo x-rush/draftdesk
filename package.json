@@ -1,0 +1,31 @@
+{
+  "name": "draftdesk",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build --webpack",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "worker": "tsx worker/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "eval:skills": "tsx scripts/evaluate-skills.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-select": "^2.3.7",
+    "fast-xml-parser": "^5.11.1",
+    "lucide-react": "^0.468.0",
+    "next": "16.3.5",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "tsx": "^4.20.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "~5.8.3"
+  }
+}

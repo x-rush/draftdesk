@@ -1,0 +1,115 @@
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { envelope, topic } from "./fixtures";
+const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-http-"));
+process.env.DRAFTDESK_DATA_DIR = dir;
+const { handle } = await import("../core/http");
+const { store } = await import("../core/store");
+const request = (
+  route: string,
+  data?: unknown,
+  headers: Record<string, string> = {},
+) =>
+  handle(
+    new Request("http://127.0.0.1:5173/api/v1/" + route, {
+      method: data === undefined ? "GET" : "POST",
+      headers: {
+        host: "127.0.0.1:5173",
+        ...(data === undefined ? {} : { "content-type": "application/json" }),
+        ...headers,
+      },
+      body: data === undefined ? undefined : JSON.stringify(data),
+    }),
+    route.split("/"),
+  );
+after(() => {
+  store().close();
+  rmSync(dir, { recursive: true, force: true });
+});
+test("HTTP 外部令牌仅能收件，不能读工作区或修改策略", async () => {
+  const r = await request("connections", { name: "OpenClaw" });
+  const c = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(
+    (
+      await request("workspace", undefined, {
+        Authorization: "Bearer " + c.token,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request("plans", {}, { Authorization: "Bearer " + c.token })).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request("intake", envelope(), {
+        Authorization: "Bearer " + c.token,
+      })
+    ).status,
+    201,
+  );
+  assert.equal((await request("intake", envelope())).status, 401);
+  await request("revoke", { id: c.id });
+  assert.equal(
+    (
+      await request("intake", envelope(), {
+        Authorization: "Bearer " + c.token,
+      })
+    ).status,
+    401,
+  );
+});
+test("HTTP 公开投影不泄露证据、讨论、应用与密钥", async () => {
+  const db = store();
+  db.put("config", "main", {
+    ...db.config(),
+    apiKey: "private-api-key",
+    tavilyKey: "private-search-key",
+  });
+  const a = db.saveArtifact(topic, "job", "ready", []);
+  db.updateArtifact({ id: a.id, revision: 1, visibility: "public" });
+  db.put("conversations", "secret", {
+    id: "secret",
+    title: "私人对话",
+    messages: [{ role: "user", content: "不能公开" }],
+  });
+  const publicData = await (await request("public")).json();
+  const output = JSON.stringify(publicData);
+  assert.ok(output.includes(topic.title));
+  [
+    "private-api-key",
+    "private-search-key",
+    "不能公开",
+    "excerpt",
+    "claims",
+  ].forEach((s) => assert.ok(!output.includes(s)));
+  const config = await (await request("workspace")).json();
+  assert.equal(config.config.hasApiKey, true);
+  assert.ok(!JSON.stringify(config).includes("private-api-key"));
+});
+test("HTTP 拒绝跨站提交与超限正文，下载技能包是真实 tar", async () => {
+  assert.equal(
+    (
+      await request(
+        "connections",
+        { name: "bad" },
+        { origin: "https://evil.example" },
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request("import", { text: "x".repeat(1000001) })).status,
+    413,
+  );
+  const r = await request("skill-bundle");
+  assert.equal(r.status, 200);
+  const raw = Buffer.from(await r.arrayBuffer());
+  assert.equal(raw.subarray(257, 262).toString(), "ustar");
+  assert.ok(raw.includes(Buffer.from("scripts/submit.py")));
+});

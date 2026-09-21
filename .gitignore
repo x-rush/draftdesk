@@ -1,0 +1,16 @@
+node_modules/
+.next/
+data/
+.env*
+!.env.example
+*.tsbuildinfo
+data-*/
+backups/
+*.sqlite*
+*.db
+*.pem
+*.key
+*.log
+VERIFICATION.md
+.DS_Store
+Thumbs.db
