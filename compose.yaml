@@ -9,6 +9,9 @@ services:
       - ./data:/app/data
     environment:
       DRAFTDESK_DATA_DIR: /app/data
+      DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
+      DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
+      DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-ZHIPU/GLM-5.3-Flash}
     restart: unless-stopped
     healthcheck:
       test:
@@ -30,4 +33,7 @@ services:
       - ./data:/app/data
     environment:
       DRAFTDESK_DATA_DIR: /app/data
+      DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
+      DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
+      DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-ZHIPU/GLM-5.3-Flash}
     restart: unless-stopped

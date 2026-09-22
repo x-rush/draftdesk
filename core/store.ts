@@ -103,6 +103,8 @@ export class Store {
     const c = this.get<Config>("config", "main")!;
     return {
       ...c,
+      baseUrl: process.env.DRAFTDESK_AI_BASE_URL || c.baseUrl,
+      model: process.env.DRAFTDESK_AI_MODEL || c.model,
       apiKey: process.env.DRAFTDESK_AI_API_KEY || c.apiKey,
       tavilyKey: process.env.TAVILY_API_KEY || c.tavilyKey,
     };
