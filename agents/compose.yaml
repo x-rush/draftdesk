@@ -11,7 +11,7 @@ services:
       OPENAI_MODEL: ${BAILIAN_MODEL:-qwen3.8-flash}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-change-me}
     ports: ["127.0.0.1:${OPENCLAW_PORT:-18789}:18789"]
-    volumes: ["./openclaw-data:/home/node/.openclaw"]
+    volumes: ["openclaw-data:/home/node/.openclaw"]
     networks: [agent-net]
   hermes:
     image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
@@ -26,8 +26,11 @@ services:
     ports:
       - "127.0.0.1:${HERMES_GATEWAY_PORT:-8642}:8642"
       - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
-    volumes: ["./hermes-data:/opt/data"]
+    volumes: ["hermes-data:/opt/data"]
     networks: [agent-net]
 networks:
   agent-net:
     driver: bridge
+volumes:
+  openclaw-data:
+  hermes-data:
