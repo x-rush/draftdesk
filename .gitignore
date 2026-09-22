@@ -5,6 +5,9 @@ data/
 !.env.example
 *.tsbuildinfo
 data-*/
+agents/.env
+agents/openclaw-data/
+agents/hermes-data/
 backups/
 *.sqlite*
 *.db

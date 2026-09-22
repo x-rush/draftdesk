@@ -1,0 +1,31 @@
+name: draftdesk-agents
+
+services:
+  openclaw:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      OPENAI_API_KEY: ${BAILIAN_API_KEY:-}
+      OPENAI_BASE_URL: ${BAILIAN_BASE_URL:-}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-change-me}
+    ports: ["127.0.0.1:${OPENCLAW_PORT:-18789}:18789"]
+    volumes: ["./openclaw-data:/home/node/.openclaw"]
+    networks: [agent-net]
+  hermes:
+    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    env_file: [.env]
+    environment:
+      OPENAI_API_KEY: ${BAILIAN_API_KEY:-}
+      OPENAI_BASE_URL: ${BAILIAN_BASE_URL:-}
+      HERMES_DASHBOARD: ${HERMES_DASHBOARD:-1}
+    ports:
+      - "127.0.0.1:${HERMES_GATEWAY_PORT:-8642}:8642"
+      - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
+    volumes: ["./hermes-data:/opt/data"]
+    networks: [agent-net]
+networks:
+  agent-net:
+    driver: bridge
