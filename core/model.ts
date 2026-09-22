@@ -66,6 +66,7 @@ export async function requestModel(
         messages,
         max_tokens: 12000,
         stream: !!options.onText,
+        ...(options.json ? { response_format: { type: "json_object" } } : {}),
         ...(options.onText ? { stream_options: { include_usage: true } } : {}),
       }),
     },
