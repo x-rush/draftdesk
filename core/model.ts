@@ -52,11 +52,12 @@ export async function requestModel(
       });
     } else db.reserve(reservation);
   });
+  const modelTimeoutMs = Number(process.env.DRAFTDESK_MODEL_TIMEOUT_MS || 300000);
   const response = await (options.fetch || fetch)(
     cfg.baseUrl.replace(/\/$/, "") + "/chat/completions",
     {
       method: "POST",
-      signal: AbortSignal.any([options.signal, AbortSignal.timeout(180000)]),
+      signal: AbortSignal.any([options.signal, AbortSignal.timeout(modelTimeoutMs)]),
       headers: {
         "content-type": "application/json",
         Authorization: `Bearer ${cfg.apiKey}`,

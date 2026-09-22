@@ -195,7 +195,7 @@ export async function runJob(
         ? "任务已取消；已发生的模型与搜索调用可能计费。"
         : e instanceof AppError
           ? e.message
-          : "研究执行失败。原始证据已保留，请检查配置或来源后手动重试。",
+          : `研究执行失败：${e instanceof Error ? e.message.slice(0, 300) : "未知错误"}；原始证据已保留。`,
     });
   } finally {
     clearInterval(heartbeat);
