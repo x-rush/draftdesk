@@ -2,7 +2,7 @@ import type { Config, Plan, Source } from "./schema";
 export const defaultConfig: Config = {
   baseUrl:
     "https://YOUR-WORKSPACE-ID.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-  model: "ZHIPU/GLM-5.3-Flash",
+  model: "qwen3.8-flash",
   profile:
     "公众号、小红书，面向普通职场人与创作者。提供可操作的 AI 工作流、实测计划和小型应用机会。",
   dailyTokenLimit: 600000,
