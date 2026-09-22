@@ -1,0 +1,27 @@
+name: draftdesk-search
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
+    environment:
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://127.0.0.1:8080/}
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    networks: [draftdesk-search]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  searxng-cache:
+
+networks:
+  draftdesk-search:
+    name: draftdesk-search
+    external: true

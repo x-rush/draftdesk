@@ -10,9 +10,10 @@ services:
       OPENAI_BASE_URL: ${BAILIAN_BASE_URL:-}
       OPENAI_MODEL: ${BAILIAN_MODEL:-qwen3.8-flash}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-change-me}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
     ports: ["127.0.0.1:${OPENCLAW_PORT:-18789}:18789"]
     volumes: ["openclaw-data:/home/node/.openclaw"]
-    networks: [agent-net]
+    networks: [agent-net, draftdesk-search]
   hermes:
     image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
     restart: unless-stopped
@@ -23,14 +24,18 @@ services:
       OPENAI_BASE_URL: ${BAILIAN_BASE_URL:-}
       OPENAI_MODEL: ${BAILIAN_MODEL:-qwen3.8-flash}
       HERMES_DASHBOARD: ${HERMES_DASHBOARD:-1}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
     ports:
       - "127.0.0.1:${HERMES_GATEWAY_PORT:-8642}:8642"
       - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
     volumes: ["hermes-data:/opt/data"]
-    networks: [agent-net]
+    networks: [agent-net, draftdesk-search]
 networks:
   agent-net:
     driver: bridge
+  draftdesk-search:
+    external: true
+    name: draftdesk-search
 volumes:
   openclaw-data:
   hermes-data:

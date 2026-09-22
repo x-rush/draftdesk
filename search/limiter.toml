@@ -1,0 +1,5 @@
+[botdetection.ip_limit]
+link_token = "draftdesk-local"
+
+[botdetection.rate_limit]
+"/search" = "10 per minute"
