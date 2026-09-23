@@ -5,7 +5,7 @@ import type { ArtifactDraft } from "../core/schema";
 import { collectionGaps, evidenceReadiness } from "../core/readiness";
 import { qualityIssues } from "../core/quality";
 import { metricComparison, type MetricSnapshot } from "../core/history";
-import { webSourceType } from "../core/sources";
+import { webSourceType, relevant, parseFeed } from "../core/sources";
 
 const idea: Extract<ArtifactDraft,{kind:"idea"}> = {...topic,kind:"idea",details:{job:"整理访谈负责人",trigger:"访谈结束",frequency:"未知",alternatives:["手工表格"],differentiation:"核对遗漏",mvp:["导入","核对"],nonGoals:[],willingnessToPay:"未知",experiment:"先人工代办一次",successCriteria:"用户复用",stopCriteria:"现有办法足够"}};
 test("社区宣传、未引用的问题和伪造引文不能成为需求候选",()=>{
@@ -43,4 +43,16 @@ test("网页搜索来源的官方偏好不能给任意结果授予官方标签",
   assert.equal(webSourceType("https://vendor.example/update","other",["vendor.example"]),"official");
   assert.equal(webSourceType("https://vendor.example.attacker.test/update","other",["vendor.example"]),"other");
   assert.equal(webSourceType("https://github.com/org/repo/issues/1","official"),"community");
+});
+test("内容筛选同时约束RSS和网页，英文短词不误匹配其他单词",()=>{
+  const p={...plan,focusTerms:["AI","字幕"],lookbackDays:90};
+  const input={...evidence[0],publishedAt:undefined,title:"Chair updates",excerpt:"Chair company news"};
+  assert.equal(relevant(input,p),false);
+  assert.equal(relevant({...input,title:"AI captions"},p),true);
+  assert.equal(relevant({...input,title:"剪映字幕纠错"},p),true);
+  assert.equal(relevant(input,{...p,focusTerms:[]}),true);
+});
+test("RSS保留可用正文而不是只给模型一行摘要",()=>{
+  const rows=parseFeed('<rss><channel><item><title>Test</title><link>https://example.org/item</link><description>摘要</description><content:encoded><![CDATA[<p>正文包含付费范围和限制</p>]]></content:encoded></item></channel></rss>',{id:"test",name:"test",type:"rss",url:"https://example.org/rss",enabled:true,sourceType:"official",note:""});
+  assert.equal(rows[0].excerpt,"正文包含付费范围和限制");
 });

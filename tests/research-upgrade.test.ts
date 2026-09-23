@@ -46,6 +46,13 @@ test("正常空结果是无推荐，来源失败仍为错误",async()=>fixture(a
   await runJob(db,job,{collect:async()=>({evidence:[],warnings:[],searches:0}),structured:(async()=>{throw Error("不应调用")}) as any});
   assert.equal(db.get<Job>("jobs",job.id)?.state,"completed");assert.equal(db.get<Job>("jobs",job.id)?.outcome,"no-findings");
 }));
+test("严格热词模式无原始指标时保留证据，跳过所有模型调用",async()=>fixture(async db=>{
+  const p={...plan,kind:"trends" as const,requireMetrics:true};db.put("plans",p.id,p);
+  const e=db.addEvidence(input(1),"test"),job=db.enqueue(p.id)!;let calls=0;
+  await runJob(db,job,{collect:async()=>({evidence:[e],warnings:[],searches:1}),structured:(async()=>{calls++;throw Error("不应调用模型")}) as any});
+  const result=db.get<Job>("jobs",job.id)!;
+  assert.equal(calls,0);assert.equal(result.state,"completed");assert.equal(result.outcome,"no-findings");assert.deepEqual(result.evidenceIds,[e.id]);
+}));
 test("固定证据无新增则跨任务跳过，保留更新资料",async()=>fixture(async db=>{
   db.put("plans",plan.id,plan);const a=db.addEvidence(input(1),"test");const first=db.enqueue(plan.id)!;db.patchJob(first.id,{state:"completed",evidenceIds:[a.id]});
   const b=db.addEvidence(input(2),"test");const next=db.enqueue(plan.id)!;let calls=0;

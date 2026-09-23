@@ -9,6 +9,8 @@ export function PlanPreview({plan,sources}:{plan:Plan;sources:Source[]}) {
     <p>最多 {plan.maxQueries} 次搜索（含最多 2 次补证）、{plan.maxEvidence} 条证据、{plan.maxItems} 条产物；{plan.maxModelCalls} 次模型调用 / {plan.maxTokens.toLocaleString()} token 预留。</p>
     <ul>{sources.filter(s=>plan.sourceIds.includes(s.id)).map(s=><li key={s.id}>{s.name} · {s.enabled?"启用":"关闭，不会读取"} · {s.note}</li>)}</ul>
     <p>检索方向：{searchIntents[plan.kind].join("；")}</p><ol>{queryPlan(plan,initial).map((q,i)=><li key={i}>{q.query}</li>)}</ol>
+    <p>内容筛选：{plan.focusTerms?.join("、") || "不限"}；标题或正文命中任一词才保留。</p>
+    {plan.kind === "trends" && plan.requireMetrics && <p>热词证据门槛：必须有原始指标，无指标时不调用模型。</p>}
     <p>域名：{plan.includeDomains.join("、")||"不限"}；排除：{plan.excludeKeywords.join("、")||"无"}。仅启用网页来源时执行以上查询。具体补证问题由材料缺口决定，没有合适材料可以零推荐。</p></details>;
 }
 export function ResearchBrief({job}:{job:Job}) {

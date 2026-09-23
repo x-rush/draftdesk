@@ -109,7 +109,7 @@ export function parseFeed(xml: string, s: Source): EvidenceInput[] {
             title: plain(item.title).slice(0, 300) || "无标题",
             url: url.href,
             excerpt: plain(
-              item.description ?? item.summary ?? item.content,
+              item["content:encoded"] ?? item.content ?? item.description ?? item.summary,
             ).slice(0, 8000),
             publishedAt: Number.isFinite(Date.parse(date))
               ? new Date(date).toISOString()
@@ -138,6 +138,11 @@ export function parseFeed(xml: string, s: Source): EvidenceInput[] {
 }
 export function relevant(e: EvidenceInput, p: Plan) {
   const corpus = (e.title + " " + e.excerpt).toLowerCase();
+  if (p.focusTerms?.length && !p.focusTerms.some(term => {
+    const needle = term.toLowerCase();
+    if (/^[a-z0-9 ]+$/i.test(needle)) return new RegExp(`\\b${needle}\\b`, "i").test(corpus);
+    return corpus.includes(needle);
+  })) return false;
   if (p.excludeKeywords.some((k) => corpus.includes(k.toLowerCase())))
     return false;
   if (
@@ -183,7 +188,7 @@ export async function searchWeb(db: Store, plan: Plan, query: string, signal: Ab
   if (!response.ok) throw new AppError(`搜索服务 HTTP ${response.status}`);
   const result = await response.json();
   const officialHosts = db.list<Source>("sources").filter(s=>s.enabled && s.type==="rss" && s.sourceType==="official" && s.url)
-    .map(s=>new URL(s.url!).hostname);
+    .flatMap(s=>[new URL(s.url!).hostname,...(s.officialDomains || []).map(d=>d.toLowerCase())]);
   return (result.results || []).flatMap((r: any): EvidenceInput[] => {
     try {
       const parsed = new URL(r.url);
@@ -268,8 +273,9 @@ export async function collect(
           items.push(...await searchWeb(db, plan, item.query, signal, s.sourceType));
         }
       }
-      groups.push(rankEvidence(items.filter((e) => relevant(e, plan)), plan));
-      onProgress(`${s.name}：${items.length} 条原始线索`);
+      const filtered = items.filter((e) => relevant(e, plan));
+      groups.push(rankEvidence(filtered, plan));
+      onProgress(`${s.name}：${items.length} 条原始线索，${filtered.length} 条符合内容、时间与域名范围`);
     } catch (e) {
       if (signal.aborted) throw e;
       warnings.push(

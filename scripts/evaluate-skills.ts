@@ -5,7 +5,7 @@ import { z } from "zod";
 import { cases } from "../evals/cases";
 import { loadSkill } from "../core/skills";
 import { Store, AppError } from "../core/store";
-import { requestModel, estimateTokens, type ModelMessage } from "../core/model";
+import { requestModel, estimateTokens, validationIssues, type ModelMessage } from "../core/model";
 import { evidenceContext } from "../core/research-context";
 import { qualityIssues } from "../core/quality";
 import type { ArtifactDraft } from "../core/schema";
@@ -56,7 +56,7 @@ if (!args.includes("--live")) {
         const parsed = c.schema.safeParse(raw);
         const value: any = parsed.success ? parsed.data : undefined;
         const checks = value?.items?.map((item: ArtifactDraft) => ({title: item.title, issues: qualityIssues(item, c.evidence)}));
-        report.outputs.push({ label: index ? "B" : "A", text: response.text, schemaPassed: parsed.success, checks, diagnostics:value?.items ? evaluateOutput(value.items,c.evidence) : null, actualTokens: response.usage, reservedTokens: response.reservation, durationMs: Date.now() - start });
+        report.outputs.push({ label: index ? "B" : "A", text: response.text, schemaPassed: parsed.success, schemaIssues: parsed.success ? [] : validationIssues(parsed.error).map(issue=>({path:issue.path.join('.'),message:issue.message})), checks, diagnostics:value?.items ? evaluateOutput(value.items,c.evidence) : null, actualTokens: response.usage, reservedTokens: response.reservation, durationMs: Date.now() - start });
       } catch (e) {
         report.outputs.push({ label: index ? "B" : "A", error: e instanceof AppError ? e.message : "响应解析或连接失败", durationMs: Date.now() - start });
         report.status = "incomplete";

@@ -226,6 +226,15 @@ export const reviewSchema = z
       .max(12),
   })
   .strict();
+export function researchClusterSchema(evidenceIds: string[]) {
+  return clusterSchema.superRefine((batch, ctx)=>{
+    const check=(value:string,path:(string|number)[])=>{
+      if(!evidenceIds.includes(value))ctx.addIssue({code:"custom",path,message:"必须逐字复制输入 evidence.id，不使用序号或重新生成 ID。允许值："+evidenceIds.join(", ")});
+    };
+    batch.clusters.forEach((c,i)=>c.evidenceIds.forEach((id,j)=>check(id,["clusters",i,"evidenceIds",j])));
+    batch.excluded.forEach((e,i)=>check(e.evidenceId,["excluded",i,"evidenceId"]));
+  });
+}
 export const sourceSchema = z
   .object({
     id,
@@ -238,6 +247,7 @@ export const sourceSchema = z
       .optional(),
     query: z.string().max(300).optional(),
     sourceType: evidenceSchema.shape.sourceType,
+    officialDomains: z.array(z.string().regex(/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i)).max(10).optional(),
     enabled: z.boolean(),
     note: z.string().max(1000),
   })
@@ -251,6 +261,8 @@ export const planSchema = z
     goal: text,
     audience: text,
     keywords: z.array(z.string().min(1).max(250)).max(8),
+    focusTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+    requireMetrics: z.boolean().optional(),
     excludeKeywords: strings,
     includeDomains: z
       .array(z.string().regex(/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i))

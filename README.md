@@ -72,6 +72,8 @@ Hermes 可将技能目录放入 `~/.hermes/skills/`；OpenClaw 可放入其工�
 
 ## 开发与验证
 
+首次部署、30 个逻辑日调度、Worker 恢复与冷备恢复的模拟验收见 [发布模拟记录](docs/release-simulation-2026-09-23.md)。逻辑日期模拟不等于真实连续运行天数；新增回归位于 `tests/lifecycle.test.ts`。
+
 ```sh
 docker compose run --rm worker npm test
 docker compose run --rm worker npm run check

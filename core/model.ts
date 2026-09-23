@@ -6,6 +6,16 @@ export type ModelMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
+// Union errors hide actionable field paths. The closest matching branch gives
+// the repair call concrete errors instead of just "Invalid input".
+export function validationIssues(error: schema.ZodError): schema.core.$ZodIssue[] {
+  const expand = (issues: schema.core.$ZodIssue[]): schema.core.$ZodIssue[] => issues.flatMap(issue => {
+    if (issue.code !== "invalid_union" || !issue.errors.length) return [issue];
+    const branches = issue.errors.map(expand).sort((a,b)=>a.length-b.length);
+    return branches[0].map(child=>({...child,path:[...issue.path,...child.path]}));
+  });
+  return expand(error.issues);
+}
 // UTF-8 bytes provide a deliberately loose reservation without assuming a GLM tokenizer.
 export function estimateTokens(messages: ModelMessage[], output = 12000) {
   return (
@@ -178,8 +188,9 @@ export async function structured<T>(
         ),
       );
     } catch (error) {
+      const fields = error instanceof schema.ZodError ? validationIssues(error) : [];
       const issues = error instanceof schema.ZodError
-        ? error.issues.slice(0, 12).map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        ? fields.slice(0, 12).map((issue) => `${issue.path.join(".")}: ${issue.message}`)
         : ["正文必须是有效的单个 JSON 对象，不能截断或包含代码围栏之外的说明。"];
       db.put("job-validation", job.id, { at: new Date().toISOString(), attempt: attempt + 1, issues, response: response.text });
       if (attempt === 1)
@@ -197,7 +208,10 @@ export async function structured<T>(
         {
           role: "user",
           content:
-            "上次输出未满足 JSON Schema。逐项修复以下实际校验错误：\n" + issues.join("\n") + "\n保持证据 ID 不变，重写完整 JSON，不添加事实。",
+            "上次输出未满足 JSON Schema。逐项修复以下实际校验错误：\n" + issues.join("\n") +
+            (fields.some(issue => issue.path.at(-1) === "details")
+              ? "\n缺失 details 时，按该条 kind 的 Schema 重建必填字段，不能因为摘要已有内容就省略。仅从原始证据和已有受支持内容整理；没有依据的范围或限制明确写本轮未核实，不用空对象、null 或编造事实补齐。"
+              : "") + "\n保持证据 ID 不变，重写完整 JSON，不添加事实。",
         },
       );
     }

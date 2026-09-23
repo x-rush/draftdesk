@@ -2,7 +2,7 @@
 name: editorial-research
 description: 将有来源的 AI 变化转为普通职场人与创作者能使用的资讯和公众号、小红书原创选题方案。
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # 资讯与选题编辑
@@ -33,7 +33,9 @@ metadata:
 
 - kind 只能 news 或 topic；每条必须有证据、读者、whyNow、personalImpact、unknowns、nextActions。
 - news.details 写 whatChanged、availability、limitations，不把未知项写成确定支持。
+- 每一条 news 都必须包含 details 对象，即使 summary、unknowns 已表达相同信息也不能省略。whatChanged 写证据支持的变化；availability 无证据时写“本轮未核实可用范围”；limitations 用字符串数组说明待核实的限制。不得写成“官方尚未披露”，除非材料明确证明这一点。
 - topic.details 写 angle、readerPromise、outline、materialChecklist、platforms。
+- 输出前按每条 kind 分别核对对应 details，不能拿 topic 的结构代替 news，不能用 null、空对象或空字符串补位。字段完整性与事实支持分别检查；通过格式检查不代表可以发布。
 - 若某变化只有一句新闻摘要，不能生成仿佛已完成实测的完整教程。
 
 ## 反例

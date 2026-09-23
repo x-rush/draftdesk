@@ -12,6 +12,7 @@ import {
   batchSchema,
   researchBatchSchema,
   clusterSchema,
+  researchClusterSchema,
   reviewSchema,
   type Evidence,
   type Job,
@@ -89,8 +90,11 @@ export async function runJob(
       if (warnings.length) throw new AppError("来源读取异常且没有有效证据，请检查来源诊断；未调用模型。");
       noFindings("未找到符合策略的证据；本轮没有推荐，未调用模型。"); return;
     }
+    if (job.plan.kind === "trends" && job.plan.requireMetrics && !evidence.some(e=>e.metric)) {
+      noFindings("本策略只研究原始指标，本轮未采集到符合关键词的指标。保留网页线索但不生成趋势结论，未调用模型；来源异常请查看来源问题。"); return;
+    }
     const events = db.list<ResearchEvent>("events");
-    const scope = (p: Job["plan"]) => JSON.stringify([p.id,p.kind,p.goal,p.audience,p.keywords,p.excludeKeywords,p.includeDomains,p.sourceIds,p.lookbackDays]);
+    const scope = (p: Job["plan"]) => JSON.stringify([p.id,p.kind,p.goal,p.audience,p.keywords,p.focusTerms,p.requireMetrics,p.excludeKeywords,p.includeDomains,p.sourceIds,p.lookbackDays]);
     const previousJobs = db.list<Job>("jobs").filter(j => j.id !== job.id && scope(j.plan) === scope(job.plan) && j.state === "completed");
     const covered = new Set(previousJobs.flatMap(j => j.evidenceIds));
     evidence = evidence.filter(e => !covered.has(e.id) && !events.some(event => event.evidenceIds.includes(e.id)
@@ -109,7 +113,7 @@ export async function runJob(
       job,
       skills["evidence-curator"].content,
       { plan: job.plan, profile: db.config().profile, asOf: now(), evidence: material },
-      clusterSchema,
+      researchClusterSchema(evidence.map(e=>e.id)),
       signal,
     );
     const ids = new Set(evidence.map((e) => e.id));

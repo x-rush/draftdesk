@@ -62,6 +62,7 @@ export function PlanEditor({
           </Select>
         </Field>
         <p className="muted">本方向优先查找：{searchIntents[p.kind].join("；")}。没有合适证据时允许零推荐。</p>
+        {p.kind === "trends" && <label className="check"><input type="checkbox" checked={!!p.requireMetrics} onChange={e=>update("requireMetrics",e.target.checked)} />只分析带原始指标的热词；无指标时保留线索，不调用模型凑结果。</label>}
         <Field label="希望解决的问题">
           <textarea
             required
@@ -111,6 +112,9 @@ export function PlanEditor({
               update("keywords", e.target.value.split("\n").filter(Boolean))
             }
           />
+        </Field>
+        <Field label="内容筛选词（每行一项，可留空）" hint="所有来源的标题或正文至少命中一项才保留。请用短词和中英文别名；这与提交给搜索引擎的问题分开。">
+          <textarea rows={4} value={(p.focusTerms || []).join("\n")} onChange={e=>update("focusTerms",e.target.value.split("\n").map(s=>s.trim()).filter(Boolean))} />
         </Field>
         <Field label="排除关键词（每行一项）">
           <textarea
@@ -298,6 +302,9 @@ export function SourceEditor({
             ))}
           </Select>
         </Field>
+        {s.sourceType === "official" && s.type === "rss" && <Field label="关联官网域名（每行一个，可留空）" hint="仅填写已确认属于该机构的文档或帮助站域名，精确匹配，不自动信任其他子域名。搜索命中这些站点可识别为一手来源，仍需核对具体内容。">
+          <textarea value={(s.officialDomains || []).join("\n")} onChange={e=>setS({...s,officialDomains:e.target.value.split("\n").map(v=>v.trim()).filter(Boolean)})} />
+        </Field>}
         <Field label="来源说明与局限">
           <textarea
             value={s.note}

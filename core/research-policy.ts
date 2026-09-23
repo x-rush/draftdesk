@@ -29,7 +29,9 @@ export function rankEvidence(items: EvidenceInput[], plan: Plan) {
   const score = (e: EvidenceInput) => (preferred.includes(e.sourceType) ? 4 : 0)
     + (e.metric && plan.kind === "trends" ? 3 : 0)
     + (plan.keywords.some(k => (e.title + e.excerpt).toLowerCase().includes(k.toLowerCase())) ? 2 : 0)
-    + (e.publishedAt ? 1 : 0);
+    + (e.publishedAt ? 1 : 0)
+    + (plan.kind === "editorial" && /introducing|meet the|now everyone|新增|推出|上线|开放|更新/i.test(e.title + " " + e.excerpt) ? 3 : 0)
+    + (plan.kind === "opportunity" && e.sourceType === "community" && /求助|手工|手动|困扰|不好用|无法|不能|workaround|manual|struggl/i.test(e.excerpt) ? 4 : 0);
   return [...items].sort((a, b) => score(b) - score(a));
 }
 export function supplementQueries(clusters: {label: string; missing: string[]}[], kind: Plan["kind"], limit: number) {
