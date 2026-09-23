@@ -44,6 +44,7 @@ export const skillCatalog = [
   },
 ];
 export const skillReferences: Record<string, string[]> = {
+  "draftdesk-submit": ["references/agent-workflow.md"],
   "evidence-curator": ["references/source-assessment.md"],
   "editorial-research": ["references/editorial-decisions.md"],
   "trend-research": ["references/trend-decisions.md"],

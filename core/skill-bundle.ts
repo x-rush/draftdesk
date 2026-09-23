@@ -8,6 +8,7 @@ export function skillBundle() {
     "skills/PROVENANCE.md",
     "skills/THIRD-PARTY-NOTICES.md",
     "skills/draftdesk-submit/scripts/submit.py",
+    "skills/draftdesk-submit/scripts/preflight.py",
     "skills/draftdesk-submit/references/intake-example.json",
   ];
   const chunks: Buffer[] = [];

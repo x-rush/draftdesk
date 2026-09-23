@@ -36,7 +36,7 @@ export const evidenceSchema = z
     region: z.string().max(80).default("未知"),
     language: z.string().max(20).default("zh"),
     metric: z
-      .object({ name: text, value: text, unit: text, period: text })
+      .object({ name: text, value: text, unit: text, period: text, cadence: z.enum(["instant", "day", "week"]).optional() })
       .optional(),
     contentLevel: z
       .enum(["fulltext", "excerpt", "headline"])
@@ -162,7 +162,7 @@ export type Artifact = ArtifactDraft & {
   createdAt: string;
   updatedAt: string;
   revision: number;
-  quality: "ready" | "review";
+  quality: "ready" | "review" | "rejected";
   issues: string[];
   reviewNote: string;
   skillVersion: string;
@@ -174,10 +174,28 @@ export const batchSchema = z
   .object({
     items: z.array(artifactSchema).max(12),
     rejected: z
-      .array(z.object({ reason: text, evidenceIds: z.array(id).max(10) }))
+      .array(z.object({ reason: text, evidenceIds: z.array(id).max(10).default([]) }))
       .max(30),
   })
   .strict();
+export function researchBatchSchema(kind: "editorial" | "trends" | "opportunity" | "people" | "topic", maxItems: number, evidenceIds?: string[]) {
+  const item = kind === "editorial" ? z.union([artifactSchema.options[0], artifactSchema.options[1]])
+    : kind === "topic" ? artifactSchema.options[1]
+    : kind === "trends" ? artifactSchema.options[2]
+    : kind === "opportunity" ? artifactSchema.options[3] : artifactSchema.options[4];
+  return z.object({ items: z.array(item).max(maxItems), rejected: batchSchema.shape.rejected }).strict().superRefine((batch, ctx) => {
+    if (!evidenceIds) return;
+    batch.items.forEach((draft, index) => {
+      const check = (refs: string[], field: (string | number)[]) => refs.forEach((id, refIndex) => {
+        if (!evidenceIds.includes(id) || (field[0] !== "evidenceIds" && !draft.evidenceIds.includes(id)))
+          ctx.addIssue({ code: "custom", path: ["items", index, ...field, refIndex], message: "引用必须逐字复制本次输入 evidence 的 id，且列入本条 evidenceIds。允许的 ID：" + evidenceIds.join(", ") });
+      });
+      check(draft.evidenceIds, ["evidenceIds"]);
+      draft.claims.forEach((claim, claimIndex) => check(claim.evidenceIds, ["claims", claimIndex, "evidenceIds"]));
+      if (draft.kind === "trend") check(draft.details.signalEvidenceIds, ["details", "signalEvidenceIds"]);
+    });
+  });
+}
 export const clusterSchema = z
   .object({
     clusters: z
@@ -321,4 +339,7 @@ export type Job = {
   error?: string;
   external: boolean;
   skillVersions: Record<string, string>;
+  searchCount?: number;
+  receiptId?: string;
+  outcome?: "produced" | "no-findings";
 };

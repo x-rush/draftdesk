@@ -8,6 +8,9 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { defaultConfig, defaultPlans, defaultSources } from "./defaults";
+import { recordHistory, metricComparison, type MetricSnapshot } from "./history";
+import { decisionOf } from "./research-policy";
+import { validateIntake } from "./intake-validation";
 import {
   artifactSchema,
   evidenceSchema,
@@ -114,13 +117,16 @@ export class Store {
     return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey };
   }
   snapshot() {
+    const metrics = this.list<MetricSnapshot>("metrics");
     return {
       config: this.publicConfig(),
       plans: this.list<Plan>("plans").sort((a, b) =>
         a.dailyTime.localeCompare(b.dailyTime),
       ),
       sources: this.list<Source>("sources"),
-      artifacts: this.list<Artifact>("artifacts").filter((a) => !a.archived),
+      artifacts: this.list<Artifact>("artifacts").filter((a) => !a.archived).map(a => ({...a, quality: decisionOf(a)})),
+      events: this.list("events"),
+      metrics: metrics.map(m => ({...m, comparison: metricComparison(metrics, m)})),
       evidence: this.list<Evidence>("evidence").slice(0, 300),
       jobs: this.list<Job>("jobs").slice(0, 40),
       connections: this.list<any>("connections").map(({ digest, ...v }) => v),
@@ -132,7 +138,7 @@ export class Store {
         messageCount: c.messages.length,
       })),
       worker: this.get("meta", "worker"),
-      submissions: this.list("receipts").slice(0, 30),
+      submissions: this.list<any>("receipts").slice(0, 30).map(r=>({...r,jobs:this.list<Job>("jobs").filter(j=>j.receiptId===r.id || (!j.receiptId && j.external && j.evidenceIds.length===r.evidenceIds.length && j.evidenceIds.every(id=>r.evidenceIds.includes(id))))})),
       budget: this.dayBudget(),
     };
   }
@@ -166,12 +172,13 @@ export class Store {
     const v = evidenceSchema.parse(input);
     const normalized = canonicalUrl(v.url);
     const fingerprint = hash(
-      normalized + "\n" + v.excerpt + "\n" + JSON.stringify(v.metric || null),
+      normalized + "\n" + v.excerpt + "\n" + JSON.stringify(v.metric || null)
+        + "\n" + v.region + "\n" + v.sourceType + "\n" + v.title,
     );
     const previous = this.list<Evidence>("evidence").find(
       (e) => e.fingerprint === fingerprint,
     );
-    if (previous) return previous;
+    if (previous) { recordHistory(this, previous, v.collectedAt); return previous; }
     const e: Evidence = {
       ...v,
       url: normalized,
@@ -180,10 +187,18 @@ export class Store {
       provenance: producer,
     };
     this.put("evidence", e.id, e);
+    recordHistory(this, e);
     return e;
   }
-  enqueue(planId: string, evidenceIds: string[] = [], scheduledKey?: string) {
+  enqueue(planId: string, evidenceIds: string[] = [], scheduledKey?: string, receiptId?: string, retry = false) {
     return this.transaction(() => {
+      if (receiptId) {
+        const receipt=this.get<any>("receipts",receiptId);
+        if(!receipt) throw new AppError("收件回执不存在",404);
+        evidenceIds=receipt.evidenceIds;
+        const old=this.list<Job>("jobs").find(j=>j.planId===planId && (j.receiptId===receiptId || (!j.receiptId && j.external && j.evidenceIds.length===evidenceIds.length && j.evidenceIds.every(id=>evidenceIds.includes(id)))));
+        if(old && (!retry || !["failed","cancelled"].includes(old.state))) return old;
+      }
       const plan = this.get<Plan>("plans", planId);
       if (!plan) throw new AppError("研究策略不存在。", 404);
       if (
@@ -203,6 +218,7 @@ export class Store {
       const j: Job = {
         id: randomUUID(),
         planId,
+        ...(receiptId ? {receiptId} : {}),
         plan,
         state: "queued",
         stage: "等待执行",
@@ -268,7 +284,7 @@ export class Store {
   saveArtifact(
     draft: ArtifactDraft,
     jobId: string,
-    quality: "ready" | "review",
+    quality: "ready" | "review" | "rejected",
     issues: string[],
     note = "",
     version = "1.0.0",
@@ -280,7 +296,7 @@ export class Store {
       createdAt: now(),
       updatedAt: now(),
       revision: 1,
-      quality,
+      quality: issues.includes("审稿建议：reject") ? "rejected" : quality,
       issues,
       reviewNote: note,
       skillVersion: version,
@@ -308,7 +324,7 @@ export class Store {
       if (
         input.visibility === "public" &&
         (!["topic", "news"].includes(a.kind) ||
-          a.quality !== "ready" ||
+          decisionOf(a) !== "ready" ||
           input.draft)
       )
         throw new AppError(
@@ -354,6 +370,8 @@ export class Store {
     return c;
   }
   intake(raw: unknown, connectionId: string) {
+    const check=validateIntake(raw);
+    if(!check.ok) throw new AppError("数据格式不符合协议："+check.errors.map(e=>`${e.path}: ${e.message}`).join("；"));
     const payload = intakeSchema.parse(raw);
     const digest = hash(JSON.stringify(payload));
     return this.transaction(() => {
@@ -444,6 +462,9 @@ export class Store {
   }
   unlock(id: string) {
     this.db.prepare("DELETE FROM locks WHERE id=?").run(id);
+  }
+  renewLock(id: string) {
+    this.db.prepare("UPDATE locks SET expires=? WHERE id=?").run(Date.now() + 240000, id);
   }
 }
 let singleton: Store | undefined;

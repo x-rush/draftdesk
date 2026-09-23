@@ -20,10 +20,12 @@ import {
   Leaf,
 } from "lucide-react";
 import type { Artifact, Plan, Source, Job } from "../core/schema";
+import { decisionLabels, decisionOf } from "../core/research-policy";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { PlanEditor, SourceEditor } from "./ResearchSetup";
 import { Discussion } from "./Discussion";
 import { Connections } from "./Connections";
+import { PlanPreview, ResearchBrief } from "./ResearchBrief";
 import {
   api,
   date,
@@ -120,7 +122,7 @@ export function Workbench() {
     >(),
     [query, setQuery] = useState(""),
     [kind, setKind] = useState("all"),
-    [quality, setQuality] = useState("all"),
+    [quality, setQuality] = useState("active"),
     [skills, setSkills] = useState<any[]>([]),
     [skill, setSkill] = useState<any>(),
     [legacy, setLegacy] = useState<any[]>([]),
@@ -195,7 +197,7 @@ export function Workbench() {
       (view !== "ideas" || a.kind === "idea") &&
       (view !== "people" || a.kind === "person") &&
       (kind === "all" || view !== "discover" || a.kind === kind) &&
-      (quality === "all" || a.quality === quality) &&
+      (quality === "all" || (quality === "active" ? decisionOf(a) !== "rejected" : decisionOf(a) === quality)) &&
       [a.title, a.summary, a.audience, ...a.tags]
         .join(" ")
         .toLowerCase()
@@ -403,9 +405,11 @@ export function Workbench() {
                       value={quality}
                       onChange={(e) => setQuality(e.target.value)}
                     >
-                      <option value="all">所有质量状态</option>
-                      <option value="ready">通过当前检查</option>
-                      <option value="review">待补证据 / 待审</option>
+                      <option value="active">推荐与待验证</option>
+                      <option value="ready">推荐 · 通过检查</option>
+                      <option value="review">待验证</option>
+                      <option value="rejected">已否决</option>
+                      <option value="all">全部（含已否决）</option>
                     </Select>
                   </div>
                   {view === "discover" && (
@@ -465,7 +469,7 @@ export function Workbench() {
                               </span>
                               <span>{date(a.createdAt)}</span>
                               <span className={"quality-badge " + a.quality}>
-                                {a.quality === "ready" ? "通过检查" : "待审"}
+                                {decisionLabels[decisionOf(a)]}
                               </span>
                             </div>
                             <button
@@ -550,6 +554,7 @@ export function Workbench() {
                           <span className="pill">{kindPlanLabels[p.kind]}</span>
                           <h2>{p.name}</h2>
                           <p>{p.goal}</p>
+                          <PlanPreview plan={p} sources={data.sources}/>
                           <div className="tags">
                             {p.sourceIds.map((id) => (
                               <span key={id}>
@@ -693,16 +698,23 @@ export function Workbench() {
                           )}
                         </header>
                         <p>
-                          {j.stage} · {j.evidenceIds.length} 条证据 · {j.calls}{" "}
-                          次模型调用 · 实际 {j.actualTokens.toLocaleString()}{" "}
+                          {j.outcome === "no-findings" ? "完成 · 本轮无新增推荐" : j.stage} · {j.evidenceIds.length} 条证据 · {j.searchCount ?? "未记录"} 次搜索（含补证） · {j.calls}{" "}
+                          次模型调用 · 已回传用量 {j.actualTokens.toLocaleString()}{" "}
                           tokens
                         </p>
+                        {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
                         {j.error && <p className="error">{j.error}</p>}
+                        {["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 &&
+                          <button disabled={busy || data.jobs.some((other) => other.planId === j.planId && ["queued", "running"].includes(other.state))}
+                            onClick={() => void act(async () => {
+                              await api("jobs", { planId: j.planId, evidenceIds: j.evidenceIds });
+                            })}>使用保留证据重试（不重复搜索）</button>}
                         {j.warnings.map((w, i) => (
                           <p className="warning" key={i}>
                             {w}
                           </p>
                         ))}
+                        <ResearchBrief job={j}/>
                         <details>
                           <summary>步骤、预算与技能版本</summary>
                           <ol className="timeline">
@@ -771,6 +783,7 @@ export function Workbench() {
                   receipts={data.submissions}
                   plans={data.plans}
                   onChange={refresh}
+                  sources={data.sources} jobs={data.jobs} artifacts={data.artifacts} onOpen={setSelected}
                 />
               )}
               {view === "chat" && (
@@ -1024,7 +1037,14 @@ function Settings({
             })
           }
         >
-          测试已保存连接
+          测试模型连接
+        </button>
+        <button type="button" disabled={busy || !config.hasTavilyKey}
+          onClick={() => void act(async () => {
+            const r = await api("test-search", {});
+            setNotice(r.message);
+          })}>
+          测试搜索（1 次 basic）
         </button>
         <button className="primary" disabled={busy}>
           {busy ? "处理中…" : "保存设置"}

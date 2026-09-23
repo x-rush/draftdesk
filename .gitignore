@@ -15,5 +15,6 @@ backups/
 *.key
 *.log
 VERIFICATION.md
+agent-compare.json
 .DS_Store
 Thumbs.db

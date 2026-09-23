@@ -1,8 +1,37 @@
 import type { ArtifactDraft, Evidence } from "./schema";
+import { evidenceReadiness } from "./readiness";
+// Compare overlapping text, not domain names: syndicated releases are one account.
+function shingles(text: string) {
+  const normalized = text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return new Set(Array.from({ length: Math.max(0, normalized.length - 11) }, (_, i) => normalized.slice(i, i + 12)));
+}
+function likelySyndicated(a: Evidence, b: Evidence) {
+  if (Math.min(a.excerpt.length, b.excerpt.length) < 120) return false;
+  const left = shingles(a.excerpt), right = shingles(b.excerpt);
+  const overlap = [...left].filter((part) => right.has(part)).length;
+  return overlap / Math.max(1, Math.min(left.size, right.size)) >= 0.65;
+}
+function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (value && typeof value === "object") return Object.values(value).flatMap(stringsIn);
+  return [];
+}
 export function qualityIssues(item: ArtifactDraft, evidence: Evidence[]) {
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const issues: string[] = [];
   const referenced = item.evidenceIds.map((id) => byId.get(id));
+  const independent: Evidence[] = [];
+  for (const source of referenced) {
+    if (source && !independent.some((previous) => likelySyndicated(previous, source))) independent.push(source);
+  }
+  if (referenced.filter(Boolean).length > independent.length)
+    issues.push("部分来源疑似同稿转载，不能按不同域名视为独立交叉证据；请核对原始出处。");
+  // Evidence can support attributed third-party claims, never an invented author experience.
+  const completedExperience = /(?:我们|我本人|本人|我)(?:亲自|已经|已|实际|用|试用|体验|测试|实测)[^。！？\n]{0,45}(?:跑了一遍|试过|测过|测试了|发现|节省了|省了)|实测报告出炉|这篇实测告诉你|实测结果(?:表明|显示|证明)/;
+  const publicationText = [item.title, item.summary, item.personalImpact, ...stringsIn(item.details)];
+  if (publicationText.some((text) => completedExperience.test(text)))
+    issues.push("包含已完成实测或第一人称体验的表达；工作台没有作者实测记录，请改成待验证计划或明确归属的来源陈述。");
   // A narrow announcement can have one primary source; impact/experience still needs review.
   const primaryAnnouncement = item.kind === "news" && referenced.length > 0 &&
     referenced.every((e) => e?.sourceType === "official") &&
@@ -48,5 +77,6 @@ export function qualityIssues(item: ArtifactDraft, evidence: Evidence[]) {
     issues.push("没有真实用户问题来源，需求与付费意愿仍是假设。");
   if (referenced.some((e) => e && !e.publishedAt))
     issues.push("部分来源发布时间未知，请核对时效。");
+  issues.push(...evidenceReadiness(item, evidence).filter(c=>c.status === "missing").map(c=>`${c.label}不足：${c.action}`));
   return [...new Set(issues)];
 }

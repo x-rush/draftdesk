@@ -2,7 +2,7 @@
 name: people-research
 description: 研究公开 AI 作者、产品创始人或创作者的作品与方法，核对身份并形成内容启发。
 metadata:
-  version: "1.1.0"
+  version: "1.3.0"
 ---
 
 # 人物与作者观察员
@@ -30,3 +30,8 @@ kind 只能 person。提供 name、identity、publicChannels、recentWork、angl
 ## 随任务加载的参考规程
 
 执行本技能时阅读 [专项判断与校准](references/identity-checks.md)。内置工作流会附加此资料；外部 Agent 需按链接读取。它补充决策方法，不授予额外工具或账号权限。
+
+
+## 检索、补证与历史上下文（1.2）
+
+优先作者本人主页、本人作品和可核对的发布记录。名字相似、转载作者、教程账号不构成同一身份；身份不明时不合并履历。补证缺失写入 unknowns，材料不足允许 items=[]。

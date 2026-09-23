@@ -5,6 +5,7 @@ import { requestModel, structured } from "./model";
 import {
   discussionSchema,
   batchSchema,
+  researchBatchSchema,
   type Artifact,
   type Conversation,
   type Evidence,
@@ -21,6 +22,7 @@ export async function discussion(
 ) {
   const input = discussionSchema.parse(raw);
   db.lock("chat-" + input.id);
+  const lockHeartbeat = setInterval(() => db.renewLock("chat-" + input.id), 30000);
   try {
     const previous = db.get<Conversation>("conversations", input.id);
     const artifactId = previous?.artifactId || input.artifactId;
@@ -94,6 +96,7 @@ export async function discussion(
     emit({ type: "done", conversation, status: status || "complete" });
     return conversation;
   } finally {
+    clearInterval(lockHeartbeat);
     db.unlock("chat-" + input.id);
   }
 }
@@ -104,6 +107,11 @@ export async function distill(
   signal: AbortSignal,
 ) {
   db.lock("chat-" + id);
+  let jobId: string | undefined;
+  const heartbeat = setInterval(() => {
+    db.renewLock("chat-" + id);
+    if (jobId) db.patchJob(jobId, { leaseUntil: Date.now() + 300000 });
+  }, 30000);
   try {
     const c = db.get<Conversation>("conversations", id);
     if (!c?.messages.length) throw new AppError("请先完成一轮讨论。");
@@ -141,6 +149,7 @@ export async function distill(
       skillVersions: {},
     };
     db.put("jobs", job.id, job);
+    jobId = job.id;
     try {
       const skill = loadSkill(
         kind === "idea" ? "opportunity-research" : "editorial-research",
@@ -155,7 +164,7 @@ export async function distill(
           profile: db.config().profile,
           evidence: evidenceContext(evidence, 16000),
         },
-        batchSchema,
+        researchBatchSchema(kind === "idea" ? "opportunity" : "topic", 1, artifact.evidenceIds),
         signal,
       );
       const item = result.items[0];
@@ -165,6 +174,7 @@ export async function distill(
         throw new AppError("草稿引用了讨论之外的证据。");
       db.patchJob(job.id, {
         state: "completed",
+        stage: "完成",
         finishedAt: now(),
         skillVersions: {
           [kind === "idea" ? "opportunity-research" : "editorial-research"]:
@@ -185,6 +195,7 @@ export async function distill(
       throw e;
     }
   } finally {
+    clearInterval(heartbeat);
     db.unlock("chat-" + id);
   }
 }

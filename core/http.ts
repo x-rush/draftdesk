@@ -16,6 +16,9 @@ import { skillCatalog, loadSkill } from "./skills";
 import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
+import { qualityIssues } from "./quality";
+import { validateIntake } from "./intake-validation";
+import { type ResearchEvent, type MetricSnapshot, metricComparison } from "./history";
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { "cache-control": "no-store" } });
 export function checkRequest(req: Request) {
@@ -63,7 +66,7 @@ export async function handle(req: Request, path: string[]) {
     checkRequest(req);
     const db = store(),
       route = path.join("/");
-    if (req.headers.has("authorization") && route !== "intake")
+    if (req.headers.has("authorization") && !["intake","intake-check"].includes(route))
       throw new AppError("提交令牌只允许写入收件接口。", 403);
     if (req.method === "GET") {
       if (route === "health") return json({ ok: true, version: "2.0.0" });
@@ -89,6 +92,16 @@ export async function handle(req: Request, path: string[]) {
             })),
         });
       if (route === "workspace") return json(db.snapshot());
+      if (path[0] === "history") {
+        const artifact = db.get<Artifact>("artifacts",path[1]);
+        if (!artifact) throw new AppError("内容不存在",404);
+        const events = db.list<ResearchEvent>("events").filter(e=>e.evidenceIds.some(id=>artifact.evidenceIds.includes(id)));
+        const ids = new Set(events.flatMap(e=>e.evidenceIds));
+        const all = db.list<MetricSnapshot>("metrics");
+        const series = new Set(all.filter(m=>ids.has(m.evidenceId)).map(m=>m.seriesId));
+        return json({events, metrics:all.filter(m=>series.has(m.seriesId)).sort((a,b)=>b.at.localeCompare(a.at)).map(m=>({...m,comparison:metricComparison(all,m)})),
+          related:db.list<Artifact>("artifacts").filter(a=>a.id!==artifact.id && !a.archived && a.evidenceIds.some(id=>ids.has(id))).map(a=>({id:a.id,title:a.title}))});
+      }
       if (route === "skills")
         return json(skillCatalog.map((s) => ({ ...s, ...loadSkill(s.id) })));
       if (route === "skill-bundle")
@@ -115,6 +128,7 @@ export async function handle(req: Request, path: string[]) {
         return json({
           analysis: db.get("job-context", path[1]),
           draft: db.get("job-draft", path[1]),
+          verification: db.get("job-verification", path[1]) || [],
         });
       if (route === "legacy") return json(db.list("legacy"));
       if (route === "export") {
@@ -123,6 +137,8 @@ export async function handle(req: Request, path: string[]) {
           exportedAt: now(),
           artifacts: db.list("artifacts"),
           evidence: db.list("evidence"),
+          events: db.list("events"),
+          metrics: db.list("metrics"),
           plans: db.list("plans"),
           sources: db.list("sources"),
           jobs: db.list("jobs"),
@@ -133,6 +149,13 @@ export async function handle(req: Request, path: string[]) {
       throw new AppError("接口不存在", 404);
     }
     if (req.method !== "POST") throw new AppError("方法不支持", 405);
+    if(route === "intake-check") {
+      db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /,""));
+      const input=await body(req);
+      if(input.probe === true) return json({ok:true,permission:"intake-only",note:"连接和令牌通过；未验证外部搜索工具，未入库。"});
+      const report=validateIntake(input);
+      return json(report,report.ok?200:400);
+    }
     // Intake tokens are deliberately scoped: they cannot access any other mutation.
     if (route === "intake") {
       const c = db.authenticate(
@@ -143,6 +166,7 @@ export async function handle(req: Request, path: string[]) {
     if (req.headers.has("authorization"))
       throw new AppError("提交令牌只允许写入收件接口。", 403);
     const input = await body(req);
+    if(route === "validate-intake") { const report=validateIntake(input); return json(report); }
     if (route === "config") {
       const cfg = configSchema.parse(input),
         old = db.get<any>("config", "main");
@@ -163,6 +187,26 @@ export async function handle(req: Request, path: string[]) {
         { signal: req.signal },
       );
       return json({ message: result.text, usage: result.usage });
+    }
+    if (route === "test-search") {
+      const key = db.config().tavilyKey;
+      if (!key) throw new AppError("请先保存 Tavily Key。");
+      try {
+        const response = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          signal: AbortSignal.any([req.signal, AbortSignal.timeout(30000)]),
+          headers: { "content-type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ query: "AI productivity tools", search_depth: "basic", max_results: 1 }),
+        });
+        if (!response.ok) throw new AppError(`Tavily 搜索失败（HTTP ${response.status}），请检查密钥与额度。`, 502);
+        const result = await response.json();
+        const count = Array.isArray(result.results) ? result.results.length : 0;
+        if (!count) throw new AppError("Tavily 已响应，但本次未返回搜索结果。", 502);
+        return json({ message: `Tavily 实际搜索成功，返回 ${count} 条结果（消耗一次 basic 搜索额度）。` });
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError("Tavily 连接失败或超时，请检查网络；密钥不会回显。", 502);
+      }
     }
     if (route === "sources") {
       const source = sourceSchema.parse(input);
@@ -185,11 +229,13 @@ export async function handle(req: Request, path: string[]) {
         .object({
           planId: z.string(),
           evidenceIds: z.array(z.string()).max(60).default([]),
+          receiptId: z.string().optional(),
+          retry: z.boolean().default(false),
         })
         .parse(input);
       if (value.evidenceIds.some((id) => !db.get("evidence", id)))
         throw new AppError("证据不存在");
-      return json(db.enqueue(value.planId, value.evidenceIds), 202);
+      return json(db.enqueue(value.planId, value.evidenceIds, undefined, value.receiptId, value.retry), 202);
     }
     if (route === "cancel") {
       const id = z.string().parse(input.id),
@@ -228,6 +274,7 @@ export async function handle(req: Request, path: string[]) {
       if (!db.get("jobs", jobId)) throw new AppError("整理任务不存在");
       const a = db.saveArtifact(draft, jobId, "review", [
         "讨论整理草稿，保存不代表事实已核实。",
+        ...qualityIssues(draft, draft.evidenceIds.map((id) => db.get<Evidence>("evidence", id)!)),
       ]);
       return json(db.put("artifacts", a.id, { ...a, saved: true }));
     }

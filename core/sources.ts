@@ -3,6 +3,7 @@ import { resolve4 } from "node:dns/promises";
 import { XMLParser } from "fast-xml-parser";
 import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
+import { queryPlan, rankEvidence } from "./research-policy";
 export function publicIp(ip: string) {
   const p = ip.split(".").map(Number);
   return (
@@ -164,15 +165,42 @@ export function balancedEvidence(groups:EvidenceInput[][],limit:number){
  for(let index=0;index<Math.max(0,...groups.map(g=>g.length));index++)for(const group of groups){const e=group[index];if(e&&!seen.has(e.url)){seen.add(e.url);result.push(e);if(result.length===limit)return result;}}
  return result;
 }
-function webSourceType(value:string,fallback:Source['sourceType']):Source['sourceType']{
+export function webSourceType(value:string,fallback:Source['sourceType'],officialHosts: string[] = []):Source['sourceType']{
  try{const u=new URL(value);if(['reddit.com','zhihu.com','v2ex.com','jikeapp.com'].some(d=>u.hostname===d||u.hostname.endsWith('.'+d))||(u.hostname==='github.com'&&u.pathname.includes('/issues/')))return 'community';if(u.hostname==='producthunt.com'||u.hostname.endsWith('.producthunt.com'))return 'product';}catch{}
- return fallback;
+ try { if(officialHosts.includes(new URL(value).hostname)) return 'official'; } catch {}
+ // A web source setting is a query preference, not proof that every result is official.
+ return fallback === 'official' ? 'other' : fallback;
+}
+export async function searchWeb(db: Store, plan: Plan, query: string, signal: AbortSignal, fallback: Source['sourceType'] = "other"): Promise<EvidenceInput[]> {
+  const key = db.config().tavilyKey;
+  if (!key) throw new AppError("未配置 Tavily Key。");
+  const response = await fetch("https://api.tavily.com/search", {
+    method: "POST", signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+    headers: {"content-type":"application/json", Authorization: `Bearer ${key}`},
+    body: JSON.stringify({query, search_depth:"basic", max_results:6, include_domains:plan.includeDomains,
+      start_date: new Date(Date.now()-plan.lookbackDays*86400000).toISOString().slice(0,10), include_published_date:true, topic:"general"}),
+  });
+  if (!response.ok) throw new AppError(`搜索服务 HTTP ${response.status}`);
+  const result = await response.json();
+  const officialHosts = db.list<Source>("sources").filter(s=>s.enabled && s.type==="rss" && s.sourceType==="official" && s.url)
+    .map(s=>new URL(s.url!).hostname);
+  return (result.results || []).flatMap((r: any): EvidenceInput[] => {
+    try {
+      const parsed = new URL(r.url);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) return [];
+      const entry: EvidenceInput = {title:String(r.title).slice(0,300),url:r.url,excerpt:String(r.content || "").slice(0,8000),collectedAt:now(),
+        sourceType:webSourceType(r.url, fallback, officialHosts), region:"未知", language:"未知",contentLevel:"excerpt",
+        ...(Number.isFinite(Date.parse(r.published_date)) ? {publishedAt:new Date(r.published_date).toISOString()} : {})};
+      return relevant(entry,plan) ? [entry] : [];
+    } catch { return []; }
+  });
 }
 export async function collect(
   db: Store,
   plan: Plan,
   signal: AbortSignal,
   onProgress: (message: string) => void,
+  onSearch: () => void = () => {},
 ) {
   const sources = plan.sourceIds
     .map((id) => db.get<Source>("sources", id))
@@ -224,50 +252,23 @@ export async function collect(
               value: String(r.stargazers_count),
               unit: "stars",
               period: now(),
+              cadence: "instant",
             },
           }));
       } else {
         const key = db.config().tavilyKey;
         if (!key) throw new AppError("未配置 Tavily Key。");
-        for (const keyword of plan.keywords.slice(
-          0,
-          Math.max(0, plan.maxQueries - searches),
-        )) {
+        // Reserve up to two queries from the original budget for targeted verification.
+        const initialLimit = Math.max(1, plan.maxQueries - Math.min(2, Math.floor(plan.maxQueries / 2)));
+        for (const item of queryPlan(plan, Math.max(0, Math.min(initialLimit - searches, plan.maxQueries - searches)))) {
           signal.throwIfAborted();
           searches++;
-          const response = await fetch("https://api.tavily.com/search", {
-            method: "POST",
-            signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]),
-            headers: { "content-type": "application/json", Authorization:`Bearer ${key}` },
-            body: JSON.stringify({
-              query: keyword,
-              search_depth: "basic",
-              max_results: 6,
-              include_domains: plan.includeDomains,
-              start_date: new Date(Date.now()-plan.lookbackDays*86400000).toISOString().slice(0,10),
-              include_published_date: true,
-              topic: "general",
-            }),
-          });
-          if (!response.ok)
-            throw new AppError(`搜索服务 HTTP ${response.status}`);
-          const result = await response.json();
-          items.push(
-            ...(result.results || []).map((r: any) => ({
-              title: String(r.title).slice(0, 300),
-              url: r.url,
-              excerpt: String(r.content || "").slice(0, 8000),
-              collectedAt: now(),
-              sourceType: webSourceType(r.url,s.sourceType),
-              ...(Number.isFinite(Date.parse(r.published_date))?{publishedAt:new Date(r.published_date).toISOString()}:{}),
-              region: "未知",
-              language: "未知",
-              contentLevel: "excerpt",
-            })),
-          );
+          onSearch();
+          onProgress(`专项搜索：${item.purpose} · ${item.query}`);
+          items.push(...await searchWeb(db, plan, item.query, signal, s.sourceType));
         }
       }
-      groups.push(items.filter((e) => relevant(e, plan)));
+      groups.push(rankEvidence(items.filter((e) => relevant(e, plan)), plan));
       onProgress(`${s.name}：${items.length} 条原始线索`);
     } catch (e) {
       if (signal.aborted) throw e;
@@ -276,7 +277,8 @@ export async function collect(
       );
     }
   }
-  const unique = balancedEvidence(groups,plan.maxEvidence);
+  const reserveEvidence = plan.maxQueries > searches && sources.some(s=>s.type==="web") ? Math.min(4,Math.max(0,plan.maxEvidence-3)) : 0;
+  const unique = balancedEvidence(groups,plan.maxEvidence-reserveEvidence);
   const evidence = unique.map((e) =>
     db.addEvidence(e, "builtin-collector/1.0.0"),
   );

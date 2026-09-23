@@ -1,6 +1,7 @@
 "use client";
 import { Select } from "./Select";
 import { TimePicker } from "./TimePicker";
+import { searchIntents } from "../core/research-policy";
 import { useState } from "react";
 import type { Plan, Source } from "../core/schema";
 import { Drawer, Field, api, download, kindPlanLabels } from "./ui";
@@ -60,6 +61,7 @@ export function PlanEditor({
             ))}
           </Select>
         </Field>
+        <p className="muted">本方向优先查找：{searchIntents[p.kind].join("；")}。没有合适证据时允许零推荐。</p>
         <Field label="希望解决的问题">
           <textarea
             required
@@ -100,7 +102,7 @@ export function PlanEditor({
         </fieldset>
         <Field
           label="关键词／搜索问题（每行一项）"
-          hint="网页搜索按每行发起一个查询；趋势来源用这些词过滤标题。"
+          hint="网页搜索会结合研究方向扩展关键词，并在总次数内预留最多 2 次定向补证；趋势来源仍用原词过滤。"
         >
           <textarea
             rows={4}

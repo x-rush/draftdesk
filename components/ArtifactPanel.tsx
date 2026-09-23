@@ -1,5 +1,8 @@
 "use client";
 import { Select } from "./Select";
+import { ResearchHistory } from "./ResearchHistory";
+import { EvidenceReadiness } from "./EvidenceReadiness";
+import { decisionLabels, decisionOf } from "../core/research-policy";
 import { useEffect, useState } from "react";
 import type { Artifact, ArtifactDraft, Evidence } from "../core/schema";
 import { Drawer, Field, api, kindLabels, date } from "./ui";
@@ -393,7 +396,7 @@ export function ArtifactPanel({
       </div>
       <div className={"quality " + artifact.quality}>
         <strong>
-          {artifact.quality === "ready" ? "通过当前检查" : "待补证据 / 待审"}
+          {decisionLabels[decisionOf(artifact)]}
         </strong>
         <p>{artifact.reviewNote || "请结合来源和自己的测试作最终判断。"}</p>
         {artifact.issues.length > 0 && (
@@ -410,7 +413,9 @@ export function ArtifactPanel({
         <h3>为什么是现在</h3>
         <p>{artifact.whyNow}</p>
       </section>
+      {evidence.length > 0 && <EvidenceReadiness key={artifact.id} artifact={artifact} evidence={evidence} />}
       <Details draft={artifact} />
+      <ResearchHistory artifactId={artifact.id} />
       <section>
         <h3>陈述与证据</h3>
         {artifact.claims.map((c, i) => (

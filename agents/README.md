@@ -18,3 +18,27 @@ Set the Bailian key, the exact OpenAI-compatible base URL, and `BAILIAN_MODEL=qw
 Run `docker compose logs --tail=200 openclaw` or `docker compose logs --tail=200 hermes` to inspect startup. Do not mount Docker's socket, DraftDesk's SQLite directory, or a host-wide home directory. Agent results should enter DraftDesk through its scoped intake protocol, after validation, rather than writing the database directly.
 
 After credentials are available, validate in order: plain completion, structured output, tool-call continuation, fixed evidence analysis, a small live search, and duplicate-safe DraftDesk intake. Both agents will use the same prompt, source list, time limit, and token budget.
+
+## SearXNG and submission
+
+Start `../search/compose.yaml` first so that the external `draftdesk-search` network exists. Hermes discovers its native SearXNG provider from `SEARXNG_URL`. OpenClaw also requires its official provider plugin (the URL environment variable alone does not install it):
+
+```powershell
+docker compose exec openclaw node openclaw.mjs plugins install @openclaw/searxng-plugin
+docker compose exec openclaw node openclaw.mjs config set tools.web.search.provider searxng
+docker compose exec openclaw node openclaw.mjs config set plugins.entries.searxng.config.webSearch.baseUrl http://searxng:8080
+```
+
+Download the current DraftDesk Skill bundle before generating packages. `sourceType` is a fixed enum: official, media, community, product, repository, trend, other. A valid JSON file is not necessarily a valid intake package. Check the actual HTTP receipt; pending-review means received, never verified or published.
+
+For Hermes unattended sessions, keep generated files inside its configured safe write root (`/opt/data` in this image). Do not disable its sandbox to make submission work. A trusted host adapter can submit the file after the agent writes it:
+
+```powershell
+# Run from the DraftDesk root. Store a scoped intake token in an ignored local
+# JSON file of the form {"token":"..."}; never put the token in this command.
+./agents/sync-result.ps1 -Agent hermes -ResultPath /opt/data/research/result.json -CredentialFile ./data/agent-connections/hermes.json
+```
+
+The same adapter supports `-Agent openclaw`. Keep the submissionId and content stable when retrying; the receipt will return duplicate=true. The adapter does not schedule jobs or publish content. The existing Python submit helper is an alternative when the agent is already authorized to execute it.
+
+Agent model/search usage is billed by its providers and **is not included in DraftDesk's internal daily token reservation**. A reported cost of zero from a custom model configuration is not a billing guarantee. SearXNG snippets also need source/date checks; a successful search can return old or irrelevant pages.

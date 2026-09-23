@@ -23,6 +23,7 @@ export async function requestModel(
     onText?: (v: string) => void;
     jobId?: string;
     fetch?: typeof fetch;
+    maxOutputTokens?: number;
   },
 ) {
   options.signal.throwIfAborted();
@@ -30,7 +31,12 @@ export async function requestModel(
   if (!cfg.apiKey) throw new AppError("请先配置百炼 API Key。");
   if (cfg.baseUrl.includes("YOUR-WORKSPACE"))
     throw new AppError("请填写百炼专属 Base URL。");
-  const reservation = estimateTokens(messages);
+  // Qwen 3.8 Flash defaults to xhigh/very large reasoning budgets. Bound each
+  // research stage instead of depending on a timeout to control cost.
+  const qwenFlash = /^qwen3\.8-flash(?:-|$)/i.test(cfg.model);
+  const thinkingBudget = qwenFlash ? (options.json ? 4096 : 1024) : 0;
+  const outputTokens = Math.max(1000, Math.min(12000, options.maxOutputTokens || 12000));
+  const reservation = estimateTokens(messages, outputTokens + thinkingBudget);
   if (reservation > 200000)
     throw new AppError("输入材料过长，请缩小策略证据数量。");
   db.transaction(() => {
@@ -52,7 +58,9 @@ export async function requestModel(
       });
     } else db.reserve(reservation);
   });
-  const modelTimeoutMs = Number(process.env.DRAFTDESK_MODEL_TIMEOUT_MS || 300000);
+  const configuredTimeout = Number(process.env.DRAFTDESK_MODEL_TIMEOUT_MS || 300000);
+  const modelTimeoutMs = Number.isInteger(configuredTimeout) && configuredTimeout >= 1000 && configuredTimeout <= 900000
+    ? configuredTimeout : 300000;
   const response = await (options.fetch || fetch)(
     cfg.baseUrl.replace(/\/$/, "") + "/chat/completions",
     {
@@ -65,7 +73,8 @@ export async function requestModel(
       body: JSON.stringify({
         model: cfg.model,
         messages,
-        max_tokens: 12000,
+        max_tokens: outputTokens,
+        ...(qwenFlash ? { thinking_budget: thinkingBudget, preserve_thinking: false } : {}),
         stream: !!options.onText,
         ...(options.json ? { response_format: { type: "json_object" } } : {}),
         ...(options.onText ? { stream_options: { include_usage: true } } : {}),
@@ -168,10 +177,14 @@ export async function structured<T>(
           response.text.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, ""),
         ),
       );
-    } catch {
+    } catch (error) {
+      const issues = error instanceof schema.ZodError
+        ? error.issues.slice(0, 12).map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        : ["正文必须是有效的单个 JSON 对象，不能截断或包含代码围栏之外的说明。"];
+      db.put("job-validation", job.id, { at: new Date().toISOString(), attempt: attempt + 1, issues, response: response.text });
       if (attempt === 1)
         throw new AppError(
-          "模型输出连续两次未满足数据合同，未将不完整结果入库。",
+          "模型输出连续两次未满足数据合同：" + issues.slice(0, 3).join("；") + "。未将不完整结果入库。",
         );
       db.step(
         job.id,
@@ -184,7 +197,7 @@ export async function structured<T>(
         {
           role: "user",
           content:
-            "上次输出未满足 JSON Schema。检查必填字段、类型、列表长度和 kind 对应的 details，保持证据 ID 不变，重写完整 JSON，不添加事实。",
+            "上次输出未满足 JSON Schema。逐项修复以下实际校验错误：\n" + issues.join("\n") + "\n保持证据 ID 不变，重写完整 JSON，不添加事实。",
         },
       );
     }

@@ -1,18 +1,22 @@
 "use client";
 import { Select } from "./Select";
 import { useState } from "react";
-import type { Plan } from "../core/schema";
+import type { Plan, Source, Job, Artifact } from "../core/schema";
+import { AgentSetup } from "./AgentSetup";
+import { ResearchBrief } from "./ResearchBrief";
 import { api, download, Field, date } from "./ui";
 export function Connections({
   connections,
   receipts,
   plans,
   onChange,
+  sources, jobs, artifacts, onOpen,
 }: {
   connections: any[];
   receipts: any[];
   plans: Plan[];
   onChange: () => Promise<void>;
+  sources: Source[]; jobs: Job[]; artifacts: Artifact[]; onOpen:(a:Artifact)=>void;
 }) {
   const [name, setName] = useState("Hermes 研究助手"),
     [token, setToken] = useState(""),
@@ -35,6 +39,7 @@ export function Connections({
   }
   return (
     <div className="connection-layout">
+      <AgentSetup plan={plans.find(p=>p.id===plan)} sources={sources}/>
       <section className="surface">
         <h2>让外部研究进入同一个工作台</h2>
         <p>
@@ -47,6 +52,7 @@ export function Connections({
           <li>让智能体按协议提交，检查下方收件回执。</li>
         </ol>
         <div className="toolbar">
+
           <a className="button" href="/api/v1/skill-bundle" download>
             下载 Skills 与提交脚本
           </a>
@@ -81,11 +87,7 @@ export function Connections({
             ))}
           </Select>
         </Field>
-        <pre className="code">
-          {
-            "DRAFTDESK_URL=http://127.0.0.1:5173\nDRAFTDESK_TOKEN=你的提交令牌\npython scripts/submit.py result.json"
-          }
-        </pre>
+
         <p className="muted">
           模型密钥不交给外部工具。外部收件不会自动产生付费分析，也不会自动公开。跨机器访问需要另行配置安全网络入口。
         </p>
@@ -163,6 +165,10 @@ export function Connections({
           }
         />
         <div className="toolbar">
+          <button disabled={busy || !payload.trim()} onClick={()=>void act(async()=>{
+            const r=await api("validate-intake",JSON.parse(payload));
+            setNotice(r.ok?`格式与引用通过：${r.evidenceCount} 条证据、${r.draftCount} 条草稿；未入库，未验证搜索工具或事实。`:r.errors.map((e:any)=>`${e.path}：${e.message}`).join("；"));
+          })}>只预检，不入库</button>
           <label className="button">
             选择 JSON 文件
             <input
@@ -207,31 +213,42 @@ export function Connections({
             还没有外部提交。收到证据包后，会在这里显示来源、数量与回执。
           </p>
         )}
-        {receipts.map((r) => (
+        {receipts.map((r) => {
+          const linked:Job[]=r.jobs || jobs.filter(j=>j.receiptId===r.id || (!j.receiptId && j.external && j.evidenceIds.length===r.evidenceIds.length && j.evidenceIds.every(id=>r.evidenceIds.includes(id))));
+          const latest=linked[0];
+          const selectedJob=linked.find(j=>j.planId===plan);
+          const results=artifacts.filter(a=>r.artifactIds?.includes(a.id)||linked.some(j=>j.id===a.jobId));
+          return (
           <div className="receipt" key={r.id}>
             <div>
               <strong>{r.producer}</strong>
               <p>{r.submissionId}</p>
               <small>
-                {date(r.receivedAt)} · {r.evidenceIds.length} 条证据 · 待研究
+                {date(r.receivedAt)} · {r.evidenceIds.length} 条证据 · {latest?({queued:"已创建任务",running:"分析中",completed:latest.outcome==="no-findings"?"完成 · 无新增推荐":"分析完成",failed:"分析失败",cancelled:"已取消"}[latest.state]):r.artifactIds?.length?"已接收草稿 · 待核验":"已接收 · 未分析"}
               </small>
+              {latest&&<p>{latest.stage}{latest.error?`：${latest.error}`:""}</p>}
+              {latest&&<ResearchBrief job={latest}/>}
+              {results.map(a=><button key={a.id} onClick={()=>onOpen(a)}>{a.title} · 查看结果</button>)}
+              {latest&&<button onClick={()=>void act(async()=>download(`${latest.id}-research.json`,await api("job-context/"+latest.id)))}>查看研究说明（下载）</button>}
             </div>
             <button
-              disabled={busy || !plan}
+              disabled={busy || !plan || !!selectedJob && ["queued","running","completed"].includes(selectedJob.state)}
               onClick={() =>
                 void act(async () => {
                   await api("jobs", {
                     planId: plan,
                     evidenceIds: r.evidenceIds,
+                    receiptId:r.id,
+                    retry:!!selectedJob && ["failed","cancelled"].includes(selectedJob.state),
                   });
                   setNotice("已使用所选策略创建分析任务，可在运行记录查看。");
                 })
               }
             >
-              用所选策略分析
+              {selectedJob?.state==="completed"?"此策略已完成":selectedJob&&["queued","running"].includes(selectedJob.state)?"此策略处理中":selectedJob?"重试失败任务":"用所选策略分析（模型计费）"}
             </button>
           </div>
-        ))}
+        );})}
       </section>
       {error && (
         <p className="error span-all" role="alert">

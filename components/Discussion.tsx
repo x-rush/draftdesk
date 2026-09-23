@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Artifact, ArtifactDraft, Conversation } from "../core/schema";
 import { api, Empty, date } from "./ui";
 import { ArtifactEditor } from "./ArtifactPanel";
+import { MessageContent } from "./MessageContent";
 type Summary = {
   id: string;
   title: string;
@@ -270,7 +271,7 @@ export function Discussion({
           {conversation.messages.map((m, i) => (
             <article key={i} className={"message " + m.role}>
               <strong>{m.role === "user" ? "你" : "研究搭档"}</strong>
-              <div>{m.content}</div>
+              {m.role === "assistant" ? <MessageContent text={m.content} /> : <div>{m.content}</div>}
               {m.status && (
                 <small>
                   未完成回复 · {m.status === "stopped" ? "已停止" : "连接中断"}
@@ -281,13 +282,13 @@ export function Discussion({
           {busy && (
             <article className="message assistant">
               <strong>研究搭档</strong>
-              <div>{stream || "正在推敲证据与方向…"}</div>
+              <MessageContent text={stream || "正在推敲证据与方向…"} />
             </article>
           )}
           {!busy && stream && (
             <article className="message assistant">
               <strong>已收到的部分回复</strong>
-              <div>{stream}</div>
+              <MessageContent text={stream} />
             </article>
           )}
           <div ref={bottom} />

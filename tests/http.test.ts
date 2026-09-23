@@ -29,10 +29,38 @@ after(() => {
   store().close();
   rmSync(dir, { recursive: true, force: true });
 });
+test("搜索诊断独立于模型，未配置时不发请求，配置后验证真实返回结构", async () => {
+  const db = store();
+  const config = db.config();
+  db.put("config", "main", { ...config, tavilyKey: undefined });
+  assert.equal((await request("test-search", {})).status, 400);
+  const original = globalThis.fetch;
+  let calls = 0;
+  try {
+    db.put("config", "main", { ...config, tavilyKey: "test-tavily" });
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, "https://api.tavily.com/search");
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.search_depth, "basic");
+      assert.equal(body.max_results, 1);
+      calls++;
+      return Response.json({ results: [{title:"Test",url:"https://example.org"}] });
+    };
+    assert.equal((await request("test-search", {})).status, 200);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = original; db.put("config", "main", config); }
+});
 test("HTTP 外部令牌仅能收件，不能读工作区或修改策略", async () => {
   const r = await request("connections", { name: "OpenClaw" });
   const c = await r.json();
   assert.equal(r.status, 200);
+  const before=store().list("receipts").length;
+  assert.equal((await request("intake-check",{probe:true},{Authorization:"Bearer "+c.token})).status,200);
+  const preflight=await request("intake-check",envelope(),{Authorization:"Bearer "+c.token});
+  assert.equal(preflight.status,200);assert.equal((await preflight.json()).ok,true);
+  assert.equal((await request("intake-check",{},{Authorization:"Bearer "+c.token})).status,400);
+  assert.equal((await request("intake-check",{probe:true},{Authorization:"Bearer invalid"})).status,401);
+  assert.equal(store().list("receipts").length,before);
   assert.equal(
     (
       await request("workspace", undefined, {
@@ -45,6 +73,7 @@ test("HTTP 外部令牌仅能收件，不能读工作区或修改策略", async 
     (await request("plans", {}, { Authorization: "Bearer " + c.token })).status,
     403,
   );
+  assert.equal((await request("history/any",undefined,{Authorization:"Bearer "+c.token})).status,403);
   assert.equal(
     (
       await request("intake", envelope(), {

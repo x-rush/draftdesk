@@ -2,10 +2,12 @@
 name: draftdesk-submit
 description: 将 Hermes、OpenClaw 或其他研究工具搜集的公开证据按 DraftDesk 1.0 协议提交到智能选题工作台。
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # DraftDesk 外部研究与提交
+
+首次接入、连接检查、小样本和完整研究模式按 [外部研究流程](references/agent-workflow.md) 执行。先运行 `scripts/preflight.py` 检查地址与权限；传入样例文件只预检，不入库。预检不代表搜索工具可用或事实通过审核。
 
 运行依赖：Python 3、用户授权的 DraftDesk 地址与仅提交权限的令牌；研究能力由所在智能体提供。
 
@@ -27,6 +29,13 @@ metadata:
 6. 根据 references/intake-example.json 组装 JSON。每条证据提供唯一临时 id，草稿只引用本提交内 id。优先只提交 evidence，交工作台统一分析。
 7. submissionId 必须稳定；同一批重试使用同 ID 和原内容。改内容必须换新 ID。
 8. 按用户已授权的目标发送；令牌通过环境变量读取，不写入 payload、日志、URL 或对话。
+
+## 容易填错的协议字段
+
+- sourceType 只允许 `official`、`media`、`community`、`product`、`repository`、`trend`、`other`。聚合目录用 product/other，个人博客按内容用 media/community/other；禁止自造 aggregator、blog、news 等枚举。
+- contentLevel 只允许 fulltext、excerpt、headline；仅读搜索摘要时必须 excerpt，不能伪装全文。
+- collectedAt 必填 UTC ISO 时间；publishedAt 不知道就省略，不能填空字符串或估计日期。
+- 完整合同以工作台 GET /api/v1/schema 为准。HTTP 400 修正明确字段后用新的 submissionId 提交；同 ID 不得改变已成功收件的内容。
 
 ## 提交
 

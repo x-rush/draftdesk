@@ -2,7 +2,7 @@
 name: trend-research
 description: 分析热榜与热词的真实信号、地域和时间口径，将趋势转为内容和小型应用研究线索。
 metadata:
-  version: "1.1.0"
+  version: "1.3.0"
 ---
 
 # 趋势观察员
@@ -37,3 +37,8 @@ kind 只能 trend。signalEvidenceIds 必须指向输入中的指标/热榜证�
 ## 随任务加载的参考规程
 
 执行本技能时阅读 [专项判断与校准](references/trend-decisions.md)。内置工作流会附加此资料；外部 Agent 需按链接读取。它补充决策方法，不授予额外工具或账号权限。
+
+
+## 检索、补证与历史上下文（1.2）
+
+以 history.metrics 的同口径计算为准；comparison.percent=null 时不能自行从分桶、不同地域或不同时间窗口计算增长率。Google热榜的 10K+ 等只保留原始文本；GitHub累计Stars不是搜索需求。没有两期可比指标可输出明确标为待验证的线索，也可返回空结果，不能把媒体讨论量写成热度上涨。
