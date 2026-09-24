@@ -45,6 +45,7 @@ export function metricComparison(history: MetricSnapshot[], current: MetricSnaps
     return {percent:null, reason:"地域未知，不能确认两次观测属于同一市场。"};
   if (/排名|rank|position|榜单名次/i.test(current.name + " " + current.unit))
     return {percent:null, reason:"排名是顺序指标，名次差不能换算为热度或需求增长率。"};
+  if(current.cadence === "instant") return {percent:null,reason:"即时榜单快照的间隔不固定，不能计算连续增长率。"};
   const prior = history.filter(s => s.seriesId === current.seriesId && s.period !== current.period && Date.parse(s.period) < Date.parse(current.period))
     .sort((a,b) => Date.parse(b.period) - Date.parse(a.period))[0];
   if (!prior || !current.cadence || current.numeric === null || prior.numeric === null || prior.numeric <= 0)

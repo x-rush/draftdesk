@@ -39,3 +39,7 @@ services:
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
       DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}
     restart: unless-stopped
+  dailyhot:
+    image: imsyy/dailyhot-api@sha256:748fc79d29a422f512018e8a58ef1a0e20306dd6254637933960573fa37b1e5e
+    restart: unless-stopped
+    # Only app/worker may call this service; no host port or public API is exposed.

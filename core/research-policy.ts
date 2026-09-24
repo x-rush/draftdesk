@@ -5,6 +5,7 @@ export function decisionOf(a: Pick<Artifact, "quality" | "issues">) {
   return a.quality === "rejected" || a.issues.includes("审稿建议：reject") ? "rejected" : a.quality;
 }
 export const searchIntents = {
+  activities: ["平台官方 活动规则 投稿 截止日期 参与资格", "创作者中心 流量激励 奖励规则 AI Vibe Coding"],
   editorial: ["官方 更新 公告 changelog 可用范围", "使用 限制 收费 定价 实际体验"],
   opportunity: ["用户 求助 手动 麻烦 替代方案", "现有工具 不好用 放弃 使用反馈 反例"],
   trends: ["搜索趋势 指数 地域 时间 原始数据", "热词 用户 搜索意图 下降 季节性"],
@@ -14,18 +15,19 @@ export function queryPlan(plan: Plan, limit = plan.maxQueries) {
   const keys = plan.keywords.filter(Boolean);
   if (!keys.length) return [];
   const phrases = {
+    activities: ["创作活动 投稿规则 截止时间", "创作者激励 AI 编程 活动规则"],
     editorial: ["官方 更新 公告", "定价 使用限制"],
     opportunity: ["求助 手动处理", "替代方案 使用反馈"],
     trends: ["搜索指数 地域", "搜索意图 用户问题"],
     people: ["本人 主页 作品", "署名 访谈"],
   };
   return Array.from({ length: limit }, (_, i) => ({
-    query: `${keys[i % keys.length]} ${phrases[plan.kind][Math.floor(i / keys.length) % 2]}`,
+    query: plan.kind==="activities" ? `${keys[i % keys.length]}${i<keys.length?"":" 激励 规则"}` : `${keys[i % keys.length]} ${phrases[plan.kind][Math.floor(i / keys.length) % 2]}`,
     purpose: searchIntents[plan.kind][Math.floor(i / keys.length) % 2],
   }));
 }
 export function rankEvidence(items: EvidenceInput[], plan: Plan) {
-  const preferred = { editorial: ["official", "media"], opportunity: ["community", "product"], trends: ["trend"], people: ["official", "community"] }[plan.kind];
+  const preferred = { activities:["official"], editorial: ["official", "media"], opportunity: ["community", "product"], trends: ["trend"], people: ["official", "community"] }[plan.kind];
   const score = (e: EvidenceInput) => (preferred.includes(e.sourceType) ? 4 : 0)
     + (e.metric && plan.kind === "trends" ? 3 : 0)
     + (plan.keywords.some(k => (e.title + e.excerpt).toLowerCase().includes(k.toLowerCase())) ? 2 : 0)

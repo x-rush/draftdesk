@@ -21,10 +21,13 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 ## 首次使用
 
 1. 模型与设置：填写百炼 Base URL、账号已开通的模型标识和 API Key，保存后测试模型连接。`.env.example` 使用 `qwen3.8-flash`；请以自己账号的可用模型为准，不预设免费额度。这里需要百炼 API Key，不是阿里云 AccessKey ID/Secret。
-2. 数据源：AIHOT 精选/产品动态 RSS、Google Trends 地域热榜、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。网页搜索另需 Tavily Key。
+2. 数据源：AIHOT 精选/产品动态 RSS、百度热搜、Google Trends 地域热榜、GitHub Trending、Hacker News Top、Product Hunt 新产品 Feed、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。Docker 内另提供 DailyHotApi 聚合补充，知乎、抖音、头条、贴吧、掘金本机试跑可读；B站有过超时但复测成功，微博和快手本机仍失败，这三项默认停用。可在「数据源」逐个检测连接，按需启用并加入研究策略；原平台链接和榜单更新时间会保留，过期或无效榜单会报错。网页搜索另需 Tavily Key；即时热榜的热度不作为跨天增长率。完整操作与排障见[数据源配置指南](docs/data-source-configuration.md)，各来源状态见[热榜来源说明](docs/hotlist-sources.md)。
 3. 研究策略：调整受众、目标、关键词、域名、排除词、回看天数和预算，先手动运行。
-4. 运行记录：查看来源失败、任务步骤、模型调用和用量。默认关闭每日定时，可按北京时间启用。
-5. 每日发现：阅读个人影响、证据、未知项、下一步，收藏/编辑/讨论，再决定内容创作。
+4. 创作活动：在自己的 Chrome / Edge 登录 B站、抖音、快手、小红书官方活动中心，使用工作台提供的开源扩展按关键词自动读取列表和可见详情，再导入批量 JSON 进行 AI 整理；过期、未知截止时间和只有摘要的活动不会进入付费分析。参见 [四平台活动采集说明](docs/creator-activities.md)。
+5. 运行记录：查看来源失败、任务步骤、模型调用和用量。默认关闭每日定时，可按北京时间启用。
+6. 每日发现：阅读个人影响、证据、未知项、下一步，收藏/编辑/讨论，再决定内容创作。
+
+每日发现分为推荐结果、待观察线索和采集覆盖。内置研究会留下最近一次的标题与原链接、筛除理由和各来源的读取/匹配/入模数量；这些线索不是 AI 推荐，也不代表全网覆盖。轻量线索仅保留 14 天，详细口径见[数据源配置指南](docs/data-source-configuration.md)。
 
 模型连接与网页搜索分别验证：填写 Tavily Key 后使用“测试搜索（1 次 basic）”。模型可调用不代表搜索已接通，测试会消耗对应供应商额度。
 

@@ -41,6 +41,7 @@ export const evidenceSchema = z
     contentLevel: z
       .enum(["fulltext", "excerpt", "headline"])
       .default("excerpt"),
+    acquisition: z.object({method:z.enum(["platform","aggregator"]),provider:z.string().max(80),platform:z.string().max(80),observedAt:z.string().datetime().optional()}).strict().optional(),
   })
   .strict();
 export type EvidenceInput = z.input<typeof evidenceSchema>;
@@ -154,6 +155,21 @@ export const artifactSchema = z.discriminatedUnion("kind", [
       }),
     })
     .strict(),
+  z.object({...common,kind:z.literal("activity"),details:z.object({
+    platform:z.enum(["哔哩哔哩","抖音","快手","小红书"]),
+    activityUrl:url,
+    startsAt:z.string().datetime({offset:true}).nullable(),
+    endsAt:z.string().datetime({offset:true}).nullable(),
+    dateText:text,
+    dateQuote:z.string().max(1000),
+    access:z.enum(["public","login_required","lead"]),
+    eligibility:text,
+    rewards:text,
+    requirements:z.array(text).min(1).max(10),
+    fit:z.enum(["suitable","verify","ineligible"]),
+    fitReason:text,
+    directions:z.array(z.object({title:z.string().min(3).max(120),angle:text,format:text,outline:z.array(text).min(2).max(6),ruleFit:text,effort:text})).min(3).max(5)
+  })}).strict(),
 ]);
 export type ArtifactDraft = z.infer<typeof artifactSchema>;
 export type Artifact = ArtifactDraft & {
@@ -168,6 +184,7 @@ export type Artifact = ArtifactDraft & {
   skillVersion: string;
   visibility: "private" | "public";
   saved: boolean;
+  creationStatus?: "inbox" | "planned" | "writing" | "published";
   archived: boolean;
 };
 export const batchSchema = z
@@ -178,11 +195,11 @@ export const batchSchema = z
       .max(30),
   })
   .strict();
-export function researchBatchSchema(kind: "editorial" | "trends" | "opportunity" | "people" | "topic", maxItems: number, evidenceIds?: string[]) {
+export function researchBatchSchema(kind: "editorial" | "trends" | "opportunity" | "people" | "activities" | "topic", maxItems: number, evidenceIds?: string[]) {
   const item = kind === "editorial" ? z.union([artifactSchema.options[0], artifactSchema.options[1]])
     : kind === "topic" ? artifactSchema.options[1]
     : kind === "trends" ? artifactSchema.options[2]
-    : kind === "opportunity" ? artifactSchema.options[3] : artifactSchema.options[4];
+    : kind === "opportunity" ? artifactSchema.options[3] : kind === "activities" ? artifactSchema.options[5] : artifactSchema.options[4];
   return z.object({ items: z.array(item).max(maxItems), rejected: batchSchema.shape.rejected }).strict().superRefine((batch, ctx) => {
     if (!evidenceIds) return;
     batch.items.forEach((draft, index) => {
@@ -239,7 +256,7 @@ export const sourceSchema = z
   .object({
     id,
     name: z.string().min(1).max(100),
-    type: z.enum(["rss", "trends", "github", "web"]),
+    type: z.enum(["rss", "trends", "hotlist", "aggregated", "github", "web"]),
     url: url.optional(),
     region: z
       .string()
@@ -257,7 +274,7 @@ export const planSchema = z
   .object({
     id,
     name: z.string().min(1).max(100),
-    kind: z.enum(["editorial", "trends", "opportunity", "people"]),
+    kind: z.enum(["editorial", "trends", "opportunity", "people", "activities"]),
     goal: text,
     audience: text,
     keywords: z.array(z.string().min(1).max(250)).max(8),
@@ -268,7 +285,7 @@ export const planSchema = z
       .array(z.string().regex(/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i))
       .max(12),
     sourceIds: z.array(id).min(1).max(12),
-    lookbackDays: z.number().int().min(1).max(90),
+    lookbackDays: z.number().int().min(1).max(365),
     maxEvidence: z.number().int().min(3).max(60),
     maxQueries: z.number().int().min(0).max(8),
     maxItems: z.number().int().min(1).max(8),

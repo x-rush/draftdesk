@@ -1,3 +1,4 @@
+import { activityIssues } from "./activities";
 import type { ArtifactDraft, Evidence } from "./schema";
 import { evidenceReadiness } from "./readiness";
 // Compare overlapping text, not domain names: syndicated releases are one account.
@@ -29,6 +30,7 @@ export function qualityIssues(item: ArtifactDraft, evidence: Evidence[]) {
     issues.push("部分来源疑似同稿转载，不能按不同域名视为独立交叉证据；请核对原始出处。");
   // Evidence can support attributed third-party claims, never an invented author experience.
   const completedExperience = /(?:我们|我本人|本人|我)(?:亲自|已经|已|实际|用|试用|体验|测试|实测)[^。！？\n]{0,45}(?:跑了一遍|试过|测过|测试了|发现|节省了|省了)|实测报告出炉|这篇实测告诉你|实测结果(?:表明|显示|证明)/;
+  if(item.kind==="activity")issues.push(...activityIssues(item,evidence));
   const publicationText = [item.title, item.summary, item.personalImpact, ...stringsIn(item.details)];
   if (publicationText.some((text) => completedExperience.test(text)))
     issues.push("包含已完成实测或第一人称体验的表达；工作台没有作者实测记录，请改成待验证计划或明确归属的来源陈述。");

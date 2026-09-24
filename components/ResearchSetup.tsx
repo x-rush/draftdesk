@@ -78,7 +78,7 @@ export function PlanEditor({
             onChange={(e) => update("audience", e.target.value)}
           />
         </Field>
-        <fieldset>
+        {p.kind!=="activities"?<fieldset>
           <legend>选择搜索源</legend>
           {sources.map((s) => (
             <label className="check" key={s.id}>
@@ -100,7 +100,7 @@ export function PlanEditor({
               </span>
             </label>
           ))}
-        </fieldset>
+        </fieldset>:<p className="muted">创作活动由浏览器扩展读取官方活动页，再导入证据；此处的网页来源配置不用于活动采集。</p>}
         <Field
           label="关键词／搜索问题（每行一项）"
           hint="网页搜索会结合研究方向扩展关键词，并在总次数内预留最多 2 次定向补证；趋势来源仍用原词过滤。"
@@ -142,7 +142,7 @@ export function PlanEditor({
         <div className="form-grid">
           {(
             [
-              ["lookbackDays", "回看天数", 1, 90],
+              ["lookbackDays", "回看天数", 1, 365],
               ["maxQueries", "最多网页搜索次数", 0, 8],
               ["maxEvidence", "最多候选证据", 3, 60],
               ["maxItems", "最多研究产物", 1, 8],
@@ -162,7 +162,7 @@ export function PlanEditor({
             </Field>
           ))}
         </div>
-        <label className="check">
+        {p.kind!=="activities"&&<><label className="check">
           <input
             type="checkbox"
             role="switch"
@@ -180,7 +180,7 @@ export function PlanEditor({
         <p className="muted">
           电脑与 Worker
           需要保持运行。错过时间后仅补当天一次；失败不自动重复付费。所有结果先私有，公开需另行确认。
-        </p>
+        </p></>}
         {error && (
           <p className="error" role="alert">
             {error}
@@ -241,11 +241,13 @@ export function SourceEditor({
           <Select
             value={s.type}
             onChange={(e) =>
-              setS({ ...s, type: e.target.value as Source["type"] })
+              setS({ ...s, type: e.target.value as Source["type"], ...(e.target.value==="hotlist"?{url:"https://top.baidu.com/board?tab=realtime",sourceType:"trend" as const}:{}), ...(e.target.value==="aggregated"?{query:"bilibili",url:undefined,sourceType:"trend" as const}:{}) })
             }
           >
             <option value="rss">HTTPS RSS / Atom</option>
             <option value="trends">Google Trends 地域热榜</option>
+            <option value="hotlist">平台热榜（国内／国际）</option>
+            <option value="aggregated">DailyHotApi 聚合热榜</option>
             <option value="github">GitHub 仓库搜索</option>
             <option value="web">Tavily 网页搜索</option>
           </Select>
@@ -272,6 +274,8 @@ export function SourceEditor({
             />
           </Field>
         )}
+        {s.type === "hotlist" && <Field label="平台热榜入口"><Select value={s.url||"https://top.baidu.com/board?tab=realtime"} onChange={e=>setS({...s,url:e.target.value,sourceType:e.target.value.includes("github.com")?"repository":e.target.value.includes("hacker-news")?"community":"trend"})}><option value="https://top.baidu.com/board?tab=realtime">百度热搜</option><option value="https://s.weibo.com/top/summary?cate=realtimehot">微博热搜（可能需要登录）</option><option value="https://github.com/trending">GitHub Trending</option><option value="https://hacker-news.firebaseio.com/v0/topstories.json">Hacker News Top</option></Select></Field>}
+        {s.type === "aggregated" && <Field label="聚合平台" hint="读取同一 Docker Compose 内的 DailyHotApi。只保存原平台链接与标题；聚合数据是发现线索，重要事实须另找一手证据。"><Select value={s.query||"bilibili"} onChange={e=>setS({...s,query:e.target.value,sourceType:"trend"})}><option value="bilibili">B站</option><option value="weibo">微博</option><option value="zhihu">知乎</option><option value="douyin">抖音</option><option value="kuaishou">快手</option><option value="toutiao">今日头条</option><option value="tieba">百度贴吧</option><option value="juejin">掘金</option></Select></Field>}
         {s.type === "github" && (
           <Field label="GitHub 搜索条件">
             <input
@@ -283,6 +287,7 @@ export function SourceEditor({
         <Field label="证据类型">
           <Select
             value={s.sourceType}
+            disabled={s.type === "aggregated"}
             onChange={(e) =>
               setS({ ...s, sourceType: e.target.value as Source["sourceType"] })
             }

@@ -1,3 +1,4 @@
+import {activityPageSchema} from "./activity-import";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { store, AppError, now } from "./store";
@@ -16,6 +17,8 @@ import { skillCatalog, loadSkill } from "./skills";
 import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
+import { readAggregatedHotlist } from "./sources";
+import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
 import { validateIntake } from "./intake-validation";
 import { type ResearchEvent, type MetricSnapshot, metricComparison } from "./history";
@@ -91,7 +94,12 @@ export async function handle(req: Request, path: string[]) {
               updatedAt: a.updatedAt,
             })),
         });
-      if (route === "workspace") return json(db.snapshot());
+      if (route === "workspace") return json(db.snapshot(new URL(req.url).searchParams.has("page") ? new URL(req.url).searchParams : undefined));
+      if (path[0] === "artifacts" && path[1]) {
+        const artifact=db.get<Artifact>("artifacts",path[1]);
+        if(!artifact || artifact.archived) throw new AppError("内容不存在或已归档",404);
+        return json(artifact);
+      }
       if (path[0] === "history") {
         const artifact = db.get<Artifact>("artifacts",path[1]);
         if (!artifact) throw new AppError("内容不存在",404);
@@ -137,6 +145,7 @@ export async function handle(req: Request, path: string[]) {
           exportedAt: now(),
           artifacts: db.list("artifacts"),
           evidence: db.list("evidence"),
+          discovery: db.list("discovery"),
           events: db.list("events"),
           metrics: db.list("metrics"),
           plans: db.list("plans"),
@@ -167,6 +176,13 @@ export async function handle(req: Request, path: string[]) {
       throw new AppError("提交令牌只允许写入收件接口。", 403);
     const input = await body(req);
     if(route === "validate-intake") { const report=validateIntake(input); return json(report); }
+    if(route === "source-check") {
+      const {sourceId}=z.object({sourceId:z.string()}).strict().parse(input);
+      const source=db.get<{type:string;query?:string;name:string}>("sources",sourceId);
+      if(!source||source.type!=="aggregated"||!source.query||!isAggregatePlatform(source.query))throw new AppError("请选择聚合热榜来源。");
+      const items=await readAggregatedHotlist(source.query,req.signal);
+      return json({ok:true,count:items.length,updatedAt:items[0].acquisition?.observedAt,method:"aggregator",provider:"DailyHotApi",platform:source.name});
+    }
     if (route === "config") {
       const cfg = configSchema.parse(input),
         old = db.get<any>("config", "main");
@@ -212,6 +228,12 @@ export async function handle(req: Request, path: string[]) {
       const source = sourceSchema.parse(input);
       if (source.type === "rss" && !source.url)
         throw new AppError("RSS 需要来源地址");
+      if(source.type === "hotlist" && !["https://top.baidu.com/board?tab=realtime","https://s.weibo.com/top/summary?cate=realtimehot","https://github.com/trending","https://hacker-news.firebaseio.com/v0/topstories.json"].includes(source.url||""))
+        throw new AppError("官方热榜入口不在允许列表中");
+      if(source.type === "aggregated" && !["bilibili","weibo","zhihu","douyin","kuaishou","toutiao","tieba","juejin"].includes(source.query||""))
+        throw new AppError("聚合热榜仅支持已列出的平台路由");
+      if(source.type === "aggregated" && (source.sourceType !== "trend" || source.url))
+        throw new AppError("聚合热榜固定为趋势线索，不能标记为官方来源或自定义采集地址");
       db.put("sources", source.id, source);
       return json(source);
     }
@@ -221,8 +243,14 @@ export async function handle(req: Request, path: string[]) {
         throw new AppError("策略引用未知来源");
       if (plan.scheduleEnabled && !db.config().apiKey)
         throw new AppError("请配置模型后再开启定时任务。");
+      if (plan.kind === "activities" && plan.scheduleEnabled) throw new AppError("活动采集由登录浏览器主动执行，不能设置服务器定时任务。");
       db.put("plans", plan.id, plan);
       return json(plan);
+    }
+    if(route === "activity-evidence") {
+      const value=activityPageSchema.parse({schemaVersion:"draftdesk.activity-page.v1",...(input as object)});
+      const evidence=db.addEvidence({title:value.title,url:value.url,excerpt:value.text,collectedAt:new Date().toISOString(),sourceType:"other",region:"中国",language:"zh",contentLevel:"excerpt"},"manual-activity-rules");
+      return json({evidenceId:evidence.id});
     }
     if (route === "jobs") {
       const value = z
@@ -231,11 +259,13 @@ export async function handle(req: Request, path: string[]) {
           evidenceIds: z.array(z.string()).max(60).default([]),
           receiptId: z.string().optional(),
           retry: z.boolean().default(false),
+          targetKeywords: z.array(z.string().trim().min(1).max(80)).max(8).optional(),
         })
         .parse(input);
+      if (db.get<any>("plans", value.planId)?.kind === "activities" && !value.evidenceIds.length) throw new AppError("请先从创作活动页面导入官方规则；活动研究不再使用搜索。", 400);
       if (value.evidenceIds.some((id) => !db.get("evidence", id)))
         throw new AppError("证据不存在");
-      return json(db.enqueue(value.planId, value.evidenceIds, undefined, value.receiptId, value.retry), 202);
+      return json(db.enqueue(value.planId, value.evidenceIds, undefined, value.receiptId, value.retry, value.targetKeywords), 202);
     }
     if (route === "cancel") {
       const id = z.string().parse(input.id),
@@ -260,6 +290,7 @@ export async function handle(req: Request, path: string[]) {
               revision: z.number().int(),
               draft: z.unknown().optional(),
               saved: z.boolean().optional(),
+              creationStatus: z.enum(["inbox","planned","writing","published"]).optional(),
               archived: z.boolean().optional(),
               visibility: z.enum(["private", "public"]).optional(),
             })

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { hash } from "./store";
 export const skillCatalog = [
+  {id:"activity-research",name:"创作活动研究员",purpose:"四平台活动规则、时间核验、参与门槛与3–5个内容方向"},
   {
     id: "evidence-curator",
     name: "证据整理员",

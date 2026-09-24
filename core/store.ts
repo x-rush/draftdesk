@@ -1,3 +1,5 @@
+import { activityStatus } from "./activities";
+import type {DiscoveryRecord} from "./discovery";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -63,6 +65,32 @@ export class Store {
         defaultPlans.forEach((p) => this.put("plans", p.id, p));
         this.put("meta", "initialized", { version: 2 });
       }
+      if(!this.get("meta","activities-v1")){
+        const plan=defaultPlans.find(p=>p.id==="creator-activities")!;
+        if(!this.get("plans",plan.id))this.put("plans",plan.id,plan);
+        this.put("meta","activities-v1",{version:1});
+      }
+      if(!this.get("meta","cn-hotlists-v1")){
+        for(const source of defaultSources.filter(s=>s.type==="hotlist"))if(!this.get("sources",source.id))this.put("sources",source.id,source);
+        const trend=this.get<Plan>("plans","trend-radar");
+        if(trend && JSON.stringify(trend.sourceIds)==='["trends-us","web"]')this.put("plans",trend.id,{...trend,sourceIds:["baidu-hot",...trend.sourceIds]});
+        this.put("meta","cn-hotlists-v1",{version:1});
+      }
+      if(!this.get("meta","cn-hotwords-v1")){
+        const trend=this.get<Plan>("plans","trend-radar");
+        if(trend && JSON.stringify(trend.keywords)==='["AI","ChatGPT","Claude","Gemini"]')this.put("plans",trend.id,{...trend,keywords:defaultPlans.find(p=>p.id==="trend-radar")!.keywords});
+        this.put("meta","cn-hotwords-v1",{version:1});
+      }
+      if(!this.get("meta","global-hotlists-v1")){
+        for(const source of defaultSources.filter(s=>["github-trending","hacker-news-top","trends-gb","trends-jp","trends-tw","trends-in","trends-kr","trends-de","producthunt-feed"].includes(s.id)))
+          if(!this.get("sources",source.id))this.put("sources",source.id,source);
+        this.put("meta","global-hotlists-v1",{version:1});
+      }
+      if(!this.get("meta","aggregate-hotlists-v1")){
+        for(const source of defaultSources.filter(s=>s.type==="aggregated"))
+          if(!this.get("sources",source.id))this.put("sources",source.id,source);
+        this.put("meta","aggregate-hotlists-v1",{version:1});
+      }
     });
   }
   close() {
@@ -116,9 +144,10 @@ export class Store {
     const { apiKey, tavilyKey, ...c } = this.config();
     return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey };
   }
-  snapshot() {
+  snapshot(params?: URLSearchParams) {
     const metrics = this.list<MetricSnapshot>("metrics");
-    return {
+    const allJobs = this.list<Job>("jobs");
+    const snapshot = {
       config: this.publicConfig(),
       plans: this.list<Plan>("plans").sort((a, b) =>
         a.dailyTime.localeCompare(b.dailyTime),
@@ -127,8 +156,9 @@ export class Store {
       artifacts: this.list<Artifact>("artifacts").filter((a) => !a.archived).map(a => ({...a, quality: decisionOf(a)})),
       events: this.list("events"),
       metrics: metrics.map(m => ({...m, comparison: metricComparison(metrics, m)})),
-      evidence: this.list<Evidence>("evidence").slice(0, 300),
-      jobs: this.list<Job>("jobs").slice(0, 40),
+      evidence: this.list<Evidence>("evidence"),
+      discovery: this.list<DiscoveryRecord>("discovery").filter(d=>d.at>=new Date(Date.now()-14*86400000).toISOString()).sort((a,b)=>b.at.localeCompare(a.at)),
+      jobs: allJobs,
       connections: this.list<any>("connections").map(({ digest, ...v }) => v),
       conversations: this.list<any>("conversations").map((c) => ({
         id: c.id,
@@ -138,8 +168,39 @@ export class Store {
         messageCount: c.messages.length,
       })),
       worker: this.get("meta", "worker"),
-      submissions: this.list<any>("receipts").slice(0, 30).map(r=>({...r,jobs:this.list<Job>("jobs").filter(j=>j.receiptId===r.id || (!j.receiptId && j.external && j.evidenceIds.length===r.evidenceIds.length && j.evidenceIds.every(id=>r.evidenceIds.includes(id))))})),
+      submissions: this.list<any>("receipts").map(r=>({...r,jobs:allJobs.filter(j=>j.receiptId===r.id || (!j.receiptId && j.external && j.evidenceIds.length===r.evidenceIds.length && j.evidenceIds.every(id=>r.evidenceIds.includes(id))))})),
       budget: this.dayBudget(),
+    };
+    if (!params) return {...snapshot, discovery:snapshot.discovery.slice(0,5), evidence:snapshot.evidence.slice(0,300), jobs:snapshot.jobs.slice(0,40), submissions:snapshot.submissions.slice(0,30)};
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(params.get("pageSize"))) || 20));
+    const paginate = <T,>(items:T[], key:string) => {
+      const pages = Math.max(1,Math.ceil(items.length/pageSize));
+      const page = Math.min(pages,Math.max(1,Math.floor(Number(params.get(key)) || 1)));
+      return {items:items.slice((page-1)*pageSize,page*pageSize),page,pageSize,total:items.length,pages};
+    };
+    const view=params.get("view") || "discover", kind=params.get("kind") || "all", quality=params.get("quality") || "active";
+    const query=(params.get("q") || "").trim().toLocaleLowerCase();
+    const artifacts=paginate(snapshot.artifacts.filter(a=>
+      (view!=="library" || a.saved) &&
+      (!params.get("jobId") || a.jobId===params.get("jobId")) &&
+      (!params.get("creation") || params.get("creation")==="all" || (a.creationStatus || "inbox")===params.get("creation")) && (view!=="trends" || a.kind==="trend") &&
+      (view!=="activities" || a.kind==="activity") &&
+      (a.kind!=="activity" || ((!params.get("activityPlatform") || params.get("activityPlatform")==="all" || a.details.platform===params.get("activityPlatform")) && (!params.get("activityTime") || params.get("activityTime")==="all" || activityStatus(a)===params.get("activityTime")))) && (view!=="ideas" || a.kind==="idea") && (view!=="people" || a.kind==="person") &&
+      (view!=="discover" || kind==="all" || a.kind===kind) &&
+      (quality==="all" || (quality==="active" ? a.quality!=="rejected" : a.quality===quality)) &&
+      [a.title,a.summary,a.audience,...a.tags].join(" ").toLocaleLowerCase().includes(query)),"page");
+    const jobs=paginate(snapshot.jobs.filter(j=>!params.get("runId") || j.id===params.get("runId")),"jobsPage"), submissions=paginate(snapshot.submissions,"receiptsPage");
+    const counts:Record<string,number>={};
+    snapshot.artifacts.forEach(a=>counts[a.kind]=(counts[a.kind] || 0)+1);
+    return {...snapshot, discovery:params.get("jobId")?snapshot.discovery.find(d=>d.jobId===params.get("jobId"))||null:snapshot.discovery[0]||null, artifacts:artifacts.items, jobs:jobs.items,
+      submissions:submissions.items.map(r=>({...r,artifacts:snapshot.artifacts.filter(a=>r.artifactIds?.includes(a.id)||r.jobs.some((j:Job)=>j.id===a.jobId))})),
+      evidence:snapshot.evidence.filter(e=>artifacts.items.some(a=>a.evidenceIds.includes(e.id))),
+      events:[], metrics:[],
+      jobActivity:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).concat(snapshot.jobs.filter(j=>!["queued","running"].includes(j.state)).slice(0,50)).map(j=>({id:j.id,state:j.state,createdAt:j.createdAt,name:j.plan?.name || "研究任务",total:snapshot.artifacts.filter(a=>a.jobId===j.id).length,review:snapshot.artifacts.filter(a=>a.jobId===j.id&&a.quality==="review").length})),
+      stats:{artifacts:snapshot.artifacts.length,review:snapshot.artifacts.filter(a=>a.quality==="review").length,counts,
+        running:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).length,
+        activePlanIds:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).map(j=>j.planId)},
+      pagination:{artifacts:{...artifacts,items:undefined},jobs:{...jobs,items:undefined},submissions:{...submissions,items:undefined}}
     };
   }
   dayBudget() {
@@ -190,7 +251,7 @@ export class Store {
     recordHistory(this, e);
     return e;
   }
-  enqueue(planId: string, evidenceIds: string[] = [], scheduledKey?: string, receiptId?: string, retry = false) {
+  enqueue(planId: string, evidenceIds: string[] = [], scheduledKey?: string, receiptId?: string, retry = false, targetKeywords?: string[]) {
     return this.transaction(() => {
       if (receiptId) {
         const receipt=this.get<any>("receipts",receiptId);
@@ -199,7 +260,10 @@ export class Store {
         const old=this.list<Job>("jobs").find(j=>j.planId===planId && (j.receiptId===receiptId || (!j.receiptId && j.external && j.evidenceIds.length===evidenceIds.length && j.evidenceIds.every(id=>evidenceIds.includes(id)))));
         if(old && (!retry || !["failed","cancelled"].includes(old.state))) return old;
       }
-      const plan = this.get<Plan>("plans", planId);
+      const savedPlan = this.get<Plan>("plans", planId);
+      const plan = savedPlan && targetKeywords?.length && savedPlan.kind === "activities"
+        ? {...savedPlan,keywords:targetKeywords.slice(0,8),goal:`${savedPlan.goal}\n本次用户指定目标关键词：${targetKeywords.join("、")}。只推荐与这些方向有直接关系的活动。`}
+        : savedPlan;
       if (!plan) throw new AppError("研究策略不存在。", 404);
       if (
         scheduledKey &&
@@ -313,12 +377,14 @@ export class Store {
     saved?: boolean;
     visibility?: string;
     archived?: boolean;
+    creationStatus?: Artifact["creationStatus"];
   }) {
     return this.transaction(() => {
       const a = this.get<Artifact>("artifacts", input.id);
       if (!a) throw new AppError("内容不存在", 404);
       if (a.revision !== input.revision)
         throw new AppError("内容已更新，请刷新后重试。", 409);
+      if (input.creationStatus && !["inbox","planned","writing","published"].includes(input.creationStatus)) throw new AppError("无效创作状态");
       const draft = input.draft ? artifactSchema.parse(input.draft) : a;
       if (draft.kind !== a.kind) throw new AppError("不能更改内容类型");
       if (
@@ -339,7 +405,8 @@ export class Store {
         visibility: input.draft
           ? "private"
           : (input.visibility ?? a.visibility),
-        saved: input.saved ?? a.saved,
+        saved: input.creationStatus ? true : (input.saved ?? a.saved),
+        creationStatus: input.creationStatus ?? a.creationStatus ?? "inbox",
         archived: input.archived ?? a.archived,
         revision: a.revision + 1,
         updatedAt: now(),

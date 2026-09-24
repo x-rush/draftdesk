@@ -4,6 +4,16 @@ import { XMLParser } from "fast-xml-parser";
 import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
+import {relevanceReason,type DiscoveryCandidate,type SourceCoverage,type DiscoveryRecord} from "./discovery";
+import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,type AggregatePlatform} from "./hotlists";
+export async function readAggregatedHotlist(platform:AggregatePlatform,signal:AbortSignal):Promise<EvidenceInput[]>{
+  // Fixed Compose service and allowlisted route: user-controlled URLs never reach the Docker network.
+  const response=await fetch(`http://dailyhot:6688/${platform}`,{signal:AbortSignal.any([signal,AbortSignal.timeout(15000)]),headers:{Accept:"application/json"}});
+  if(!response.ok)throw new AppError(`DailyHotApi ${platform} 返回 HTTP ${response.status}。`);
+  const raw=await response.text();
+  if(raw.length>1024*1024)throw new AppError("聚合榜单响应超过 1 MB。");
+  return parseAggregateHotlist(JSON.parse(raw),platform,now());
+}
 export function publicIp(ip: string) {
   const p = ip.split(".").map(Number);
   return (
@@ -137,33 +147,7 @@ export function parseFeed(xml: string, s: Source): EvidenceInput[] {
     });
 }
 export function relevant(e: EvidenceInput, p: Plan) {
-  const corpus = (e.title + " " + e.excerpt).toLowerCase();
-  if (p.focusTerms?.length && !p.focusTerms.some(term => {
-    const needle = term.toLowerCase();
-    if (/^[a-z0-9 ]+$/i.test(needle)) return new RegExp(`\\b${needle}\\b`, "i").test(corpus);
-    return corpus.includes(needle);
-  })) return false;
-  if (p.excludeKeywords.some((k) => corpus.includes(k.toLowerCase())))
-    return false;
-  if (
-    e.publishedAt &&
-    (Date.parse(e.publishedAt) < Date.now() - p.lookbackDays * 86400000 ||
-      Date.parse(e.publishedAt) > Date.now() + 86400000)
-  )
-    return false;
-  const host = new URL(e.url).hostname;
-  if (
-    p.includeDomains.length &&
-    !p.includeDomains.some((d) => host === d || host.endsWith("." + d))
-  )
-    return false;
-  if (
-    e.sourceType === "trend" &&
-    p.keywords.length &&
-    !p.keywords.some((k) => corpus.includes(k.toLowerCase()))
-  )
-    return false;
-  return true;
+  return relevanceReason(e,p)===null;
 }
 export function balancedEvidence(groups:EvidenceInput[][],limit:number){
  const result:EvidenceInput[]=[],seen=new Set<string>();
@@ -176,7 +160,34 @@ export function webSourceType(value:string,fallback:Source['sourceType'],officia
  // A web source setting is a query preference, not proof that every result is official.
  return fallback === 'official' ? 'other' : fallback;
 }
+export function activitySourceType(value:string):Source["sourceType"] {
+ try{const u=new URL(value);if(u.hostname==="ir.kuaishou.com"||u.hostname==="activity.douyin.com"||u.hostname==="www.bilibili.com"&&u.pathname.startsWith("/blackboard/")||u.hostname.endsWith(".douyinstatic.com")&&u.pathname.endsWith(".html"))return "official";}catch{}
+ return "other";
+}
+export async function collectHackerNews(signal:AbortSignal):Promise<{items:EvidenceInput[];failures:number}>{
+ const endpoint="https://hacker-news.firebaseio.com/v0/";
+ const ids:unknown=JSON.parse(await safeRead(endpoint+"topstories.json",signal));
+ if(!Array.isArray(ids)||!ids.length||!ids.every(Number.isSafeInteger))throw new AppError("Hacker News 官方榜单未返回有效条目 ID。");
+ const selected=ids.slice(0,30) as number[],collectedAt=now(),items:EvidenceInput[]=[];
+ let failures=0;
+ for(let i=0;i<selected.length;i+=6){
+  signal.throwIfAborted();
+  const batch=await Promise.allSettled(selected.slice(i,i+6).map(id=>safeRead(endpoint+`item/${id}.json`,signal).then(JSON.parse)));
+  for(let j=0;j<batch.length;j++){
+   const result=batch[j];
+   if(result.status==="rejected"){failures++;continue;}
+   const parsed=parseHackerNewsStory(result.value,i+j+1,collectedAt);
+   if(parsed)items.push(parsed);
+  }
+ }
+ if(!items.length)throw new AppError(`Hacker News 官方条目读取失败（${failures}/${selected.length}）。`);
+ return {items,failures};
+}
 export async function searchWeb(db: Store, plan: Plan, query: string, signal: AbortSignal, fallback: Source['sourceType'] = "other"): Promise<EvidenceInput[]> {
+  if(plan.kind==="activities"){
+    const domains=/哔哩哔哩|B站/i.test(query)?["bilibili.com"]:/抖音/.test(query)?["douyin.com","douyinstatic.com"]:/快手/.test(query)?["kuaishou.com"]:/小红书/.test(query)?["xiaohongshu.com"]:null;
+    if(domains){const allowed=domains.filter(d=>!plan.includeDomains.length||plan.includeDomains.some(x=>x===d||x.endsWith("."+d)));if(!allowed.length)return [];plan={...plan,includeDomains:allowed};}
+  }
   const key = db.config().tavilyKey;
   if (!key) throw new AppError("未配置 Tavily Key。");
   const response = await fetch("https://api.tavily.com/search", {
@@ -194,7 +205,7 @@ export async function searchWeb(db: Store, plan: Plan, query: string, signal: Ab
       const parsed = new URL(r.url);
       if (parsed.protocol !== "https:" || parsed.username || parsed.password) return [];
       const entry: EvidenceInput = {title:String(r.title).slice(0,300),url:r.url,excerpt:String(r.content || "").slice(0,8000),collectedAt:now(),
-        sourceType:webSourceType(r.url, fallback, officialHosts), region:"未知", language:"未知",contentLevel:"excerpt",
+        sourceType:plan.kind==="activities"?activitySourceType(r.url):webSourceType(r.url, fallback, officialHosts), region:"未知", language:"未知",contentLevel:"excerpt",
         ...(Number.isFinite(Date.parse(r.published_date)) ? {publishedAt:new Date(r.published_date).toISOString()} : {})};
       return relevant(entry,plan) ? [entry] : [];
     } catch { return []; }
@@ -206,12 +217,14 @@ export async function collect(
   signal: AbortSignal,
   onProgress: (message: string) => void,
   onSearch: () => void = () => {},
+  jobId?: string,
 ) {
   const sources = plan.sourceIds
     .map((id) => db.get<Source>("sources", id))
     .filter((s): s is Source => !!s && s.enabled);
   const groups: EvidenceInput[][] = [];
   const warnings: string[] = [];
+  const coverage:SourceCoverage[]=[],candidates:DiscoveryCandidate[]=[];
   let searches = 0;
   for (const s of sources) {
     signal.throwIfAborted();
@@ -225,6 +238,24 @@ export async function collect(
             : s.url;
         if (!address) throw new AppError("缺少来源地址。");
         items = parseFeed(await safeRead(address, signal), s);
+      } else if(s.type === "hotlist"){
+        if(s.url === "https://top.baidu.com/board?tab=realtime"){
+          try{items=parseBaiduHotlist(await safeRead(s.url,signal),now());}
+          catch(error){signal.throwIfAborted();throw error;}
+        }
+        else if(s.url === "https://s.weibo.com/top/summary?cate=realtimehot"){
+          try{items=parseWeiboHotlist(await safeRead(s.url,signal),now());}
+          catch{items=await readAggregatedHotlist("weibo",signal);warnings.push(`${s.name}：官方入口失败，已用 DailyHotApi 聚合榜单补充；请核对原平台链接。`);}
+        }
+        else if(s.url === "https://github.com/trending") items=parseGithubTrending(await safeRead(s.url,signal),now());
+        else if(s.url === "https://hacker-news.firebaseio.com/v0/topstories.json"){
+          const result=await collectHackerNews(signal);items=result.items;
+          if(result.failures)warnings.push(`${s.name}：${result.failures} 条详情读取失败；已保留成功条目。`);
+        }
+        else throw new AppError("热榜入口尚未核验或不在允许列表中。");
+      } else if(s.type==="aggregated"){
+        if(!s.query||!isAggregatePlatform(s.query))throw new AppError("不支持的聚合榜单路由。");
+        items=await readAggregatedHotlist(s.query,signal);
       } else if (s.type === "github") {
         const q =
           (s.query || "topic:ai") +
@@ -273,18 +304,38 @@ export async function collect(
           items.push(...await searchWeb(db, plan, item.query, signal, s.sourceType));
         }
       }
-      const filtered = items.filter((e) => relevant(e, plan));
+      const filtered:EvidenceInput[]=[];
+      for(const [index,item] of items.entries()){
+        const reason=relevanceReason(item,plan);
+        if(!reason)filtered.push(item);
+        if(jobId&&index<100)
+          candidates.push({url:item.url,title:item.title,sourceId:s.id,sourceName:s.name,status:reason?"filtered":"watch",reason:reason||"符合策略，等待证据名额",observedAt:item.collectedAt});
+      }
       groups.push(rankEvidence(filtered, plan));
+      coverage.push({sourceId:s.id,sourceName:s.name,status:"ok",raw:items.length,matched:filtered.length,selected:0});
       onProgress(`${s.name}：${items.length} 条原始线索，${filtered.length} 条符合内容、时间与域名范围`);
     } catch (e) {
       if (signal.aborted) throw e;
       warnings.push(
         `${s.name}：${e instanceof AppError ? e.message : "读取失败，请检查来源或网络。"}`,
       );
+      coverage.push({sourceId:s.id,sourceName:s.name,status:"failed",raw:0,matched:0,selected:0,error:e instanceof Error?e.message:"读取失败"});
     }
   }
   const reserveEvidence = plan.maxQueries > searches && sources.some(s=>s.type==="web") ? Math.min(4,Math.max(0,plan.maxEvidence-3)) : 0;
   const unique = balancedEvidence(groups,plan.maxEvidence-reserveEvidence);
+  if(jobId){
+    const pending=new Set(unique.map(e=>e.url));
+    for(const candidate of candidates){
+      if(candidate.status!=="watch"||!pending.has(candidate.url))continue;
+      candidate.status="selected";candidate.reason="已进入本轮 AI 分析";pending.delete(candidate.url);
+      const row=coverage.find(s=>s.sourceId===candidate.sourceId);if(row)row.selected++;
+    }
+    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit:plan.maxEvidence-reserveEvidence};
+    db.put("discovery",jobId,record);
+    const cutoff=Date.now()-14*86400000;
+    for(const old of db.list<DiscoveryRecord>("discovery"))if(Date.parse(old.at)<cutoff)db.db.prepare("DELETE FROM documents WHERE collection=? AND id=?").run("discovery",old.jobId);
+  }
   const evidence = unique.map((e) =>
     db.addEvidence(e, "builtin-collector/1.0.0"),
   );

@@ -7,13 +7,14 @@ import { ResearchBrief } from "./ResearchBrief";
 import { api, download, Field, date } from "./ui";
 export function Connections({
   connections,
-  receipts,
+  receipts, pagination,
   plans,
   onChange,
   sources, jobs, artifacts, onOpen,
 }: {
   connections: any[];
   receipts: any[];
+  pagination?: import("react").ReactNode;
   plans: Plan[];
   onChange: () => Promise<void>;
   sources: Source[]; jobs: Job[]; artifacts: Artifact[]; onOpen:(a:Artifact)=>void;
@@ -217,7 +218,7 @@ export function Connections({
           const linked:Job[]=r.jobs || jobs.filter(j=>j.receiptId===r.id || (!j.receiptId && j.external && j.evidenceIds.length===r.evidenceIds.length && j.evidenceIds.every(id=>r.evidenceIds.includes(id))));
           const latest=linked[0];
           const selectedJob=linked.find(j=>j.planId===plan);
-          const results=artifacts.filter(a=>r.artifactIds?.includes(a.id)||linked.some(j=>j.id===a.jobId));
+          const results:Artifact[]=r.artifacts || artifacts.filter(a=>r.artifactIds?.includes(a.id)||linked.some(j=>j.id===a.jobId));
           return (
           <div className="receipt" key={r.id}>
             <div>
@@ -249,6 +250,7 @@ export function Connections({
             </button>
           </div>
         );})}
+        {pagination}
       </section>
       {error && (
         <p className="error span-all" role="alert">

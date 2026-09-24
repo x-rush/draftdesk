@@ -1,4 +1,6 @@
 "use client";
+import { creationLabels, draftChanges } from "../core/workspace-ui";
+import { ActivityCard } from "./Activities";
 import { Select } from "./Select";
 import { ResearchHistory } from "./ResearchHistory";
 import { EvidenceReadiness } from "./EvidenceReadiness";
@@ -40,6 +42,7 @@ const detailLabels: Record<string, string> = {
   identityCaveat: "身份核对限制",
 };
 export function Details({ draft }: { draft: ArtifactDraft }) {
+  if(draft.kind==="activity")return <ActivityCard activity={draft}/>;
   return (
     <div className="detail-sections">
       {Object.entries(draft.details)
@@ -82,12 +85,13 @@ export function ArtifactEditor({
   initial,
   onSave,
   onClose,
-  target,
+  target, updateOnly=false,
 }: {
   initial: ArtifactDraft;
   onSave: (d: ArtifactDraft, updateOriginal?: boolean) => Promise<void>;
   onClose: () => void;
   target?: Artifact;
+  updateOnly?: boolean;
 }) {
   const cacheKey =
     "draftdesk.edit.v2." + (initial.id || initial.kind + ":" + initial.title);
@@ -106,7 +110,7 @@ export function ArtifactEditor({
     }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [replace, setReplace] = useState(false);
+    [replace, setReplace] = useState(updateOnly);
   useEffect(() => {
     try {
       localStorage.setItem(cacheKey, JSON.stringify(draft));
@@ -141,7 +145,7 @@ export function ArtifactEditor({
           }
         }}
       >
-        {target?.kind === draft.kind && (
+        {!updateOnly && target?.kind === draft.kind && (
           <Field label="保存方式">
             <Select
               value={replace ? "update" : "new"}
@@ -192,6 +196,7 @@ export function ArtifactEditor({
           />
         </Field>
         {Object.entries(draft.details)
+          .filter(([k]) => draft.kind!=="activity")
           .filter(([k]) => !["platforms", "signalEvidenceIds"].includes(k))
           .map(([key, value]) => (
             <Field label={detailLabels[key] || key} key={key}>
@@ -286,6 +291,9 @@ export function ArtifactEditor({
         <p className="muted">
           证据引用和平台版本随草稿保留；涉及事实改变时请重新研究。
         </p>
+        <details className="draft-preview" open><summary>保存前预览{replace?"与更新差异":""}</summary><h3>{draft.title}</h3><p>{draft.summary}</p><Details draft={draft}/>
+          {replace&&target&&<section><h3>以下字段将更新</h3>{draftChanges(target,draft).length===0?<p>内容没有变化。</p>:draftChanges(target,draft).map(k=><details key={k}><summary>{({title:"标题",summary:"摘要",audience:"读者",details:"内容结构",tags:"标签",claims:"事实结论",evidenceIds:"引用证据",unknowns:"待核实",nextActions:"下一步",whyNow:"时效",personalImpact:"个人影响"} as Record<string,string>)[k] || k}</summary><strong>原内容</strong><pre>{JSON.stringify((target as any)[k],null,2)}</pre><strong>更新后</strong><pre>{JSON.stringify((draft as any)[k],null,2)}</pre></details>)}</section>}
+        </details>
         {error && (
           <p role="alert" className="error">
             {error}
@@ -307,12 +315,13 @@ export function ArtifactPanel({
   artifact,
   onClose,
   onChange,
-  onDiscuss,
+  onDiscuss, navigation,
 }: {
   artifact: Artifact;
   onClose: () => void;
   onChange: () => Promise<void>;
   onDiscuss: (a: Artifact) => void;
+  navigation?: import("react").ReactNode;
 }) {
   const [evidence, setEvidence] = useState<Evidence[]>([]),
     [error, setError] = useState(""),
@@ -357,6 +366,8 @@ export function ArtifactPanel({
     return (
       <ArtifactEditor
         initial={artifact}
+        target={artifact}
+        updateOnly
         onClose={() => setEditing(false)}
         onSave={async (d) => {
           await api("artifacts", {
@@ -376,6 +387,7 @@ export function ArtifactPanel({
       onClose={onClose}
       wide
     >
+      {navigation}
       <div className="detail-actions">
         <button className="primary" onClick={() => onDiscuss(artifact)}>
           带着证据讨论
@@ -388,6 +400,7 @@ export function ArtifactPanel({
         </button>
         <button onClick={() => setEditing(true)}>编辑</button>
       </div>
+      <Field label="创作状态" hint="只记录你的创作进度；标记已发布不会发布文章或改变公开权限。选择状态后自动加入选题库。"><Select value={artifact.creationStatus || "inbox"} disabled={busy} onChange={e=>void change({creationStatus:e.target.value})}>{Object.entries(creationLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select></Field>
       <p className="lead">{artifact.summary}</p>
       <div className="tags">
         {artifact.tags.map((t) => (
@@ -457,7 +470,7 @@ export function ArtifactPanel({
               </p>
             )}
             <small>
-              采集于 {date(e.collectedAt)} · {e.provenance}
+              采集于 {date(e.collectedAt)} · {e.acquisition ? `${e.acquisition.platform} · ${e.acquisition.method==="aggregator"?"聚合补充":"平台入口"}（${e.acquisition.provider}）${e.acquisition.observedAt?" · 榜单更新 "+date(e.acquisition.observedAt):""}` : e.provenance}
             </small>
           </article>
         ))}

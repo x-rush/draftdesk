@@ -35,7 +35,14 @@ export function Discussion({
       draft: ArtifactDraft;
       jobId: string;
     } | null>(null),
-    [ready, setReady] = useState(false);
+    [ready, setReady] = useState(false),
+    [context,setContext]=useState<Artifact>(),
+    [savedNotice,setSavedNotice]=useState("");
+  useEffect(()=>{
+    let alive=true;setContext(undefined);
+    if(conversation.artifactId)void api<Artifact>("artifacts/"+conversation.artifactId).then(a=>{if(alive)setContext(a)}).catch(()=>{if(alive)setError("关联内容读取失败，暂不能整理或更新原内容。")});
+    return()=>{alive=false};
+  },[conversation.artifactId]);
   const abort = useRef<AbortController | null>(null),
     bottom = useRef<HTMLDivElement>(null);
   const draftKey = "draftdesk.discussion.v2";
@@ -151,6 +158,7 @@ export function Discussion({
   async function open(id: string) {
     setError("");
     try {
+      setDraft(null);setSavedNotice("");
       setConversation(await api<Conversation>("conversations/" + id));
       setMessage("");
       setStream("");
@@ -162,8 +170,9 @@ export function Discussion({
     <div className="discussion-layout">
       <aside className="history">
         <button
-          disabled={busy}
+          disabled={busy || working}
           onClick={() => {
+            setDraft(null);setSavedNotice("");
             setConversation({
               id: crypto.randomUUID(),
               title: "新讨论",
@@ -186,7 +195,7 @@ export function Discussion({
           .filter((c) => c.title.includes(search))
           .map((c) => (
             <button
-              disabled={busy}
+              disabled={busy || working}
               className={c.id === conversation.id ? "active" : ""}
               key={c.id}
               onClick={() => void open(c.id)}
@@ -206,6 +215,7 @@ export function Discussion({
               ? "已关联研究产物与原始证据"
               : "自由讨论；从一条发现进入可带入证据"}
           </p>
+          {context&&<details className="discussion-context"><summary>本次讨论的材料：{context.title} · {context.evidenceIds.length} 条证据</summary><p>{context.summary}</p><p>面向：{context.audience}</p><p>带入内容结构、事实结论、待核实问题与关联证据。没有关联的资料不会自动加入。</p></details>}
           <span className="pill">私人讨论 · 不自动联网</span>
         </header>
         <div className="toolbar">
@@ -213,7 +223,7 @@ export function Discussion({
             disabled={
               busy ||
               working ||
-              !conversation.artifactId ||
+              !context ||
               !conversation.messages.length
             }
             onClick={() => {
@@ -230,7 +240,7 @@ export function Discussion({
             disabled={
               busy ||
               working ||
-              !conversation.artifactId ||
+              !context ||
               !conversation.messages.length
             }
             onClick={() => {
@@ -262,6 +272,7 @@ export function Discussion({
           </button>
           {working && <span>正在按研究 Skill 整理…</span>}
         </div>
+        {savedNotice&&<p role="status" className="notice">{savedNotice}</p>}
         <div className="messages" aria-live="polite">
           {!conversation.messages.length && !busy && (
             <Empty title="从一个具体问题开始">
@@ -310,7 +321,7 @@ export function Discussion({
             maxLength={10000}
             placeholder="描述你的问题、读者或想验证的假设…"
             value={message}
-            disabled={busy}
+            disabled={busy || working}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
               if (
@@ -341,18 +352,20 @@ export function Discussion({
         <ArtifactEditor
           initial={draft.draft}
           target={
-            artifact?.id === conversation.artifactId ? artifact : undefined
+            context
           }
           onClose={() => setDraft(null)}
           onSave={async (d, update) => {
-            if (update && artifact)
+            if (update && context)
               await api("artifacts", {
-                id: artifact.id,
-                revision: artifact.revision,
+                id: context.id,
+                revision: context.revision,
                 draft: d,
               });
             else await api("save-draft", { draft: d, jobId: draft.jobId });
             await onChange();
+            if(context)setContext(await api<Artifact>("artifacts/"+context.id));
+            setSavedNotice(update?"已更新原内容，保留原有创作进度，内容需重新核实。":"已保存到我的选题库，可继续安排创作。");
             setDraft(null);
           }}
         />

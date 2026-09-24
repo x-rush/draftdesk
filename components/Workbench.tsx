@@ -1,6 +1,11 @@
 "use client";
+import { creationLabels, readWorkspaceLocation, newlyFinished, type JobActivity } from "../core/workspace-ui";
+import { ActivityCard, ActivityTools } from "./Activities";
+import {DiscoveryLens} from "./DiscoveryLens";
+import type {DiscoveryRecord} from "../core/discovery";
+import { Pagination, type PageInfo } from "./Pagination";
 import { Select } from "./Select";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Compass,
@@ -42,6 +47,7 @@ const nav = [
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
   ["people", "人物观察", Users],
+  ["activities", "创作活动", Compass],
   ["chat", "研究讨论", MessageSquare],
   ["plans", "研究策略", Layers],
   ["sources", "数据源", BookOpen],
@@ -67,6 +73,7 @@ const headings: Record<string, [string, string]> = {
     "先验证一个具体问题",
     "产品动态提供可能性，真实用户任务决定是否值得做。",
   ],
+  activities:["找到值得参与的创作活动","AI、Vibe Coding 与可参与的创作激励；先核对规则，再选择内容方向。"],
   people: [
     "观察作者的作品与方法",
     "追踪公开工作，不把同名、转载或个人推测当事实。",
@@ -95,6 +102,9 @@ const headings: Record<string, [string, string]> = {
   ],
 };
 type Snapshot = {
+  jobActivity: JobActivity[];
+  pagination: {artifacts:PageInfo;jobs:PageInfo;submissions:PageInfo};
+  stats:{artifacts:number;review:number;counts:Record<string,number>;running:number;activePlanIds:string[]};
   config: any;
   plans: Plan[];
   sources: Source[];
@@ -106,6 +116,7 @@ type Snapshot = {
   worker?: { heartbeat: string };
   budget: { reserved: number; limit: number };
   evidence: any[];
+  discovery: DiscoveryRecord|null;
 };
 export function Workbench() {
   const [data, setData] = useState<Snapshot | null>(null),
@@ -128,17 +139,48 @@ export function Workbench() {
     [legacy, setLegacy] = useState<any[]>([]),
     [legacyOpen, setLegacyOpen] = useState<any>(),
     [today, setToday] = useState("");
+  const [page,setPage]=useState(1), [jobsPage,setJobsPage]=useState(1), [receiptsPage,setReceiptsPage]=useState(1);
+  const [loading,setLoading]=useState(false);
+  const [activityPlatform,setActivityPlatform]=useState("all"),[activityTime,setActivityTime]=useState("all");
+  const [locationReady,setLocationReady]=useState(false), [creation,setCreation]=useState("all"), [jobId,setJobId]=useState(""), [runId,setRunId]=useState("");
+  const [finished,setFinished]=useState<Snapshot["jobActivity"]>([]);
+  const [discoveryMode,setDiscoveryMode]=useState<"results"|"watch"|"coverage">("results");
+  const [sourceChecks,setSourceChecks]=useState<Record<string,string>>({});
+  const knownJobs=useRef(new Map<string,string>()), activityReady=useRef(false), activitySince=useRef(Date.now()), restoreScroll=useRef(true);
+  const requestKey = new URLSearchParams({activityPlatform,activityTime,creation,jobId,runId,page:String(page),jobsPage:String(jobsPage),receiptsPage:String(receiptsPage),view,kind,quality,q:query,pageSize:"20"}).toString();
+  const currentKey=useRef(requestKey), requestVersion=useRef(0);
+  currentKey.current=requestKey;
   async function refresh() {
-    setData(await api<Snapshot>("workspace"));
+    const key=currentKey.current, version=++requestVersion.current;
+    const next=await api<Snapshot>("workspace?"+key);
+    if(currentKey.current===key && requestVersion.current===version) {
+      setData(next);
+      const completed=activityReady.current?newlyFinished(next.jobActivity,knownJobs.current,activitySince.current):[];
+      if(completed.length)setFinished(old=>[...completed,...old.filter(j=>!completed.some(n=>n.id===j.id))].slice(0,8));
+      next.jobActivity.forEach(j=>knownJobs.current.set(j.id,j.state));activityReady.current=true;
+      if(restoreScroll.current){restoreScroll.current=false;let y=0;try{y=Number(sessionStorage.getItem("draftdesk.scroll."+key))||0;}catch{}requestAnimationFrame(()=>window.scrollTo(0,y));}
+    }
   }
+  useEffect(()=>{
+    const restore=()=>{const v=readWorkspaceLocation(window.location.search);setActivityPlatform(v.activityPlatform);setActivityTime(v.activityTime);setView(v.view);setQuery(v.q);setKind(v.kind);setQuality(v.quality);setPage(v.page);setJobsPage(v.jobsPage);setReceiptsPage(v.receiptsPage);setCreation(v.creation);setJobId(v.jobId);setRunId(v.runId);setSelected(null);restoreScroll.current=true;setLocationReady(true);};
+    restore();window.addEventListener("popstate",restore);return()=>window.removeEventListener("popstate",restore);
+  },[]);
+  useEffect(()=>{
+    if(!locationReady)return;
+    window.history.replaceState(null,"","?"+requestKey);
+    const save=()=>{try{sessionStorage.setItem("draftdesk.scroll."+requestKey,String(window.scrollY));}catch{}};
+    window.addEventListener("scroll",save,{passive:true});return()=>window.removeEventListener("scroll",save);
+  },[requestKey,locationReady]);
+  useEffect(()=>{
+    if(!locationReady)return;
+    let alive=true;
+    setLoading(true);
+    void refresh().catch(e=>{if(alive)setError(e.message)}).finally(()=>{if(alive)setLoading(false)});
+    const timer=setInterval(()=>{void refresh().catch(()=>{});},4000);
+    return ()=>{alive=false;clearInterval(timer);requestVersion.current++;};
+  },[requestKey,locationReady]);
   useEffect(() => {
-    let active = true;
     setToday(new Date().toLocaleDateString("zh-CN", {month:"long",day:"numeric",weekday:"long",timeZone:"Asia/Shanghai"}));
-    void api<Snapshot>("workspace")
-      .then((d) => {
-        if (active) setData(d);
-      })
-      .catch((e) => setError(e.message));
     void api<any[]>("skills")
       .then(setSkills)
       .catch(() => {});
@@ -154,17 +196,6 @@ export function Workbench() {
         setError("旧选题自动迁移未完成，原浏览器数据仍保留；可导出后重试。");
       }
     })();
-    const t = setInterval(() => {
-      void api<Snapshot>("workspace")
-        .then((d) => {
-          if (active) setData(d);
-        })
-        .catch(() => {});
-    }, 4000);
-    return () => {
-      active = false;
-      clearInterval(t);
-    };
   }, []);
   async function act(fn: () => Promise<void>) {
     setBusy(true);
@@ -180,29 +211,29 @@ export function Workbench() {
     }
   }
   function navigate(v: string) {
+    window.history.pushState(null,"","?view="+v);
+    setCreation("all");setJobId("");setRunId("");
     setView(v);
+    setPage(1);setJobsPage(1);setReceiptsPage(1);
     setMobile(false);
     setQuery("");
     setNotice("");
     setError("");
   }
-  const titles = headings[view],
-    running =
-      data?.jobs.filter((j) => ["running", "queued"].includes(j.state))
-        .length || 0;
-  const filtered = (data?.artifacts || []).filter(
-    (a) =>
-      (view !== "library" || a.saved) &&
-      (view !== "trends" || a.kind === "trend") &&
-      (view !== "ideas" || a.kind === "idea") &&
-      (view !== "people" || a.kind === "person") &&
-      (kind === "all" || view !== "discover" || a.kind === kind) &&
-      (quality === "all" || (quality === "active" ? decisionOf(a) !== "rejected" : decisionOf(a) === quality)) &&
-      [a.title, a.summary, a.audience, ...a.tags]
-        .join(" ")
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  function showResults(id:string){navigate("discover");setJobId(id);setQuality("all");setKind("all");}
+  async function moveSelected(direction:number){
+    if(!data || !selected)return;
+    const index=data.artifacts.findIndex(a=>a.id===selected.id);
+    const next=data.artifacts[index+direction];
+    if(next){setSelected(next);return;}
+    const nextPage=data.pagination.artifacts.page+direction;
+    if(nextPage<1||nextPage>data.pagination.artifacts.pages)return;
+    setBusy(true);
+    try{const q=new URLSearchParams(currentKey.current);q.set("page",String(nextPage));const result=await api<Snapshot>("workspace?"+q);const target=direction>0?result.artifacts[0]:result.artifacts.at(-1);if(target){setPage(nextPage);setSelected(target);}}catch(e){setError((e as Error).message);}finally{setBusy(false);}
+  }
+  const titles = headings[view], running=data?.stats.running || 0;
+  const filtered = data?.artifacts || [];
+  const pager=(info:PageInfo,change:(page:number)=>void)=><Pagination info={info} onChange={change} disabled={loading || busy}/>;
   return (
     <div className="app-shell">
       <aside className={"sidebar " + (mobile ? "open" : "")}>
@@ -232,7 +263,7 @@ export function Workbench() {
         <nav aria-label="工作台导航">
           {nav.map(([id, label, Icon], index) => (
             <div key={id}>
-              {index === 6 && <small className="nav-divider">研究引擎</small>}
+              {id === "plans" && <small className="nav-divider">研究引擎</small>}
               <button
                 className={view === id ? "active" : ""}
                 onClick={() => navigate(id)}
@@ -310,7 +341,7 @@ export function Workbench() {
               <p>{titles[1]}</p>
             </div>
             {data &&
-              ["discover", "trends", "ideas", "people"].includes(view) && (
+              ["discover", "trends", "ideas", "people", "activities"].includes(view) && (
                 <button
                   className="primary"
                   disabled={busy}
@@ -334,18 +365,20 @@ export function Workbench() {
           {!data && !error && (
             <Empty title="正在打开工作台">读取持久化研究数据…</Empty>
           )}
+          {finished.map(j=><section className="task-notice" role="status" key={j.id}><div><strong>{j.name} · {j.state==="completed"?"已完成":j.state==="failed"?"失败":"已取消"}</strong><p>{j.state==="completed"?`新增 ${j.total} 条结果，其中 ${j.review} 条待验证。`:"查看运行说明，处理来源或配置后可手动重试。"}</p></div><button onClick={()=>{if(j.state==="completed")showResults(j.id);else{navigate("runs");setRunId(j.id);}}}>{j.state==="completed"?"查看本次结果":"查看运行说明"}</button><button aria-label="关闭任务提示" onClick={()=>setFinished(old=>old.filter(x=>x.id!==j.id))}>关闭</button></section>)}
           {data && (
             <>
-              {["discover", "library", "trends", "ideas", "people"].includes(
+              {["discover", "library", "trends", "ideas", "people", "activities"].includes(
                 view,
               ) && (
                 <>
+                  {view === "activities"&&<ActivityTools onChange={refresh} onRun={()=>navigate("runs")} plans={data.plans} active={data.stats.activePlanIds.includes("creator-activities")}/> }
                   {view === "discover" && (
                     <section className="daily-brief">
                       <div>
-                        <span>今天的研究状态</span>
+                        <span>{data.discovery?`最近一次搜罗 · ${date(data.discovery.at)}`:"工作台概览"}</span>
                         <h2>
-                          {data.artifacts.length
+                          {data.stats.artifacts
                             ? "从证据出发，挑一个具体切口。"
                             : "第一份研究，从你的问题开始。"}
                         </h2>
@@ -370,26 +403,23 @@ export function Workbench() {
                       </div>
                       <dl>
                         <div>
-                          <dt>研究产物</dt>
-                          <dd>{data.artifacts.length}</dd>
+                          <dt>{data.discovery?"读取条目":"研究产物"}</dt>
+                          <dd>{data.discovery?data.discovery.sources.reduce((n,s)=>n+s.raw,0):data.stats.artifacts}</dd>
                         </div>
                         <div>
-                          <dt>待补证据</dt>
-                          <dd>
-                            {
-                              data.artifacts.filter(
-                                (a) => a.quality === "review",
-                              ).length
-                            }
-                          </dd>
+                          <dt>{data.discovery?"待观察":"待补证据"}</dt>
+                          <dd>{data.discovery?data.discovery.candidates.filter(c=>c.status==="watch").length:data.stats.review}</dd>
                         </div>
                         <div>
-                          <dt>正在运行</dt>
-                          <dd>{running}</dd>
+                          <dt>{data.discovery?"入模证据":"正在运行"}</dt>
+                          <dd>{data.discovery?data.discovery.sources.reduce((n,s)=>n+s.selected,0):running}</dd>
                         </div>
                       </dl>
                     </section>
                   )}
+                  {view === "discover"&&<nav className="discovery-modes" aria-label="每日发现视图">{(["results","watch","coverage"] as const).map(mode=><button key={mode} className={discoveryMode===mode?"active":""} aria-current={discoveryMode===mode?"page":undefined} onClick={()=>setDiscoveryMode(mode)}>{mode==="results"?"推荐结果":mode==="watch"?`待观察${data.discovery?` ${data.discovery.candidates.filter(c=>c.status==="watch").length}`:""}`:"采集覆盖"}</button>)}</nav>}
+                  {(view!=="discover"||discoveryMode==="results")&&<>
+                  {jobId&&<p className="context-note">正在查看本次研究的全部结果（含待验证和已否决）。<button onClick={()=>{setJobId("");setPage(1);}}>查看所有研究</button></p>}
                   <div className="filter-row">
                     <label className="search">
                       <Search size={17} />
@@ -397,13 +427,13 @@ export function Workbench() {
                         aria-label="搜索研究内容"
                         placeholder="搜索主题、读者或标签"
                         value={query}
-                        onChange={(e) => setQuery(e.target.value)}
+                        onChange={(e) => {setQuery(e.target.value);setPage(1);}}
                       />
                     </label>
                     <Select
                       aria-label="质量状态"
                       value={quality}
-                      onChange={(e) => setQuality(e.target.value)}
+                      onChange={(e) => {setQuality(e.target.value);setPage(1);}}
                     >
                       <option value="active">推荐与待验证</option>
                       <option value="ready">推荐 · 通过检查</option>
@@ -411,12 +441,15 @@ export function Workbench() {
                       <option value="rejected">已否决</option>
                       <option value="all">全部（含已否决）</option>
                     </Select>
+                    {view==="activities"&&<><Select aria-label="活动平台" value={activityPlatform} onChange={e=>{setActivityPlatform(e.target.value);setPage(1);}}>{["all","哔哩哔哩","抖音","快手","小红书"].map(v=><option key={v} value={v}>{v==="all"?"全部平台":v}</option>)}</Select><Select aria-label="活动时间" value={activityTime} onChange={e=>{setActivityTime(e.target.value);setPage(1);}}>{Object.entries({all:"全部时间",ongoing:"进行中",upcoming:"未开始",unknown:"时间待核实",ended:"已结束"}).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select></>}
+                    {view==="library"&&<Select aria-label="筛选创作状态" value={creation} onChange={e=>{setCreation(e.target.value);setPage(1);}}><option value="all">全部创作状态</option>{Object.entries(creationLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select>}
                   </div>
+                  {loading&&<p role="status">正在加载列表…</p>}
                   {view === "discover" && (
                     <div className="tabs">
                       <button
                         className={kind === "all" ? "active" : ""}
-                        onClick={() => setKind("all")}
+                        onClick={() => {setKind("all");setPage(1);}}
                       >
                         全部
                       </button>
@@ -424,11 +457,11 @@ export function Workbench() {
                         <button
                           className={kind === k ? "active" : ""}
                           key={k}
-                          onClick={() => setKind(k)}
+                          onClick={() => {setKind(k);setPage(1);}}
                         >
                           {label}
                           <span>
-                            {data.artifacts.filter((a) => a.kind === k).length}
+                            {data.stats.counts[k] || 0}
                           </span>
                         </button>
                       ))}
@@ -447,10 +480,10 @@ export function Workbench() {
                   {!filtered.length ? (
                     <Empty
                       title={
-                        query ? "没有匹配的研究内容" : "这里还没有研究结果"
+                        jobId ? "本次研究没有符合条件的结果" : query ? "没有匹配的研究内容" : "这里还没有研究结果"
                       }
                     >
-                      {view === "library"
+                      {jobId ? <button onClick={()=>{const id=jobId;navigate("runs");setRunId(id);}}>查看研究说明与缺失证据</button> : view === "library"
                         ? "从每日发现收藏值得继续的内容。"
                         : "运行一条研究策略，或在外部接入页导入证据包，再进行分析。"}
                     </Empty>
@@ -459,10 +492,11 @@ export function Workbench() {
                       {filtered.map((a, index) => (
                         <article className="discovery-row" key={a.id}>
                           <div className="row-number">
-                            {String(index + 1).padStart(2, "0")}
+                            {String((data.pagination.artifacts.page - 1) * data.pagination.artifacts.pageSize + index + 1).padStart(2, "0")}
                           </div>
                           <div className="row-content">
                             <div className="row-meta">
+                              {a.saved&&<span className="creation-badge">{creationLabels[a.creationStatus || "inbox"]}</span>}
                               <span>{kindLabels[a.kind]}</span>
                               <span>
                                 {a.visibility === "private" ? "私有" : "公开"}
@@ -479,9 +513,10 @@ export function Workbench() {
                               {a.title}
                             </button>
                             <p>{a.personalImpact}</p>
+                            {a.kind==="activity"&&<ActivityCard activity={a}/>}
                             <div className="tags">
                               {a.tags.map((t) => (
-                                <button key={t} onClick={() => setQuery(t)}>
+                                <button key={t} onClick={() => {setQuery(t);setPage(1);}}>
                                   {t}
                                 </button>
                               ))}
@@ -503,6 +538,9 @@ export function Workbench() {
                       ))}
                     </div>
                   )}
+                  {pager(data.pagination.artifacts,setPage)}
+                  </>}
+                  {view==="discover"&&discoveryMode!=="results"&&<DiscoveryLens record={data.discovery} mode={discoveryMode}/>}
                   {view === "library" && legacy.length > 0 && (
                     <section className="legacy-section">
                       <h2>
@@ -554,17 +592,17 @@ export function Workbench() {
                           <span className="pill">{kindPlanLabels[p.kind]}</span>
                           <h2>{p.name}</h2>
                           <p>{p.goal}</p>
-                          <PlanPreview plan={p} sources={data.sources}/>
-                          <div className="tags">
+                          {p.kind!=="activities"&&<PlanPreview plan={p} sources={data.sources}/>}
+                          {p.kind!=="activities"&&<div className="tags">
                             {p.sourceIds.map((id) => (
                               <span key={id}>
                                 {data.sources.find((s) => s.id === id)?.name ||
                                   id}
                               </span>
                             ))}
-                          </div>
+                          </div>}
                           <small>
-                            {p.scheduleEnabled
+                            {p.kind==="activities"?"登录浏览器中手动启动采集":p.scheduleEnabled
                               ? `每天 ${p.dailyTime}（北京）`
                               : "手动运行"}{" "}
                             · 最多 {p.maxItems} 条产物 · {p.maxModelCalls}{" "}
@@ -573,14 +611,10 @@ export function Workbench() {
                           </small>
                         </div>
                         <div className="plan-actions">
-                          <button
+                          {p.kind==="activities"?<button className="primary" onClick={()=>navigate("activities")}>前往活动采集</button>:<button
                             disabled={
                               busy ||
-                              data.jobs.some(
-                                (j) =>
-                                  j.planId === p.id &&
-                                  ["running", "queued"].includes(j.state),
-                              )
+                              data.stats.activePlanIds.includes(p.id)
                             }
                             className="primary"
                             onClick={() =>
@@ -593,7 +627,7 @@ export function Workbench() {
                           >
                             <Play size={15} />
                             运行
-                          </button>
+                          </button>}
                           <button onClick={() => setPlan(p)}>调整策略</button>
                         </div>
                       </section>
@@ -635,15 +669,20 @@ export function Workbench() {
                             · {s.enabled ? "已启用" : "已停用"}
                           </small>
                         </div>
-                        <button onClick={() => setSource(s)}>配置</button>
+                        <div className="source-actions">
+                          {s.type === "aggregated" && <button disabled={sourceChecks[s.id]==="检测中…"} onClick={async()=>{
+                            setSourceChecks(old=>({...old,[s.id]:"检测中…"}));
+                            try{const result=await api<{count:number;updatedAt:string}>("source-check",{sourceId:s.id});setSourceChecks(old=>({...old,[s.id]:`可用 · ${result.count} 条 · 更新于 ${date(result.updatedAt)}`}));}
+                            catch(e){setSourceChecks(old=>({...old,[s.id]:`失败 · ${(e as Error).message}`}));}
+                          }}>检测连接</button>}
+                          <button onClick={() => setSource(s)}>配置</button>
+                          {sourceChecks[s.id] && <small role="status">{sourceChecks[s.id]}</small>}
+                        </div>
                       </article>
                     ))}
                   </div>
                   <p className="context-note">
-                    小红书、知乎、微博、抖音、B
-                    站热榜及公众号全文没有假装接通：可使用合法可访问的
-                    RSS，或由已授权的外部工具提交标准证据包。AIHOT.space
-                    同样可经外部采集接入。
+                    百度热搜、Google Trends 地域榜、GitHub Trending 与 Hacker News Top 已接入。本地 DailyHotApi 已验证知乎、抖音、头条、贴吧和掘金；B站曾超时、复测成功，默认停用；微博和快手本机仍失败。可逐个检测连接后启用。聚合榜单显示获取方式和更新时间，只作线索，需核对原平台内容。登录后的创作者活动须走活动采集流程。
                   </p>
                 </>
               )}
@@ -668,6 +707,7 @@ export function Workbench() {
                         <header>
                           <div>
                             <h2>{j.plan.name}</h2>
+                            {j.state==="completed"&&<button onClick={()=>showResults(j.id)}>查看本次结果</button>}
                             <small>
                               {date(j.createdAt)} ·{" "}
                               {j.external ? "外部证据分析" : "内置采集"}
@@ -705,7 +745,7 @@ export function Workbench() {
                         {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
                         {j.error && <p className="error">{j.error}</p>}
                         {["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 &&
-                          <button disabled={busy || data.jobs.some((other) => other.planId === j.planId && ["queued", "running"].includes(other.state))}
+                          <button disabled={busy || data.stats.activePlanIds.includes(j.planId)}
                             onClick={() => void act(async () => {
                               await api("jobs", { planId: j.planId, evidenceIds: j.evidenceIds });
                             })}>使用保留证据重试（不重复搜索）</button>}
@@ -753,6 +793,7 @@ export function Workbench() {
                   )}
                 </>
               )}
+              {view === "runs" && <>{runId&&<button onClick={()=>setRunId("")}>查看全部运行记录</button>}{pager(data.pagination.jobs,setJobsPage)}</>}
               {view === "skills" && (
                 <div className="skill-list">
                   <p className="lead">项目 Skills v1.1 · 参考资料随任务加载并记录版本。已加入选题、趋势与需求判断评测；工程检查通过不等于真实模型质量验收。内容策划与需求研究方法改编来源：Corey Haines / marketingskills（MIT），完整来源与边界见下载包。</p>
@@ -781,6 +822,7 @@ export function Workbench() {
                 <Connections
                   connections={data.connections}
                   receipts={data.submissions}
+                  pagination={pager(data.pagination.submissions,setReceiptsPage)}
                   plans={data.plans}
                   onChange={refresh}
                   sources={data.sources} jobs={data.jobs} artifacts={data.artifacts} onOpen={setSelected}
@@ -809,6 +851,7 @@ export function Workbench() {
         <ArtifactPanel
           key={selected.id}
           artifact={selected}
+          navigation={data && data.artifacts.some(a=>a.id===selected.id)?<div className="detail-navigation"><button disabled={busy || data.pagination.artifacts.page===1&&data.artifacts[0]?.id===selected.id} onClick={()=>void moveSelected(-1)}>上一条</button><span>按当前列表顺序浏览 · Esc 关闭</span><button disabled={busy || data.pagination.artifacts.page===data.pagination.artifacts.pages&&data.artifacts.at(-1)?.id===selected.id} onClick={()=>void moveSelected(1)}>下一条</button></div>:undefined}
           onClose={() => setSelected(null)}
           onChange={refresh}
           onDiscuss={(a) => {

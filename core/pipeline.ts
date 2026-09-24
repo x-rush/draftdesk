@@ -18,6 +18,7 @@ import {
   type Job,
 } from "./schema";
 const skillFor = {
+  activities: "activity-research",
   editorial: "editorial-research",
   trends: "trend-research",
   opportunity: "opportunity-research",
@@ -66,6 +67,7 @@ export async function runJob(
       "running",
       job.external ? "使用外部已提交证据" : "按策略读取已启用来源",
     );
+    if(job.plan.kind === "activities" && !job.external) throw new AppError("活动研究只分析官方导入材料。请在创作活动页面导入规则后执行，不使用网络搜索。");
     let evidence: Evidence[];
     if (job.external)
       evidence = job.evidenceIds
@@ -79,6 +81,7 @@ export async function runJob(
         signal,
         (detail) => db.step(job.id, "采集证据", "running", detail),
         countSearch,
+        job.id,
       );
       evidence = collected.evidence;
       searches = Math.max(searches, collected.searches);
@@ -101,7 +104,7 @@ export async function runJob(
       && event.evidenceIds.some(id => covered.has(id)) && event.revisions.find(r => r.evidenceId === e.id)?.change === "duplicate"));
     if (!evidence.length) { noFindings("已有同类研究覆盖这些事件，本轮没有新增材料；未重复生成。"); return; }
     signal.throwIfAborted();
-    let material = evidenceContext(evidence);
+    let material = evidenceContext(evidence,job.plan.kind==="activities"?6000:12000);
     db.step(
       job.id,
       "证据整理",
@@ -148,7 +151,7 @@ export async function runJob(
     }
     db.put("job-verification",job.id,verification);
     db.patchJob(job.id,{evidenceIds:evidence.map(e=>e.id),searchCount:searches});
-    material = evidenceContext(evidence);
+    material = evidenceContext(evidence,job.plan.kind==="activities"?6000:12000);
     const snapshots = db.list<MetricSnapshot>("metrics");
     const history = {events: events.filter(event => event.evidenceIds.some(id => evidence.some(e=>e.id===id))),
       metrics: snapshots.filter(m=>evidence.some(e=>e.id===m.evidenceId)).map(m=>({...m,comparison:metricComparison(snapshots,m)}))};
@@ -166,6 +169,7 @@ export async function runJob(
       {
         plan: job.plan,
         profile: db.config().profile,
+        asOf: now(),
         clusters,
         verification,
         history,
@@ -179,6 +183,7 @@ export async function runJob(
     if (batch.items.length > job.plan.maxItems)
       throw new AppError("模型输出超过策略数量限制。");
     const allowed = {
+      activities: ["activity"],
       editorial: ["news", "topic"],
       trends: ["trend"],
       opportunity: ["idea"],
@@ -278,7 +283,7 @@ export function scheduleTick(db: Store, date = new Date()) {
   const day = `${get("year")}-${get("month")}-${get("day")}`,
     time = `${get("hour")}:${get("minute")}`;
   for (const p of db.list<Job["plan"]>("plans"))
-    if (p.scheduleEnabled && time >= p.dailyTime) {
+    if (p.kind !== "activities" && p.scheduleEnabled && time >= p.dailyTime) {
       try {
         db.enqueue(p.id, [], `${p.id}:${day}`);
       } catch (e) {
