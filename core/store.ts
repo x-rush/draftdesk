@@ -178,14 +178,15 @@ export class Store {
       const page = Math.min(pages,Math.max(1,Math.floor(Number(params.get(key)) || 1)));
       return {items:items.slice((page-1)*pageSize,page*pageSize),page,pageSize,total:items.length,pages};
     };
-    const view=params.get("view") || "discover", kind=params.get("kind") || "all", quality=params.get("quality") || "active";
+    const view=params.get("view") || "discover", kind=params.get("kind") || "all", quality=params.get("quality") || (view==="library"?"active":"ready");
+    const activityTime=params.get("activityTime") || (view==="activities"?"actionable":"all");
     const query=(params.get("q") || "").trim().toLocaleLowerCase();
     const artifacts=paginate(snapshot.artifacts.filter(a=>
       (view!=="library" || a.saved) &&
       (!params.get("jobId") || a.jobId===params.get("jobId")) &&
       (!params.get("creation") || params.get("creation")==="all" || (a.creationStatus || "inbox")===params.get("creation")) && (view!=="trends" || a.kind==="trend") &&
       (view!=="activities" || a.kind==="activity") &&
-      (a.kind!=="activity" || ((!params.get("activityPlatform") || params.get("activityPlatform")==="all" || a.details.platform===params.get("activityPlatform")) && (!params.get("activityTime") || params.get("activityTime")==="all" || activityStatus(a)===params.get("activityTime")))) && (view!=="ideas" || a.kind==="idea") && (view!=="people" || a.kind==="person") &&
+      (a.kind!=="activity" || ((!params.get("activityPlatform") || params.get("activityPlatform")==="all" || a.details.platform===params.get("activityPlatform")) && (activityTime==="all" || (activityTime==="actionable" ? (activityStatus(a)==="ongoing"||activityStatus(a)==="upcoming") : activityStatus(a)===activityTime)))) && (view!=="ideas" || a.kind==="idea") && (view!=="people" || a.kind==="person") &&
       (view!=="discover" || kind==="all" || a.kind===kind) &&
       (quality==="all" || (quality==="active" ? a.quality!=="rejected" : a.quality===quality)) &&
       [a.title,a.summary,a.audience,...a.tags].join(" ").toLocaleLowerCase().includes(query)),"page");

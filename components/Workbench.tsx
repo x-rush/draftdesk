@@ -133,7 +133,7 @@ export function Workbench() {
     >(),
     [query, setQuery] = useState(""),
     [kind, setKind] = useState("all"),
-    [quality, setQuality] = useState("active"),
+    [quality, setQuality] = useState("ready"),
     [skills, setSkills] = useState<any[]>([]),
     [skill, setSkill] = useState<any>(),
     [legacy, setLegacy] = useState<any[]>([]),
@@ -146,6 +146,7 @@ export function Workbench() {
   const [finished,setFinished]=useState<Snapshot["jobActivity"]>([]);
   const [discoveryMode,setDiscoveryMode]=useState<"results"|"watch"|"coverage">("results");
   const [sourceChecks,setSourceChecks]=useState<Record<string,string>>({});
+  const [previewPlan,setPreviewPlan]=useState("daily-editorial");
   const knownJobs=useRef(new Map<string,string>()), activityReady=useRef(false), activitySince=useRef(Date.now()), restoreScroll=useRef(true);
   const requestKey = new URLSearchParams({activityPlatform,activityTime,creation,jobId,runId,page:String(page),jobsPage:String(jobsPage),receiptsPage:String(receiptsPage),view,kind,quality,q:query,pageSize:"20"}).toString();
   const currentKey=useRef(requestKey), requestVersion=useRef(0);
@@ -213,6 +214,7 @@ export function Workbench() {
   function navigate(v: string) {
     window.history.pushState(null,"","?view="+v);
     setCreation("all");setJobId("");setRunId("");
+    setQuality(v==="library"?"active":"ready");setActivityTime(v==="activities"?"actionable":"all");
     setView(v);
     setPage(1);setJobsPage(1);setReceiptsPage(1);
     setMobile(false);
@@ -411,7 +413,7 @@ export function Workbench() {
                           <dd>{data.discovery?data.discovery.candidates.filter(c=>c.status==="watch").length:data.stats.review}</dd>
                         </div>
                         <div>
-                          <dt>{data.discovery?"入模证据":"正在运行"}</dt>
+                          <dt>{data.discovery?(data.discovery.mode==="preview"?"预览证据":"入模证据"):"正在运行"}</dt>
                           <dd>{data.discovery?data.discovery.sources.reduce((n,s)=>n+s.selected,0):running}</dd>
                         </div>
                       </dl>
@@ -435,13 +437,13 @@ export function Workbench() {
                       value={quality}
                       onChange={(e) => {setQuality(e.target.value);setPage(1);}}
                     >
-                      <option value="active">推荐与待验证</option>
                       <option value="ready">推荐 · 通过检查</option>
                       <option value="review">待验证</option>
+                      <option value="active">推荐与待验证</option>
                       <option value="rejected">已否决</option>
                       <option value="all">全部（含已否决）</option>
                     </Select>
-                    {view==="activities"&&<><Select aria-label="活动平台" value={activityPlatform} onChange={e=>{setActivityPlatform(e.target.value);setPage(1);}}>{["all","哔哩哔哩","抖音","快手","小红书"].map(v=><option key={v} value={v}>{v==="all"?"全部平台":v}</option>)}</Select><Select aria-label="活动时间" value={activityTime} onChange={e=>{setActivityTime(e.target.value);setPage(1);}}>{Object.entries({all:"全部时间",ongoing:"进行中",upcoming:"未开始",unknown:"时间待核实",ended:"已结束"}).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select></>}
+                    {view==="activities"&&<><Select aria-label="活动平台" value={activityPlatform} onChange={e=>{setActivityPlatform(e.target.value);setPage(1);}}>{["all","哔哩哔哩","抖音","快手","小红书"].map(v=><option key={v} value={v}>{v==="all"?"全部平台":v}</option>)}</Select><Select aria-label="活动时间" value={activityTime} onChange={e=>{setActivityTime(e.target.value);setPage(1);}}>{Object.entries({actionable:"当前可参与",ongoing:"进行中",upcoming:"未开始",unknown:"时间待核实",ended:"已结束",all:"全部时间（含历史）"}).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select></>}
                     {view==="library"&&<Select aria-label="筛选创作状态" value={creation} onChange={e=>{setCreation(e.target.value);setPage(1);}}><option value="all">全部创作状态</option>{Object.entries(creationLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select>}
                   </div>
                   {loading&&<p role="status">正在加载列表…</p>}
@@ -480,12 +482,12 @@ export function Workbench() {
                   {!filtered.length ? (
                     <Empty
                       title={
-                        jobId ? "本次研究没有符合条件的结果" : query ? "没有匹配的研究内容" : "这里还没有研究结果"
+                        jobId ? "本次研究没有符合条件的结果" : query ? "没有匹配的研究内容" : view==="activities"&&activityTime==="actionable"?"暂无通过核验且仍可参与的活动":quality==="ready"&&data.stats.review>0?"暂无通过检查的推荐":"这里还没有研究结果"
                       }
                     >
                       {jobId ? <button onClick={()=>{const id=jobId;navigate("runs");setRunId(id);}}>查看研究说明与缺失证据</button> : view === "library"
                         ? "从每日发现收藏值得继续的内容。"
-                        : "运行一条研究策略，或在外部接入页导入证据包，再进行分析。"}
+                        : view==="activities"?"可查看待验证活动、检查官方规则，或从四平台活动中心导入新活动。":quality==="ready"&&data.stats.review>0?<button onClick={()=>{setQuality("review");setPage(1);}}>查看待验证内容与缺失证据</button>:"运行一条研究策略，或在外部接入页导入证据包，再进行分析。"}
                     </Empty>
                   ) : (
                     <div className="discovery-list">
@@ -540,6 +542,7 @@ export function Workbench() {
                   )}
                   {pager(data.pagination.artifacts,setPage)}
                   </>}
+                  {view==="discover"&&discoveryMode==="coverage"&&<div className="toolbar"><Select aria-label="采集预览策略" value={previewPlan} onChange={e=>setPreviewPlan(e.target.value)}>{data.plans.filter(p=>p.kind!=="activities"&&p.sourceIds.some(id=>data.sources.some(s=>s.id===id&&s.enabled&&s.type!=="web"))).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select><button disabled={busy} onClick={()=>void act(async()=>{const result=await api<{evidenceCount:number;warnings:string[]}>("source-preview",{planId:previewPlan});setNotice(result.evidenceCount?`已采集 ${result.evidenceCount} 条证据，${result.warnings.length} 个来源提示；未调用 AI。`:`来源读取完成，但没有命中当前焦点词和关键词；请检查策略筛选。未调用 AI。`);})}>只采集预览 · 不调用 AI</button></div>}
                   {view==="discover"&&discoveryMode!=="results"&&<DiscoveryLens record={data.discovery} mode={discoveryMode}/>}
                   {view === "library" && legacy.length > 0 && (
                     <section className="legacy-section">

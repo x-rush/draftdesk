@@ -284,6 +284,12 @@ export function scheduleTick(db: Store, date = new Date()) {
     time = `${get("hour")}:${get("minute")}`;
   for (const p of db.list<Job["plan"]>("plans"))
     if (p.kind !== "activities" && p.scheduleEnabled && time >= p.dailyTime) {
+      if(p.scheduleActivatedAt){
+        const enabled=fmt.formatToParts(new Date(p.scheduleActivatedAt));
+        const part=(key:string)=>enabled.find(x=>x.type===key)!.value;
+        const enabledDay=`${part("year")}-${part("month")}-${part("day")}`;
+        if(enabledDay>day || enabledDay===day && `${part("hour")}:${part("minute")}`>p.dailyTime)continue;
+      }
       try {
         db.enqueue(p.id, [], `${p.id}:${day}`);
       } catch (e) {

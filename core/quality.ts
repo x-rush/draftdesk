@@ -1,4 +1,5 @@
 import { activityIssues } from "./activities";
+import {trustedActivityRulesUrl} from "./activity-import";
 import type { ArtifactDraft, Evidence } from "./schema";
 import { evidenceReadiness } from "./readiness";
 // Compare overlapping text, not domain names: syndicated releases are one account.
@@ -35,8 +36,8 @@ export function qualityIssues(item: ArtifactDraft, evidence: Evidence[]) {
   if (publicationText.some((text) => completedExperience.test(text)))
     issues.push("包含已完成实测或第一人称体验的表达；工作台没有作者实测记录，请改成待验证计划或明确归属的来源陈述。");
   // A narrow announcement can have one primary source; impact/experience still needs review.
-  const primaryAnnouncement = item.kind === "news" && referenced.length > 0 &&
-    referenced.every((e) => e?.sourceType === "official") &&
+  const primaryAnnouncement = (item.kind === "news" || item.kind==="activity") && referenced.length > 0 &&
+    referenced.every((e) => e?.sourceType === "official" && (item.kind!=="activity"||trustedActivityRulesUrl(e.url))) &&
     item.claims.every((c) => c.type === "fact" && c.evidenceIds.length > 0);
   if (referenced.some((x) => !x)) issues.push("存在未知证据引用。");
   if (
@@ -77,7 +78,7 @@ export function qualityIssues(item: ArtifactDraft, evidence: Evidence[]) {
     !referenced.some((e) => e?.sourceType === "community")
   )
     issues.push("没有真实用户问题来源，需求与付费意愿仍是假设。");
-  if (referenced.some((e) => e && !e.publishedAt))
+  if (item.kind!=="activity" && referenced.some((e) => e && !e.publishedAt))
     issues.push("部分来源发布时间未知，请核对时效。");
   issues.push(...evidenceReadiness(item, evidence).filter(c=>c.status === "missing").map(c=>`${c.label}不足：${c.action}`));
   return [...new Set(issues)];

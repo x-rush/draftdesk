@@ -44,3 +44,4 @@ test('时区边界、停机跨日仅补当天、过期租约失败后队列继�
   scheduleTick(db,new Date('2026-10-08T20:00:00Z'));assert.equal(db.list('jobs').length,2);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});rmSync(backup,{recursive:true,force:true});}
 });
+test('错过今日时段才开启的日程从次日开始，避免立即补跑付费研究',()=>{const dir=mkdtempSync(path.join(tmpdir(),'dd-activation-')),db=new Store(dir);try{db.put('config','main',{...db.config(),apiKey:'test-only'});db.put('plans',plan.id,{...plan,scheduleEnabled:true,dailyTime:'01:00',scheduleActivatedAt:'2026-10-01T10:00:00Z'});scheduleTick(db,new Date('2026-10-01T10:01:00Z'));assert.equal(db.list('jobs').length,0);scheduleTick(db,new Date('2026-10-01T17:00:00Z'));assert.equal(db.list('jobs').length,1);}finally{db.close();rmSync(dir,{recursive:true,force:true});}});

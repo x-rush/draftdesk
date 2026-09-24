@@ -1,4 +1,5 @@
 import type {ArtifactDraft,Evidence} from "./schema";
+import {trustedActivityRulesUrl} from "./activity-import";
 export type Activity=Extract<ArtifactDraft,{kind:"activity"}>;
 export function activityStatus(a:Activity,at=Date.now()){
  const d=a.details;
@@ -16,9 +17,12 @@ export function activityIssues(a:Activity,all:Evidence[]){
  const d=a.details,refs=all.filter(e=>a.evidenceIds.includes(e.id)),issues:string[]=[];
  const canonical=(u:string)=>{try{const x=new URL(u);return x.origin+x.pathname.replace(/\/$/,"")+x.search;}catch{return u;}};
  if(!refs.some(e=>canonical(e.url)===canonical(d.activityUrl)))issues.push("活动地址没有对应的已采集证据，不能使用猜测的活动链接。");
- if(!refs.some(e=>e.sourceType==="official"&&e.contentLevel!=="headline"))issues.push("缺少官方活动规则原文，当前仅是活动线索。");
- if(d.access!=="public")issues.push("活动规则需登录核对或只有搜索线索。");
+ if(!refs.some(e=>e.sourceType==="official"&&trustedActivityRulesUrl(e.url)&&e.contentLevel!=="headline"))issues.push("缺少可信官方活动规则原文，当前仅是活动线索。");
+ if(d.access==="lead")issues.push("当前只有活动线索，尚无可核对的规则。");
  if(!d.startsAt||!d.endsAt)issues.push("活动起止时间不完整，不能确认仍可参与。");
+ const status=activityStatus(a);
+ if(status==="ended")issues.push("活动已结束，不能作为当前可参与活动推荐。");
+ if(status==="unknown"&&d.startsAt&&d.endsAt)issues.push("活动时间尚未核实，不能作为当前可参与活动推荐。");
  if((d.startsAt||d.endsAt)&&(!d.dateQuote||!refs.some(e=>e.excerpt.includes(d.dateQuote))||!/(?:20\d{2})/.test(d.dateQuote)))issues.push("活动时间缺少包含年份的原文锚点，请勿用采集日期推断活动年份。");
  if(d.startsAt&&d.endsAt&&Date.parse(d.startsAt)>Date.parse(d.endsAt))issues.push("活动开始时间晚于结束时间。");
  if(d.fit!=="suitable")issues.push("活动参与条件尚未匹配或明确不符。");

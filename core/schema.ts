@@ -292,6 +292,7 @@ export const planSchema = z
     maxModelCalls: z.number().int().min(3).max(6),
     maxTokens: z.number().int().min(30000).max(200000),
     scheduleEnabled: z.boolean(),
+    scheduleActivatedAt: z.string().datetime().optional(),
     dailyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
     publishPolicy: z.literal("manual"),
   })

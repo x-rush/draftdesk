@@ -35,6 +35,7 @@ metadata:
 - sourceType 只允许 `official`、`media`、`community`、`product`、`repository`、`trend`、`other`。聚合目录用 product/other，个人博客按内容用 media/community/other；禁止自造 aggregator、blog、news 等枚举。
 - contentLevel 只允许 fulltext、excerpt、headline；仅读搜索摘要时必须 excerpt，不能伪装全文。
 - collectedAt 必填 UTC ISO 时间；publishedAt 不知道就省略，不能填空字符串或估计日期。
+- publishedAt 必须是带时区的 ISO 日期时间；搜索摘要只有 `YYYY-MM-DD` 时不要填 publishedAt，把日期保留在 excerpt 中待核实。宿主机适配器会移除误填的日期字段并报告修正。
 - 完整合同以工作台 GET /api/v1/schema 为准。HTTP 400 修正明确字段后用新的 submissionId 提交；同 ID 不得改变已成功收件的内容。
 
 ## 提交

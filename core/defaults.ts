@@ -111,8 +111,9 @@ export const defaultPlans: Plan[] = [
     name: "热词与内容机会",
     kind: "trends",
     goal: "观察真实趋势信号，解释地域、时效、意图和内容机会；没有历史值就不判断增速。",
-    sourceIds: ["baidu-hot", "trends-us", "web"],
+    sourceIds: ["dailyhot-juejin", "dailyhot-zhihu", "baidu-hot", "trends-us", "web"],
     keywords: ["AI", "人工智能", "AIGC", "大模型", "AI视频", "Vibe Coding", "ChatGPT", "Gemini"],
+    focusTerms: ["AI", "人工智能", "AIGC", "大模型", "AI视频", "视频生成", "Vibe Coding", "AI编程", "ChatGPT", "NotebookLM"],
     dailyTime: "01:15",
   },
   {

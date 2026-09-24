@@ -1,4 +1,5 @@
 import type { ArtifactDraft, Evidence, Plan } from "./schema";
+import {trustedActivityRulesUrl} from "./activity-import";
 
 export type EvidenceCheck = {
   key: string; label: string; status: "candidate" | "missing";
@@ -22,7 +23,7 @@ export function evidenceReadiness(item: ArtifactDraft, all: Evidence[]): Evidenc
   const searchSubject = item.tags.filter(t=>!["公众号","小红书","待验证"].includes(t)).slice(0,3).join(" ") || subject.slice(0,60);
   const quoted = (e: Evidence) => item.claims.some(c => c.evidenceIds.includes(e.id) && !!c.quote && e.excerpt.includes(c.quote));
   if (item.kind === "activity") {
-    add("activity-rules","官方活动规则",evidence.filter(e=>e.sourceType==="official"&&concrete(e)),"平台域名并不等于官方活动账号；需核对发布者、征稿规则和资格。","补齐官方规则正文，不把搜索摘要当全部规则。",`${subject} 官方 活动规则`);
+    add("activity-rules","官方活动规则",evidence.filter(e=>e.sourceType==="official"&&trustedActivityRulesUrl(e.url)&&concrete(e)),"平台域名并不等于官方活动账号；需核对发布者、征稿规则和资格。","补齐官方规则正文，不把搜索摘要当全部规则。",`${subject} 官方 活动规则`);
     add("activity-time","投稿时间原文",evidence.filter(e=>!!item.details.dateQuote&&e.excerpt.includes(item.details.dateQuote)&&/20\d{2}/.test(item.details.dateQuote)),"区分征稿截止与发奖时间；没有年份不能推断。","核对开始、截止、年份和时区。",`${subject} 投稿 截止时间 参与条件`);
   } else if (item.kind === "idea") {
     add("problem", "真实问题样本", problemCandidates(evidence).filter(e=>item.claims.some(c=>c.evidenceIds.includes(e.id) && !!c.quote && e.excerpt.includes(c.quote) && problem.test(c.quote))),

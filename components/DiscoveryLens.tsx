@@ -5,14 +5,14 @@ import {date} from "./ui";
 
 export function DiscoveryLens({record,mode}:{record:DiscoveryRecord|null;mode:"watch"|"coverage"}){
   const [query,setQuery]=useState(""),[includeFiltered,setIncludeFiltered]=useState(false),[page,setPage]=useState(1);
-  if(!record)return <section className="lens-empty"><h2>还没有采集覆盖记录</h2><p>运行一次内置研究后，这里会显示哪些来源被读取、哪些线索进入 AI，以及哪些未入选。外部 Agent 提交的材料按收件回执查看。</p></section>;
+  if(!record)return <section className="lens-empty"><h2>还没有采集覆盖记录</h2><p>可以先做一次只采集预览，查看来源、筛选和失败情况；正式研究才会调用 AI。外部 Agent 提交的材料按收件回执查看。</p></section>;
   const watched=record.candidates.filter(c=>c.status==="watch"||(includeFiltered&&c.status==="filtered"));
   const needle=query.trim().toLocaleLowerCase();
   const filtered=watched.filter(c=>!needle||`${c.title} ${c.sourceName} ${c.reason}`.toLocaleLowerCase().includes(needle));
   const pageSize=20,pages=Math.max(1,Math.ceil(filtered.length/pageSize)),current=Math.min(page,pages);
   if(mode==="coverage")return <section className="lens-panel" aria-label="采集覆盖报告">
-    <header><div><h2>{record.planName} · 采集覆盖</h2><p>{date(record.at)} · 本轮最多 {record.limit} 条证据进入 AI。榜单标题是线索，未入选不等于无价值。</p></div></header>
-    <div className="coverage-summary"><div><strong>{record.sources.reduce((n,s)=>n+s.raw,0)}</strong><span>读取条目</span></div><div><strong>{record.sources.reduce((n,s)=>n+s.matched,0)}</strong><span>匹配策略</span></div><div><strong>{record.sources.reduce((n,s)=>n+s.selected,0)}</strong><span>进入分析</span></div><div><strong>{record.sources.filter(s=>s.status==="failed").length}</strong><span>来源失败</span></div></div>
+    <header><div><h2>{record.planName} · 采集覆盖{record.mode==="preview"?"（只采集预览）":""}</h2><p>{date(record.at)} · 本轮最多保留 {record.limit} 条证据。{record.mode==="preview"?"未调用 AI，尚未生成推荐。":"榜单标题是线索，未入选不等于无价值。"}</p></div></header>
+    <div className="coverage-summary"><div><strong>{record.sources.reduce((n,s)=>n+s.raw,0)}</strong><span>读取条目</span></div><div><strong>{record.sources.reduce((n,s)=>n+s.matched,0)}</strong><span>匹配策略</span></div><div><strong>{record.sources.reduce((n,s)=>n+s.selected,0)}</strong><span>{record.mode==="preview"?"保留证据":"进入分析"}</span></div><div><strong>{record.sources.filter(s=>s.status==="failed").length}</strong><span>来源失败</span></div></div>
     <div className="coverage-list">{record.sources.map(s=><article key={s.sourceId} className={s.status==="failed"?"failed":""}><div><strong>{s.sourceName}</strong><small>{s.status==="failed"?"读取失败":"已读取"}</small></div><p>{s.status==="failed"?s.error:`读取 ${s.raw} · 匹配 ${s.matched} · 入模 ${s.selected}`}</p></article>)}</div>
     <p className="lens-note">未命中关键词、超出证据预算和来源失败都可能造成遗漏。可调整研究策略后再运行；本报告不代表全网覆盖率。</p>
   </section>;

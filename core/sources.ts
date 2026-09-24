@@ -218,6 +218,7 @@ export async function collect(
   onProgress: (message: string) => void,
   onSearch: () => void = () => {},
   jobId?: string,
+  mode:"analysis"|"preview"="analysis",
 ) {
   const sources = plan.sourceIds
     .map((id) => db.get<Source>("sources", id))
@@ -328,10 +329,10 @@ export async function collect(
     const pending=new Set(unique.map(e=>e.url));
     for(const candidate of candidates){
       if(candidate.status!=="watch"||!pending.has(candidate.url))continue;
-      candidate.status="selected";candidate.reason="已进入本轮 AI 分析";pending.delete(candidate.url);
+      candidate.status="selected";candidate.reason=mode==="preview"?"已保留为采集预览证据，尚未进入 AI":"已进入本轮 AI 分析";pending.delete(candidate.url);
       const row=coverage.find(s=>s.sourceId===candidate.sourceId);if(row)row.selected++;
     }
-    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit:plan.maxEvidence-reserveEvidence};
+    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit:plan.maxEvidence-reserveEvidence,mode};
     db.put("discovery",jobId,record);
     const cutoff=Date.now()-14*86400000;
     for(const old of db.list<DiscoveryRecord>("discovery"))if(Date.parse(old.at)<cutoff)db.db.prepare("DELETE FROM documents WHERE collection=? AND id=?").run("discovery",old.jobId);

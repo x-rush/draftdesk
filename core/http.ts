@@ -1,4 +1,4 @@
-import {activityPageSchema} from "./activity-import";
+import {activityPageSchema,trustedActivityRulesUrl} from "./activity-import";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { store, AppError, now } from "./store";
@@ -12,12 +12,14 @@ import {
   type Conversation,
   type Evidence,
   type Job,
+  type Plan,
+  type Source,
 } from "./schema";
 import { skillCatalog, loadSkill } from "./skills";
 import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
-import { readAggregatedHotlist } from "./sources";
+import { collect, readAggregatedHotlist } from "./sources";
 import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
 import { validateIntake } from "./intake-validation";
@@ -183,6 +185,17 @@ export async function handle(req: Request, path: string[]) {
       const items=await readAggregatedHotlist(source.query,req.signal);
       return json({ok:true,count:items.length,updatedAt:items[0].acquisition?.observedAt,method:"aggregator",provider:"DailyHotApi",platform:source.name});
     }
+    if(route === "source-preview") {
+      const {planId}=z.object({planId:z.string()}).strict().parse(input);
+      const plan=db.get<Plan>("plans",planId);
+      if(!plan||plan.kind==="activities")throw new AppError("请选择内置研究策略。",404);
+      const sourceIds=plan.sourceIds.filter(id=>{const s=db.get<Source>("sources",id);return s?.enabled&&s.type!=="web";}).slice(0,3);
+      if(!sourceIds.length)throw new AppError("此策略没有可预览的免模型来源；可在数据源页启用 RSS 或热榜。",400);
+      const id="preview-"+randomUUID();
+      const sample={...plan,sourceIds,maxQueries:0,maxEvidence:Math.min(12,plan.maxEvidence)};
+      const result=await collect(db,sample,AbortSignal.any([req.signal,AbortSignal.timeout(65000)]),()=>{},()=>{},id,"preview");
+      return json({record:db.get("discovery",id),evidenceCount:result.evidence.length,warnings:result.warnings});
+    }
     if (route === "config") {
       const cfg = configSchema.parse(input),
         old = db.get<any>("config", "main");
@@ -244,12 +257,14 @@ export async function handle(req: Request, path: string[]) {
       if (plan.scheduleEnabled && !db.config().apiKey)
         throw new AppError("请配置模型后再开启定时任务。");
       if (plan.kind === "activities" && plan.scheduleEnabled) throw new AppError("活动采集由登录浏览器主动执行，不能设置服务器定时任务。");
-      db.put("plans", plan.id, plan);
-      return json(plan);
+      const previous=db.get<Plan>("plans",plan.id);
+      const saved={...plan,scheduleActivatedAt:plan.scheduleEnabled?(previous?.scheduleEnabled?previous.scheduleActivatedAt:now()):undefined};
+      db.put("plans", plan.id, saved);
+      return json(saved);
     }
     if(route === "activity-evidence") {
       const value=activityPageSchema.parse({schemaVersion:"draftdesk.activity-page.v1",...(input as object)});
-      const evidence=db.addEvidence({title:value.title,url:value.url,excerpt:value.text,collectedAt:new Date().toISOString(),sourceType:"other",region:"中国",language:"zh",contentLevel:"excerpt"},"manual-activity-rules");
+      const evidence=db.addEvidence({title:value.title,url:value.url,excerpt:value.text,collectedAt:new Date().toISOString(),sourceType:trustedActivityRulesUrl(value.url)?"official":"other",region:"中国",language:"zh",contentLevel:"excerpt"},"manual-activity-rules");
       return json({evidenceId:evidence.id});
     }
     if (route === "jobs") {

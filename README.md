@@ -29,6 +29,8 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 
 每日发现分为推荐结果、待观察线索和采集覆盖。内置研究会留下最近一次的标题与原链接、筛除理由和各来源的读取/匹配/入模数量；这些线索不是 AI 推荐，也不代表全网覆盖。轻量线索仅保留 14 天，详细口径见[数据源配置指南](docs/data-source-configuration.md)。
 
+「采集覆盖」可先选研究策略，点击“只采集预览 · 不调用 AI”，检查最多三个已启用的非网页搜索来源实际读到、命中和选入的条目，再决定是否运行付费分析。预览不能代表全网覆盖，热榜即时指数也不能单独证明增长。活动列表默认仅显示已通过核验且当前可参与的条目；时间未知、已结束及待验证活动可用筛选器回看。
+
 模型连接与网页搜索分别验证：填写 Tavily Key 后使用“测试搜索（1 次 basic）”。模型可调用不代表搜索已接通，测试会消耗对应供应商额度。
 
 没有真实来源时不生成示例新闻；没有密钥时仍可使用外部证据导入、查看和编辑。启用模型功能必须完成真实连接。
@@ -62,6 +64,8 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 环境变量只在运行工具的终端/容器配置，不必污染系统环境。协议例子见 `skills/draftdesk-submit/references/intake-example.json`。同一批次稳定使用 submissionId，重复提交不重复写入；同 ID 不同内容返回 409。
 
 Hermes 可将技能目录放入 `~/.hermes/skills/`；OpenClaw 可放入其工作区 `skills/` 或用户技能目录。按各自当前官方文档安装，不自动替用户安装、创建日程或接通付费搜索。附带 Skill 描述了如何按工作台导出的策略运行外部每日研究。远程智能体需显式设置可达的安全入口；Docker 容器的 localhost 不是宿主机。
+
+同机 Docker 运行时，推荐让 Agent 只返回严格 JSON 证据包，由宿主机执行 `agents/sync-result.ps1 -ResponseFile` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。OpenClaw 用新会话执行每轮任务，Hermes 的一次性命令若拦截写文件，也可以把最终响应保存给宿主机适配器。SearXNG 仅提供搜索结果，提取网页正文需要另配可用工具；外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 
 ## 数据与边界
 

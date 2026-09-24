@@ -41,4 +41,13 @@ For Hermes unattended sessions, keep generated files inside its configured safe 
 
 The same adapter supports `-Agent openclaw`. Keep the submissionId and content stable when retrying; the receipt will return duplicate=true. The adapter does not schedule jobs or publish content. The existing Python submit helper is an alternative when the agent is already authorized to execute it.
 
+For Docker agents, the simpler and safer path is to save the Agent's final JSON response on the host and submit it with `-ResponseFile` instead of giving the Agent a token or asking it to run a script:
+
+```powershell
+./agents/sync-result.ps1 -Agent openclaw -ResponseFile ./data/agent-connections/openclaw-response.json -CredentialFile ./data/agent-connections/openclaw.json
+./agents/sync-result.ps1 -Agent hermes -ResponseFile ./data/agent-connections/hermes-response.txt -CredentialFile ./data/agent-connections/hermes.json
+```
+
+The adapter accepts OpenClaw's CLI JSON envelope, a raw intake JSON object, or one JSON code block in Hermes' final answer. It rejects an unsuccessful Agent run, checks the intake protocol before storing, and removes a date-only `publishedAt` rather than inventing a timestamp. Keep response and credential files under ignored local `data/`; never commit or paste their contents. Use a fresh OpenClaw `--session-id` per run; a Gateway already running for the same profile rejects `--local`. Hermes with SearXNG can search but its `web_extract` needs a separate extraction provider; until configured, mark search snippets as excerpts and do not claim full-page verification.
+
 Agent model/search usage is billed by its providers and **is not included in DraftDesk's internal daily token reservation**. A reported cost of zero from a custom model configuration is not a billing guarantee. SearXNG snippets also need source/date checks; a successful search can return old or irrelevant pages.
