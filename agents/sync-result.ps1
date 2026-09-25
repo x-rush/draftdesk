@@ -49,7 +49,9 @@ try {
     $payload = $value | ConvertTo-Json -Depth 30 -Compress
     Write-Warning "Omitted $dateOnly date-only publishedAt value(s); the source excerpt remains available for review."
   }
-  if ($payload -match '(?i)(?:sk-[A-Za-z0-9_-]{20,}|Bearer\s+[A-Za-z0-9._-]{20,}|(?:cookie|authorization)\s*[:=])') { throw 'Possible credential in evidence package.' }
+  # A submissionId such as "draftdesk-config-..." contains "sk-" across the
+  # word boundary. Only flag a key prefix that starts a separate token.
+  if ($payload -match '(?i)(?:(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|Bearer\s+[A-Za-z0-9._-]{20,}|(?:cookie|authorization)\s*[:=])') { throw 'Possible credential in evidence package.' }
   $check = Invoke-RestMethod -Uri ($WorkspaceUrl.TrimEnd('/') + '/api/v1/intake-check') -Method Post -ContentType 'application/json; charset=utf-8' -Headers @{Authorization="Bearer $($credential.token)"} -Body ([Text.Encoding]::UTF8.GetBytes($payload))
   if (!$check.ok) { throw 'Evidence package failed intake preflight.' }
   $receipt = Invoke-RestMethod -Uri ($WorkspaceUrl.TrimEnd('/') + '/api/v1/intake') -Method Post -ContentType 'application/json; charset=utf-8' -Headers @{Authorization="Bearer $($credential.token)"} -Body ([Text.Encoding]::UTF8.GetBytes($payload))

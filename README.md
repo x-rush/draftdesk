@@ -65,7 +65,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 Hermes 可将技能目录放入 `~/.hermes/skills/`；OpenClaw 可放入其工作区 `skills/` 或用户技能目录。按各自当前官方文档安装，不自动替用户安装、创建日程或接通付费搜索。附带 Skill 描述了如何按工作台导出的策略运行外部每日研究。远程智能体需显式设置可达的安全入口；Docker 容器的 localhost 不是宿主机。
 
-同机 Docker 运行时，推荐让 Agent 只返回严格 JSON 证据包，由宿主机执行 `agents/sync-result.ps1 -ResponseFile` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。OpenClaw 用新会话执行每轮任务，Hermes 的一次性命令若拦截写文件，也可以把最终响应保存给宿主机适配器。SearXNG 仅提供搜索结果，提取网页正文需要另配可用工具；外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
+同机 Docker 运行时，推荐让 Agent 只返回严格 JSON 证据包，由宿主机执行 `agents/sync-result.ps1 -ResponseFile` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。OpenClaw 用新会话执行每轮任务，Hermes 的一次性命令若拦截写文件，也可以把最终响应保存给宿主机适配器。`agents/configure.ps1` 配置两者的 SearXNG 搜索、公开网页读取及 DraftDesk Skills；网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 
 ## 数据与边界
 
