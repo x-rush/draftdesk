@@ -128,9 +128,10 @@ if (!globalThis.__draftdeskActivityCollector) {
     dialog?.querySelector('[aria-label="关闭"],.close,[class*="close"]')?.click();
     await pause(100);
    }
-   warnings.push('抖音仅扫描当前显示月份；跨月活动请在官方日历切换月份后再采集');
+   warnings.push('抖音仅扫描当前显示月份；跨月活动请在官方日历切换月份后再采集。活动侧栏虽有规则，但未提供单条官方活动链接时会保留为待核线索，不能直接交给 AI 分析。');
   } else if (platform === '快手') {
    await progress('快手活动中心');
+   warnings.push('快手活动列表的日期通常只有月日；若详情页未给出明确年份或单条官方链接，工作台会保留待核线索，不能据列表位置推断活动仍有效。');
    for(let scroll=0;scroll<maxPages && items.length<maxItems;scroll++) {
     const cards=[...document.querySelectorAll('.list_item')];
     if(!cards.length){warnings.push('快手活动中心没有读到活动卡片，请检查登录或当前页面');break;}
