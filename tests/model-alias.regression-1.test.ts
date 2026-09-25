@@ -14,6 +14,7 @@ test("all research kinds show one consistent set of short evidence IDs",async()=
  const dir=mkdtempSync(path.join(tmpdir(),"dd-model-alias-"));
  const db=new Store(dir);
  try{
+  db.put("config","main",{...db.config(),apiKey:"test-only-no-network"});
   const job=db.enqueue("trend-radar")!;
   const request=(async(_db:unknown,messages:{content:string}[])=>{
    const payload=JSON.parse(messages[1].content);

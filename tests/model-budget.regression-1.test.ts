@@ -13,7 +13,7 @@ test("reported model usage settles a conservative reservation without weakening 
  const dir=mkdtempSync(path.join(tmpdir(),"dd-model-budget-"));
  const db=new Store(dir);
  try{
-  db.put("config","main",{...db.config(),apiKey:"test-only",dailyTokenLimit:30000});
+  db.put("config","main",{...db.config(),apiKey:"test-only-no-network",baseUrl:"https://model.test/compatible-mode/v1",dailyTokenLimit:30000});
   const job=db.enqueue("trend-radar")!;
   const fakeFetch=(async()=>new Response(JSON.stringify({choices:[{message:{content:"ok"}}],usage:{total_tokens:1000}}),{status:200})) as typeof fetch;
   const result=await requestModel(db,[{role:"user",content:"test"}],{signal:new AbortController().signal,jobId:job.id,fetch:fakeFetch,maxOutputTokens:1000});
