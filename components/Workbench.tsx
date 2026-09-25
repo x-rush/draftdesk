@@ -48,17 +48,22 @@ const nav = [
   ["discover", "每日发现", Compass],
   ["hotspots", "热点列表", Flame],
   ["library", "我的选题库", Library],
+  ["chat", "研究讨论", MessageSquare],
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
-  ["people", "人物观察", Users],
   ["activities", "创作活动", Compass],
-  ["chat", "研究讨论", MessageSquare],
+  ["people", "人物观察", Users],
   ["plans", "研究策略", Layers],
   ["sources", "数据源", BookOpen],
   ["runs", "运行记录", Play],
-  ["skills", "研究 Skills", Leaf],
   ["connections", "外部接入", Plug],
+  ["skills", "研究 Skills", Leaf],
   ["settings", "模型与设置", Settings2],
+] as const;
+const navGroups=[
+  {label:"发现与创作",ids:["discover","hotspots","library","chat"]},
+  {label:"机会观察",ids:["trends","ideas","activities","people"]},
+  {label:"研究与设置",ids:["plans","sources","runs","connections","skills","settings"]},
 ] as const;
 const headings: Record<string, [string, string]> = {
   discover: [
@@ -109,7 +114,7 @@ const headings: Record<string, [string, string]> = {
 type Snapshot = {
   jobActivity: JobActivity[];
   pagination: {artifacts:PageInfo;jobs:PageInfo;submissions:PageInfo};
-  stats:{artifacts:number;review:number;counts:Record<string,number>;running:number;activePlanIds:string[]};
+  stats:{artifacts:number;review:number;counts:Record<string,number>;qualityCounts:{ready:number;review:number;rejected:number};hotspotTotal:number;sourceFailures:number;failedRuns:number;running:number;activePlanIds:string[]};
   config: any;
   plans: Plan[];
   sources: Source[];
@@ -139,7 +144,7 @@ export function Workbench() {
     >(),
     [query, setQuery] = useState(""),
     [kind, setKind] = useState("all"),
-    [quality, setQuality] = useState("ready"),
+    [quality, setQuality] = useState("active"),
     [skills, setSkills] = useState<any[]>([]),
     [skill, setSkill] = useState<any>(),
     [legacy, setLegacy] = useState<any[]>([]),
@@ -221,7 +226,7 @@ export function Workbench() {
   function navigate(v: string) {
     window.history.pushState(null,"","?view="+v);
     setCreation("all");setJobId("");setRunId("");
-    setQuality(v==="library"?"active":"ready");setActivityTime(v==="activities"?"actionable":"all");
+    setQuality("active");setActivityTime(v==="activities"?"actionable":"all");
     setView(v);
     setPage(1);setJobsPage(1);setReceiptsPage(1);
     setHotspotPage(1);
@@ -271,19 +276,10 @@ export function Workbench() {
           </div>
         </div>
         <nav aria-label="工作台导航">
-          {nav.map(([id, label, Icon], index) => (
-            <div key={id}>
-              {id === "plans" && <small className="nav-divider">研究引擎</small>}
-              <button
-                className={view === id ? "active" : ""}
-                onClick={() => navigate(id)}
-              >
-                <Icon size={18} />
-                {label}
-                {id === "runs" && running > 0 && <em>{running}</em>}
-              </button>
-            </div>
-          ))}
+          {navGroups.map(group=><div className="nav-group" key={group.label}>
+            <small className="nav-divider">{group.label}</small>
+            {group.ids.map(id=>{const item=nav.find(n=>n[0]===id)!;const [,label,Icon]=item;return <button key={id} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>navigate(id)}><Icon size={18}/>{label}{id==="runs"&&running>0&&<em>{running}</em>}</button>})}
+          </div>)}
         </nav>
         <footer>
           <span className="dot" />
@@ -386,51 +382,18 @@ export function Workbench() {
               ) && (
                 <>
                   {view === "activities"&&<ActivityTools onChange={refresh} onRun={()=>navigate("runs")} plans={data.plans} active={data.stats.activePlanIds.includes("creator-activities")}/> }
-                  {view === "discover" && (
-                    <section className="daily-brief">
-                      <div>
-                        <span>{data.discovery?`最近一次搜罗 · ${date(data.discovery.at)}`:"工作台概览"}</span>
-                        <h2>
-                          {data.stats.artifacts
-                            ? "从证据出发，挑一个具体切口。"
-                            : "第一份研究，从你的问题开始。"}
-                        </h2>
-                        <p>
-                          {data.config.hasApiKey
-                            ? "运行研究策略，或接收外部智能体的证据包。所有结果先私有。"
-                            : "先配置百炼模型，或让 Hermes / OpenClaw 提交研究证据。"}
-                        </p>
-                        <button
-                          className="text-button"
-                          onClick={() =>
-                            navigate(
-                              data.config.hasApiKey ? "plans" : "settings",
-                            )
-                          }
-                        >
-                          {data.config.hasApiKey
-                            ? "查看研究策略"
-                            : "配置百炼连接"}{" "}
-                          <ArrowUpRight size={15} />
-                        </button>
-                      </div>
-                      <dl>
-                        <div>
-                          <dt>{data.discovery?"读取条目":"研究产物"}</dt>
-                          <dd>{data.discovery?data.discovery.sources.reduce((n,s)=>n+s.raw,0):data.stats.artifacts}</dd>
-                        </div>
-                        <div>
-                          <dt>{data.discovery?"待观察":"待补证据"}</dt>
-                          <dd>{data.discovery?data.discovery.candidates.filter(c=>c.status==="watch").length:data.stats.review}</dd>
-                        </div>
-                        <div>
-                          <dt>{data.discovery?(data.discovery.mode==="preview"?"预览证据":"入模证据"):"正在运行"}</dt>
-                          <dd>{data.discovery?data.discovery.sources.reduce((n,s)=>n+s.selected,0):running}</dd>
-                        </div>
-                      </dl>
-                    </section>
-                  )}
-                  {view === "discover"&&<><nav className="discovery-modes" aria-label="每日发现视图">{(["results","watch","coverage"] as const).map(mode=><button key={mode} className={discoveryMode===mode?"active":""} aria-current={discoveryMode===mode?"page":undefined} onClick={()=>setDiscoveryMode(mode)}>{mode==="results"?"推荐结果":mode==="watch"?`待观察${data.discovery?` ${data.discovery.candidates.filter(c=>c.status==="watch").length}`:""}`:"采集覆盖"}</button>)}</nav><button className="text-button" onClick={()=>navigate("hotspots")}>查看完整热点列表 →</button></>}
+                  {view === "discover" && <section className="daily-overview" aria-label="工作台概览">
+                    <div className="daily-overview-head"><div><span>{data.discovery?`最近研究 · ${data.discovery.planName} · ${date(data.discovery.at)}`:"尚无研究记录"}</span><h2>线索、判断和异常，都从这里进入</h2><p>{data.discovery?`本轮读取 ${data.discovery.sources.reduce((n,s)=>n+s.raw,0)} 条，入模 ${data.discovery.sources.reduce((n,s)=>n+s.selected,0)} 条；下方可查看本轮覆盖。`:"配置来源后开始第一次研究，原始线索会单独保留。"}</p></div><button onClick={()=>navigate(data.config.hasApiKey?"plans":"settings")}>{data.config.hasApiKey?"查看研究策略":"配置模型"} <ArrowUpRight size={15}/></button></div>
+                    <div className="overview-links">
+                      <button onClick={()=>navigate("hotspots")}><span>原始热点 · 近 14 天</span><strong>{data.stats.hotspotTotal}</strong><small>含未入模和被筛除线索 ↗</small></button>
+                      <button onClick={()=>{setDiscoveryMode("results");setQuality("ready");setPage(1);}}><span>通过检查</span><strong>{data.stats.qualityCounts.ready}</strong><small>查看可考虑的推荐 ↗</small></button>
+                      <button onClick={()=>{setDiscoveryMode("results");setQuality("review");setPage(1);}}><span>待验证</span><strong>{data.stats.qualityCounts.review}</strong><small>查看缺失证据 ↗</small></button>
+                      <button onClick={()=>{setDiscoveryMode("results");setQuality("rejected");setPage(1);}}><span>已否决</span><strong>{data.stats.qualityCounts.rejected}</strong><small>查看排除理由 ↗</small></button>
+                      <button onClick={()=>navigate("hotspots")}><span>来源读取失败</span><strong>{data.stats.sourceFailures}</strong><small>查看失败来源与旧线索 ↗</small></button>
+                      <button onClick={()=>navigate("runs")}><span>失败任务</span><strong>{data.stats.failedRuns}</strong><small>查看原因与重试入口 ↗</small></button>
+                    </div>
+                  </section>}
+                  {view === "discover"&&<><nav className="discovery-modes" aria-label="每日发现视图">{(["results","watch","coverage"] as const).map(mode=><button key={mode} className={discoveryMode===mode?"active":""} aria-current={discoveryMode===mode?"page":undefined} onClick={()=>setDiscoveryMode(mode)}>{mode==="results"?"分析结果":mode==="watch"?`本轮待观察${data.discovery?` ${data.discovery.candidates.filter(c=>c.status==="watch").length}`:""}`:"本轮来源覆盖"}</button>)}</nav><button className="text-button" onClick={()=>navigate("hotspots")}>查看全部原始热点 →</button></>}
                   {(view!=="discover"||discoveryMode==="results")&&<>
                   {jobId&&<p className="context-note">正在查看本次研究的全部结果（含待验证和已否决）。<button onClick={()=>{setJobId("");setPage(1);}}>查看所有研究</button></p>}
                   <div className="filter-row">
@@ -485,6 +448,7 @@ export function Workbench() {
                       指标来自原始来源，保留地域、时间与单位。不把单次上榜解释为增长，也不把热度等同付费需求。
                     </p>
                   )}
+                  {view === "activities" && <p className="context-note">默认展示当前可参与、推荐或待验证的活动；切换「活动时间」可查看截止时间未知与已结束的历史记录，切换「质量状态」可查看已否决及其原因。</p>}
                   {view === "ideas" && (
                     <p className="context-note">
                       此区域始终私有。每个机会都应包含现有替代、最小流程、实验与停止条件。

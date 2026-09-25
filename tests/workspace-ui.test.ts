@@ -9,7 +9,7 @@ import {readWorkspaceLocation,draftChanges,newlyFinished} from "../core/workspac
 test("网址恢复筛选、页码与任务，非法参数退回默认",()=>{
  const v=readWorkspaceLocation("?view=library&page=3&q=AI&creation=writing&quality=review&jobId=j1");
  assert.equal(v.view,"library");assert.equal(v.page,3);assert.equal(v.q,"AI");assert.equal(v.creation,"writing");assert.equal(v.jobId,"j1");
- const bad=readWorkspaceLocation("?view=unknown&page=-9&kind=x&creation=anything");assert.equal(bad.view,"discover");assert.equal(bad.page,1);assert.equal(bad.kind,"all");assert.equal(bad.creation,"all");
+ const bad=readWorkspaceLocation("?view=unknown&page=-9&kind=x&creation=anything");assert.equal(bad.view,"discover");assert.equal(bad.page,1);assert.equal(bad.kind,"all");assert.equal(bad.creation,"all");assert.equal(bad.quality,"active");
 });
 test("更新差异显示内容字段，不混入进度与权限元数据",()=>{assert.deepEqual(draftChanges({title:"旧",revision:1},{title:"新",revision:2,creationStatus:"published"}),["title"]);});
 test("完成提示识别状态转换与快速任务，历史任务不重复提示",()=>{
@@ -26,6 +26,7 @@ test("创作进度独立于证据质量和发布权限，编辑保留进度并�
   assert.throws(()=>db.updateArtifact({id:a.id,revision:a.revision,creationStatus:"writing"}));
   const edited=db.updateArtifact({id:a.id,revision:updated.revision,draft:{...topic,title:"讨论后的新标题"}});assert.equal(edited.creationStatus,"published");
   const snapshot=db.snapshot(new URLSearchParams("page=1&view=library&creation=published&jobId=job-one")) as any;assert.equal(snapshot.artifacts.length,1);
+  const overview=db.snapshot(new URLSearchParams("page=1&view=discover")) as any;assert.equal(overview.artifacts.length,1);assert.equal(overview.stats.qualityCounts.review,1);
   assert.equal((db.snapshot(new URLSearchParams("page=1&creation=writing")) as any).artifacts.length,0);
   assert.equal((db.snapshot(new URLSearchParams("page=1&jobId=other")) as any).artifacts.length,0);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}

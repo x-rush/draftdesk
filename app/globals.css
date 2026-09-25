@@ -233,7 +233,7 @@ li {
   align-items: center;
   border: 1px solid var(--line);
   padding: 14px 10px;
-  margin: 5px 0 22px;
+  margin: 5px 0 12px;
   border-radius: 8px;
 }
 .workspace-label strong {
@@ -256,8 +256,8 @@ li {
   justify-content: flex-start;
   background: transparent;
   border-color: transparent;
-  padding: 10px 13px;
-  margin: 2px 0;
+  padding: 8px 13px;
+  margin: 1px 0;
   color: #637365;
   font-size: 13px;
 }
@@ -275,8 +275,9 @@ li {
   display: block;
   font-size: 11px;
   color: #899582;
-  margin: 21px 12px 9px;
+  margin: 14px 12px 5px;
 }
+.nav-group:first-child .nav-divider { margin-top: 5px; }
 .sidebar footer {
   margin-top: 26px;
   font-size: 11px;
@@ -415,6 +416,18 @@ main {
   font-size: 30px;
   margin: 4px 0 0;
 }
+.daily-overview { margin-bottom: 22px; }
+.daily-overview-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 22px; background: #e9eee1; border: 1px solid #d9e2cd; border-radius: 10px 10px 0 0; }
+.daily-overview-head span { color: #607855; font-size: 12px; }
+.daily-overview-head h2 { font-size: 20px; line-height: 1.35; margin: 7px 0 3px; }
+.daily-overview-head p { color: #5f705c; font-size: 12px; margin: 0; }
+.daily-overview-head button { flex: none; }
+.overview-links { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 1px; padding: 1px; background: var(--line); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 10px 10px; overflow: hidden; }
+.overview-links button { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; border-radius: 0; padding: 14px 18px; text-align: left; background: #fff; }
+.overview-links button:hover { background: #f5f8f1; }
+.overview-links span { color: #647367; font-size: 12px; }
+.overview-links strong { color: var(--ink); font-size: 25px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.overview-links small { color: #577260; font-size: 11px; }
 .discovery-modes { display: flex; gap: 8px; padding: 5px; margin: 0 0 22px; background: #edf0e9; border: 1px solid #dfe5da; border-radius: 9px; width: fit-content; max-width: 100%; overflow-x: auto; }
 .discovery-modes button { border: 0; background: transparent; color: #566753; padding: 10px 17px; border-radius: 6px; white-space: nowrap; font-weight: 600; }
 .discovery-modes button.active { background: #fff; color: #244b31; box-shadow: 0 1px 5px #233a2517; }
@@ -1207,6 +1220,7 @@ legend {
   padding: 0 7px;
 }
 @media (max-width: 1150px) {
+  .overview-links { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .sidebar {
     width: 205px;
     padding-left: 12px;
@@ -1240,6 +1254,10 @@ legend {
   }
 }
 @media (max-width: 760px) {
+  .daily-overview-head { align-items: flex-start; flex-direction: column; padding: 17px; gap: 10px; }
+  .daily-overview-head h2 { font-size: 18px; }
+  .overview-links button { padding: 12px; }
+  .overview-links strong { font-size: 22px; }
   .sidebar {
     display: none;
     width: 230px;

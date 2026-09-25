@@ -179,7 +179,7 @@ export class Store {
       const page = Math.min(pages,Math.max(1,Math.floor(Number(params.get(key)) || 1)));
       return {items:items.slice((page-1)*pageSize,page*pageSize),page,pageSize,total:items.length,pages};
     };
-    const view=params.get("view") || "discover", kind=params.get("kind") || "all", quality=params.get("quality") || (view==="library"?"active":"ready");
+    const view=params.get("view") || "discover", kind=params.get("kind") || "all", quality=params.get("quality") || "active";
     const activityTime=params.get("activityTime") || (view==="activities"?"actionable":"all");
     const query=(params.get("q") || "").trim().toLocaleLowerCase();
     const artifacts=paginate(snapshot.artifacts.filter(a=>
@@ -195,13 +195,16 @@ export class Store {
     const counts:Record<string,number>={};
     snapshot.artifacts.forEach(a=>counts[a.kind]=(counts[a.kind] || 0)+1);
     const researchDiscovery=snapshot.discovery.filter(d=>d.mode!=="hotspot");
+    const qualityCounts={ready:0,review:0,rejected:0};
+    snapshot.artifacts.forEach(a=>{if(a.quality in qualityCounts)qualityCounts[a.quality as keyof typeof qualityCounts]++;});
+    const hotspotSummary=hotspotFeed(snapshot.discovery,new URLSearchParams(),1);
     return {...snapshot, discovery:params.get("jobId")?researchDiscovery.find(d=>d.jobId===params.get("jobId"))||null:researchDiscovery[0]||null,
       hotspots:view==="hotspots"?hotspotFeed(snapshot.discovery,params,pageSize):null, artifacts:artifacts.items, jobs:jobs.items,
       submissions:submissions.items.map(r=>({...r,artifacts:snapshot.artifacts.filter(a=>r.artifactIds?.includes(a.id)||r.jobs.some((j:Job)=>j.id===a.jobId))})),
       evidence:snapshot.evidence.filter(e=>artifacts.items.some(a=>a.evidenceIds.includes(e.id))),
       events:[], metrics:[],
       jobActivity:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).concat(snapshot.jobs.filter(j=>!["queued","running"].includes(j.state)).slice(0,50)).map(j=>({id:j.id,state:j.state,createdAt:j.createdAt,name:j.plan?.name || "研究任务",total:snapshot.artifacts.filter(a=>a.jobId===j.id).length,review:snapshot.artifacts.filter(a=>a.jobId===j.id&&a.quality==="review").length})),
-      stats:{artifacts:snapshot.artifacts.length,review:snapshot.artifacts.filter(a=>a.quality==="review").length,counts,
+      stats:{artifacts:snapshot.artifacts.length,review:qualityCounts.review,qualityCounts,hotspotTotal:hotspotSummary.total,sourceFailures:hotspotSummary.sourceHealth.filter(s=>s.status==="failed").length,failedRuns:snapshot.jobs.filter(j=>j.state==="failed").length,counts,
         running:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).length,
         activePlanIds:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).map(j=>j.planId)},
       pagination:{artifacts:{...artifacts,items:undefined},jobs:{...jobs,items:undefined},submissions:{...submissions,items:undefined}}
