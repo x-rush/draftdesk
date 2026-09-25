@@ -34,13 +34,29 @@ function scanPage(){
  const pattern=/AI|AIGC|人工智能|智能|编程|代码|工具|科技|数码|创作|开发|Vibe|赛博/i;
  return {total:items.length,candidates:items.filter(x=>pattern.test(x.title+' '+x.detail)).slice(0,20)};
 }
-async function activeTab(){const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab||!allowed(tab.url))throw Error('请先打开四个平台的 HTTPS 官方活动页。');return tab;}
-function platformName(value){try{const host=new URL(value).hostname;return host==='www.bilibili.com'?'哔哩哔哩':host==='creator.douyin.com'?'抖音':host==='cp.kuaishou.com'?'快手':host==='creator.xiaohongshu.com'?'小红书':'';}catch{return '';}}
+const activityPages={哔哩哔哩:'https://www.bilibili.com/blackboard/activity-list.html?page=1',抖音:'https://creator.douyin.com/creator-micro/creative-guidance/calendar',快手:'https://cp.kuaishou.com/creative/activity-calendar',小红书:'https://creator.xiaohongshu.com/new/events'};
+async function activeTab(){const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab||!allowed(tab.url)||!platformName(tab.url))throw Error('请先打开支持的官方创作者中心，或在下方选择平台。');return tab;}
+function platformName(value){try{const host=new URL(value).hostname;return ['www.bilibili.com','member.bilibili.com'].includes(host)?'哔哩哔哩':host==='creator.douyin.com'?'抖音':host==='cp.kuaishou.com'?'快手':host==='creator.xiaohongshu.com'?'小红书':'';}catch{return '';}}
+function isActivityPage(value,platform){try{const current=new URL(value),target=new URL(activityPages[platform]);return current.protocol==='https:'&&current.hostname===target.hostname&&current.pathname===target.pathname;}catch{return false;}}
 let currentBundle;
 function download(data,name){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
-async function refreshRun(){const [tab]=await chrome.tabs.query({active:true,currentWindow:true});const platform=platformName(tab?.url);const {draftdeskActivityRuns={}}=await chrome.storage.local.get('draftdeskActivityRuns');const run=draftdeskActivityRuns[platform];$('runStatus').textContent=run?`${platform}：${run.progress||run.state}`:platform?`${platform} 尚未采集；请先在官方活动页运行。`:'请打开四个平台之一的官方活动页。';currentBundle=run?.state==='completed'?run.bundle:null;$('downloadBatch').disabled=!currentBundle;$('auto').disabled=run?.state==='running';}
+async function refreshRun(){
+ const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+ const platform=platformName(tab?.url),onActivityPage=platform&&isActivityPage(tab.url,platform);
+ const {draftdeskActivityRuns={}}=await chrome.storage.local.get('draftdeskActivityRuns');
+ const run=draftdeskActivityRuns[platform];
+ $('pageState').className='page-state'+(platform?(onActivityPage?'':' needs-page'):' unsupported');
+ $('platformPill').textContent=platform||'未识别到创作者中心';
+ $('pageStatus').textContent=onActivityPage?'已在活动页，可以开始采集。':platform?'当前是创作者中心的其他页面，点击下方按钮会打开活动中心并开始采集。':'请选择下方平台，在新标签页登录后打开扩展采集。';
+ $('auto').textContent=run?.state==='running'?'正在采集…':onActivityPage?`采集${platform}当前活动页`:platform?`打开${platform}活动页并采集`:'先选择一个平台';
+ $('auto').disabled=!platform||run?.state==='running';
+ $('runStatus').textContent=run?`${platform}：${run.progress||run.state}`:platform?`${platform}尚无采集结果`:'选择平台后显示采集进度';
+ currentBundle=run?.state==='completed'?run.bundle:null;
+ $('downloadBatch').disabled=!currentBundle;
+}
 setInterval(()=>void refreshRun(),1500);void refreshRun();
-$('auto').onclick=async()=>{try{const tab=await activeTab();const keywords=$('keywords').value.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean).slice(0,20);const maxPages=Math.max(1,Math.min(5,Number($('maxPages').value)||2));await chrome.scripting.executeScript({target:{tabId:tab.id},files:['auto.js']});const result=await chrome.tabs.sendMessage(tab.id,{type:'draftdesk:auto',config:{keywords,maxPages,maxItems:100}});if(!result?.ok)throw Error('未能启动采集');await refreshRun();}catch(e){$('runStatus').textContent=e.message;}};
+$('auto').onclick=async()=>{try{const tab=await activeTab();const platform=platformName(tab.url);const keywords=$('keywords').value.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean).slice(0,20);const maxPages=Math.max(1,Math.min(5,Number($('maxPages').value)||2));$('auto').disabled=true;$('runStatus').textContent=`${platform}：正在准备官方活动页…`;const result=await chrome.runtime.sendMessage({type:'draftdesk:start-collection',tabId:tab.id,platform,config:{keywords,maxPages,maxItems:100}});if(!result?.ok)throw Error(result?.error||'未能启动采集');await refreshRun();}catch(e){$('auto').disabled=false;$('runStatus').textContent=e.message;}};
+for(const button of document.querySelectorAll?.('[data-platform]')||[]){button.onclick=()=>chrome.tabs.create({url:activityPages[button.dataset.platform],active:true});}
 $('downloadBatch').onclick=()=>{if(currentBundle)download(currentBundle,'draftdesk-activities-batch.json');};
 $('scan').onclick=async()=>{try{const tab=await activeTab();const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:scanPage});$('candidates').textContent=`当前页发现 ${result.total} 个不重复活动；关键词初筛 ${result.candidates.length} 个：\n`+result.candidates.map(x=>`• ${x.title}${x.detail?' — '+x.detail:''}`).join('\n');}catch(e){$('status').textContent=e.message;}};
 $('read').onclick=async()=>{try{$('save').disabled=true;const tab=await activeTab();const [{result:data}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:collectPage});if(data.text.length<50)throw Error('当前页没有可验证的完整规则。请打开具体活动详情并展开规则；若规则在嵌入页中，请选中规则正文后重试。');if(data.text.length>12000)throw Error('正文超过12000字，请选中活动规则的关键段落后重试。');$('title').value=data.title;$('url').value=data.url;$('text').value=data.text;capturedAt=new Date().toISOString();$('save').disabled=false;$('status').textContent=`已从${data.mode}读取。请核对年份、奖励与资格；列表摘要不等于完整规则。`;}catch(e){$('status').textContent=e.message;}};

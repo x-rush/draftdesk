@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="拾题">
+  <rect width="64" height="64" rx="16" fill="#28563b"/>
+  <path d="M16 13h25l9 9v28a3 3 0 0 1-3 3H16a3 3 0 0 1-3-3V16a3 3 0 0 1 3-3Z" fill="#f8f9f5"/>
+  <path d="M41 13v9h9" fill="#dcebdc"/>
+  <path d="M22 26h18M22 33h13" stroke="#5f8269" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="39" cy="41" r="9" fill="#e5aa4c"/>
+  <path d="m36 41 2 2 4-5" fill="none" stroke="#233c31" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

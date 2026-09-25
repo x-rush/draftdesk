@@ -1,1 +1,18 @@
-{"manifest_version":3,"name":"DraftDesk 活动页采集","version":"1.3.0","description":"用户主动在官方创作者中心扫描活动、读取详情并导出给自己的工作台。","permissions":["activeTab","scripting","tabs","storage"],"host_permissions":["https://www.bilibili.com/*","https://creator.douyin.com/*","https://cp.kuaishou.com/*","https://creator.xiaohongshu.com/*","https://fe.xiaohongshu.com/ditto/vincent/*"],"background":{"service_worker":"background.js"},"action":{"default_popup":"popup.html"}}
+{
+  "manifest_version": 3,
+  "name": "DraftDesk 活动页采集",
+  "version": "1.4.0",
+  "description": "在已登录的官方创作者中心打开活动页、读取规则并导出给自己的工作台。",
+  "permissions": ["activeTab", "scripting", "tabs", "storage"],
+  "host_permissions": [
+    "https://www.bilibili.com/*",
+    "https://member.bilibili.com/*",
+    "https://creator.douyin.com/*",
+    "https://cp.kuaishou.com/*",
+    "https://creator.xiaohongshu.com/*",
+    "https://fe.xiaohongshu.com/ditto/vincent/*"
+  ],
+  "icons": {"16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png"},
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "popup.html", "default_icon": {"16": "icon-16.png", "32": "icon-32.png"}}
+}

@@ -1,1 +1,42 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>活动页采集</title><style>body{width:400px;font:14px/1.6 system-ui;padding:16px;color:#213c33}button{padding:10px;margin:6px 6px 6px 0}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}textarea{height:150px}p{margin:8px 0}#candidates{max-height:135px;overflow:auto;white-space:pre-wrap;font-size:12px}</style><h2>官方活动采集</h2><p>在已登录的官方活动中心启动。自动扫描列表、读取可见详情；过期或日期不明的线索会在工作台标出，不进入 AI 分析。不会报名或发布。</p><label>目标关键词（逗号分隔）<input id="keywords" value="AI,AIGC,AI视频,Vibe Coding,vibecoding,AI编程,AI工具"></label><label>最多扫描页数 / 屏数<input id="maxPages" type="number" min="1" max="5" value="2"></label><button id="auto">自动采集当前平台</button><button id="downloadBatch" disabled>导出批量 JSON</button><p id="runStatus" role="status"></p><details><summary>手动读取单个活动</summary><button id="scan">扫描当前列表</button><button id="read">读取当前活动详情</button><p id="candidates"></p><p id="status" role="status"></p><label>标题<input id="title"></label><label>官方来源<input id="url" readonly></label><label>规则正文（请核对并删去个人信息）<textarea id="text" maxlength="12000"></textarea></label><button id="save" disabled>导出活动 JSON</button></details><p>返回 DraftDesk → 创作活动 → 导入批量文件并分析。登录状态留在本机浏览器，扩展不读取 Cookie。</p><script src="popup.js"></script></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DraftDesk 活动采集</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="popup">
+    <header class="masthead">
+      <div class="brand"><img src="logo.svg" width="38" height="38" alt=""><div><strong>拾题</strong><span>DraftDesk · 活动采集</span></div></div>
+      <span class="privacy">本机采集</span>
+    </header>
+    <section class="body">
+      <div class="page-state" id="pageState" aria-live="polite"><span class="state-dot" aria-hidden="true"></span><div><strong id="platformPill">检测当前页面</strong><p id="pageStatus">正在识别官方平台…</p></div></div>
+      <div class="section-heading"><h1>创作活动</h1><span>官方活动中心</span></div>
+      <p class="intro">读取你已登录账号可见的活动与规则，过期或日期不明的线索留给工作台核对。</p>
+      <div class="field"><label for="keywords">关注方向</label><textarea id="keywords" rows="2" spellcheck="false">AI,AIGC,AI视频,Vibe Coding,vibecoding,AI编程,AI工具</textarea><small>用逗号分隔，最多 20 个关键词</small></div>
+      <div class="field compact"><label for="maxPages">扫描范围</label><div class="range-control"><input id="maxPages" type="number" min="1" max="5" value="2"><span>页 / 屏，最多 5</span></div></div>
+      <button class="primary" id="auto" type="button" disabled>检测活动页中…</button>
+      <div class="run-state" role="status" aria-live="polite"><span class="run-icon" aria-hidden="true">●</span><span id="runStatus">尚未采集</span></div>
+      <button class="secondary" id="downloadBatch" type="button" disabled>导出本平台采集结果</button>
+      <div class="platform-section"><div class="section-heading small"><h2>打开其他平台</h2><span>在浏览器中继续</span></div><div class="platform-grid" id="openGrid">
+        <button type="button" data-platform="哔哩哔哩">哔哩哔哩</button><button type="button" data-platform="抖音">抖音</button>
+        <button type="button" data-platform="快手">快手</button><button type="button" data-platform="小红书">小红书</button>
+      </div></div>
+      <details class="manual"><summary>手动读取单条活动 <span>展开</span></summary><div class="manual-body">
+        <p>打开具体活动规则后，可读取当前页或选中的正文。</p>
+        <div class="manual-actions"><button id="scan" type="button">扫描当前列表</button><button id="read" type="button">读取当前详情</button></div>
+        <p id="candidates" class="candidates"></p><p id="status" role="status" class="manual-status"></p>
+        <label for="title">活动标题</label><input id="title" autocomplete="off">
+        <label for="url">官方来源</label><input id="url" readonly>
+        <label for="text">规则正文</label><textarea id="text" rows="5" maxlength="12000"></textarea>
+        <button id="save" type="button" disabled>导出单条活动 JSON</button>
+      </div></details>
+      <p class="footnote">导出后返回拾题「创作活动」合并预览，再决定是否运行 AI 分析。扩展不会报名、发布或读取 Cookie。</p>
+    </section>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
