@@ -1,5 +1,5 @@
 import type {ArtifactDraft,Evidence} from "./schema";
-import {trustedActivityRulesUrl} from "./activity-import";
+import {trustedActivityRulesUrl,isActivityIndexUrl} from "./activity-import";
 export type Activity=Extract<ArtifactDraft,{kind:"activity"}>;
 export function activityStatus(a:Activity,at=Date.now()){
  const d=a.details;
@@ -17,6 +17,7 @@ export function activityIssues(a:Activity,all:Evidence[]){
  const d=a.details,refs=all.filter(e=>a.evidenceIds.includes(e.id)),issues:string[]=[];
  const canonical=(u:string)=>{try{const x=new URL(u);return x.origin+x.pathname.replace(/\/$/,"")+x.search;}catch{return u;}};
  if(!refs.some(e=>canonical(e.url)===canonical(d.activityUrl)))issues.push("活动地址没有对应的已采集证据，不能使用猜测的活动链接。");
+ if(isActivityIndexUrl(d.activityUrl))issues.push("官方页面只有活动中心入口，缺少单条直达链接；请按活动标题在原平台再次核对规则。");
  if(!refs.some(e=>e.sourceType==="official"&&trustedActivityRulesUrl(e.url)&&e.contentLevel!=="headline"))issues.push("缺少可信官方活动规则原文，当前仅是活动线索。");
  if(d.access==="lead")issues.push("当前只有活动线索，尚无可核对的规则。");
  if(!d.startsAt||!d.endsAt)issues.push("活动起止时间不完整，不能确认仍可参与。");

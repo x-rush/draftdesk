@@ -35,6 +35,8 @@ export function qualityIssues(item: ArtifactDraft, evidence: Evidence[]) {
   const publicationText = [item.title, item.summary, item.personalImpact, ...stringsIn(item.details)];
   if (publicationText.some((text) => completedExperience.test(text)))
     issues.push("包含已完成实测或第一人称体验的表达；工作台没有作者实测记录，请改成待验证计划或明确归属的来源陈述。");
+  if(item.kind==="topic"&&item.details.platforms.some(platform=>platform.titles.some(title=>/实测|亲测/.test(title)&&!/未实测|待实测|准备实测|计划实测|如何实测|实测计划|实测方法/.test(title))))
+    issues.push("平台标题暗示作者已经实测，但证据没有作者操作记录；改成验证计划或先补真实测试材料。");
   // A narrow announcement can have one primary source; impact/experience still needs review.
   const primaryAnnouncement = (item.kind === "news" || item.kind==="activity") && referenced.length > 0 &&
     referenced.every((e) => e?.sourceType === "official" && (item.kind!=="activity"||trustedActivityRulesUrl(e.url))) &&

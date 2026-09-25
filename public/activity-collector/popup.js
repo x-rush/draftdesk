@@ -35,9 +35,10 @@ function scanPage(){
  return {total:items.length,candidates:items.filter(x=>pattern.test(x.title+' '+x.detail)).slice(0,20)};
 }
 async function activeTab(){const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab||!allowed(tab.url))throw Error('请先打开四个平台的 HTTPS 官方活动页。');return tab;}
+function platformName(value){try{const host=new URL(value).hostname;return host==='www.bilibili.com'?'哔哩哔哩':host==='creator.douyin.com'?'抖音':host==='cp.kuaishou.com'?'快手':host==='creator.xiaohongshu.com'?'小红书':'';}catch{return '';}}
 let currentBundle;
 function download(data,name){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
-async function refreshRun(){const {draftdeskActivityRun:run}=await chrome.storage.local.get('draftdeskActivityRun');if(!run)return;$('runStatus').textContent=run.progress||run.state;currentBundle=run.state==='completed'?run.bundle:null;$('downloadBatch').disabled=!currentBundle;$('auto').disabled=run.state==='running';}
+async function refreshRun(){const [tab]=await chrome.tabs.query({active:true,currentWindow:true});const platform=platformName(tab?.url);const {draftdeskActivityRuns={}}=await chrome.storage.local.get('draftdeskActivityRuns');const run=draftdeskActivityRuns[platform];$('runStatus').textContent=run?`${platform}：${run.progress||run.state}`:platform?`${platform} 尚未采集；请先在官方活动页运行。`:'请打开四个平台之一的官方活动页。';currentBundle=run?.state==='completed'?run.bundle:null;$('downloadBatch').disabled=!currentBundle;$('auto').disabled=run?.state==='running';}
 setInterval(()=>void refreshRun(),1500);void refreshRun();
 $('auto').onclick=async()=>{try{const tab=await activeTab();const keywords=$('keywords').value.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean).slice(0,20);const maxPages=Math.max(1,Math.min(5,Number($('maxPages').value)||2));await chrome.scripting.executeScript({target:{tabId:tab.id},files:['auto.js']});const result=await chrome.tabs.sendMessage(tab.id,{type:'draftdesk:auto',config:{keywords,maxPages,maxItems:100}});if(!result?.ok)throw Error('未能启动采集');await refreshRun();}catch(e){$('runStatus').textContent=e.message;}};
 $('downloadBatch').onclick=()=>{if(currentBundle)download(currentBundle,'draftdesk-activities-batch.json');};

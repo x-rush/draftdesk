@@ -7,6 +7,17 @@ chrome.tabs.onCreated.addListener(tab=>{for(const watch of watches.values())if(!
 function waitComplete(id,timeout=15000){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{chrome.tabs.onUpdated.removeListener(handler);reject(Error('详情页加载超时'));},timeout);const handler=(tabId,info)=>{if(tabId===id&&info.status==='complete'){clearTimeout(timer);chrome.tabs.onUpdated.removeListener(handler);resolve();}};chrome.tabs.onUpdated.addListener(handler);chrome.tabs.get(id).then(tab=>{if(tab.status==='complete'){clearTimeout(timer);chrome.tabs.onUpdated.removeListener(handler);resolve();}}).catch(reject);});}
 async function readTab(tabId){await waitComplete(tabId);const tab=await chrome.tabs.get(tabId);if(!allowed(tab.url))throw Error('详情页离开官方活动域名');let result;for(let attempt=0;attempt<10;attempt++){[{result}]=await chrome.scripting.executeScript({target:{tabId},func:()=>{const clean=s=>(s||'').replace(/\s+/g,' ').trim();const root=document.querySelector('main,article,.activity-detail,.activity_detail,.activity-content,#app')||document.body;return {url:location.href,title:clean(document.querySelector('h1,h2')?.textContent)||document.title,text:clean(root.innerText).slice(0,12000)};}});if(result?.text?.length>=50)return result;await new Promise(resolve=>setTimeout(resolve,400));}throw Error('官方详情已打开，但规则正文未加载或不足 50 字');}
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+ if(message?.type==='draftdesk:read-xhs-frame'){
+  (async()=>{
+   if(!sender.tab?.id||!sender.url?.startsWith('https://creator.xiaohongshu.com/'))throw Error('请在小红书创作者中心读取活动详情');
+   const expected=new URL(message.url);
+   if(expected.protocol!=='https:'||expected.hostname!=='fe.xiaohongshu.com'||!expected.pathname.startsWith('/ditto/vincent/'))throw Error('只允许读取小红书官方活动规则嵌入页');
+   const results=await chrome.scripting.executeScript({target:{tabId:sender.tab.id,allFrames:true},func:()=>({url:location.href,text:(document.querySelector('main,article,#app')||document.body)?.innerText?.slice(0,12000)||''})});
+   const frame=results.map(x=>x.result).find(x=>x?.url===expected.href);
+   if(!frame?.text||frame.text.trim().length<100)throw Error('小红书官方规则嵌入页尚未加载或无可读正文');
+   return frame;
+  })().then(result=>respond({ok:true,result})).catch(e=>respond({ok:false,error:e.message}));return true;
+ }
  if(message?.type==='draftdesk:read-url'){
   (async()=>{if(!allowed(message.url))throw Error('只允许打开 B站或快手的官方活动详情');const tab=await chrome.tabs.create({url:message.url,active:false});try{return await readTab(tab.id);}finally{await chrome.tabs.remove(tab.id).catch(()=>{});}})().then(result=>respond({ok:true,result})).catch(e=>respond({ok:false,error:e.message}));return true;
  }

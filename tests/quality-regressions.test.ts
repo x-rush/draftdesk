@@ -34,6 +34,14 @@ test("平台钩子中的虚构第一人称实测不能通过检查", () => {
   assert.ok(qualityIssues(draft, evidence).some((s) => s.includes("实测")));
 });
 
+test("未操作过产品时平台标题不能包装成已完成实测",()=>{
+ const draft=structuredClone(topic);
+ draft.details.platforms[0].titles[0]="AI 新功能实测：三个避坑技巧";
+ assert.ok(qualityIssues(draft,evidence).some(s=>s.includes("平台标题")));
+ draft.details.platforms[0].titles[0]="如何实测 AI 新功能：一份验证计划";
+ assert.ok(!qualityIssues(draft,evidence).some(s=>s.includes("平台标题")));
+});
+
 test("跨域转载同一内容不算独立交叉证据", () => {
   const excerpt = "产品发布了新的自动剪辑功能，支持字幕纠错和素材整理，但价格与灰度范围尚未说明。".repeat(8);
   const syndicated = evidence.map((e) => ({ ...e, excerpt }));

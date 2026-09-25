@@ -4,6 +4,10 @@ if (!globalThis.__draftdeskActivityCollector) {
  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
  const platform = location.hostname === 'www.bilibili.com' ? '哔哩哔哩' : location.hostname === 'creator.douyin.com' ? '抖音' : location.hostname === 'cp.kuaishou.com' ? '快手' : location.hostname === 'creator.xiaohongshu.com' ? '小红书' : '';
+ async function saveRun(value){
+  const {draftdeskActivityRuns={}}=await chrome.storage.local.get('draftdeskActivityRuns');
+  await chrome.storage.local.set({draftdeskActivityRuns:{...draftdeskActivityRuns,[platform]:{...value,platform,sourceUrl:location.href}}});
+ }
  function deadline(value, yearHint) {
   const s = clean(value);
   const all = [...s.matchAll(/(?:(20\d{2})[年/.\-])?\s*(\d{1,2})[月/.\-](\d{1,2})\s*日?/g)];
@@ -21,9 +25,9 @@ if (!globalThis.__draftdeskActivityCollector) {
   if (end.getUTCFullYear() !== year || end.getUTCMonth() !== month - 1 || end.getUTCDate() !== day) return null;
   return {endsAt: end.toISOString()};
  }
- function make(title,url,text,dateText,completeness,yearHint) {
+ function make(title,url,text,dateText,completeness,yearHint,sourceLocator) {
   const d = deadline(dateText,yearHint);
-  return {platform,title:clean(title).slice(0,300),url,text:clean(text).slice(0,12000),dateText:clean(dateText).slice(0,200),...(d ? {endsAt:d.endsAt} : {}),completeness,capturedAt:new Date().toISOString()};
+  return {platform,title:clean(title).slice(0,300),url,text:clean(text).slice(0,12000),dateText:clean(dateText).slice(0,200),...(d ? {endsAt:d.endsAt} : {}),completeness,...(sourceLocator ? {sourceLocator:clean(sourceLocator).slice(0,200)} : {}),capturedAt:new Date().toISOString()};
  }
  async function run(config) {
   if (!platform) throw Error('请在四个平台的官方创作活动页运行');
@@ -32,7 +36,7 @@ if (!globalThis.__draftdeskActivityCollector) {
   const maxItems = Math.max(1,Math.min(Number(config.maxItems)||100,100));
   const items = [], warnings = [], seen = new Set();
   const matched = text => !keywords.length || keywords.some(k=>text.toLocaleLowerCase().includes(k.toLocaleLowerCase()));
-  const progress = async message => chrome.storage.local.set({draftdeskActivityRun:{state:'running',progress:message,startedAt:config.startedAt}});
+  const progress = async message => saveRun({state:'running',progress:message,startedAt:config.startedAt});
   const add = item => {
    if (!item?.title || !item.url || seen.has(`${item.url}|${item.title}`)) return;
    seen.add(`${item.url}|${item.title}`);
@@ -94,11 +98,18 @@ if (!globalThis.__draftdeskActivityCollector) {
      const url=new URL(rawUrl).href;
      const rawBody=detail?.innerText||'';
      const body=clean(rawBody);
+     let frameText='';
+     if(url!==location.href){try{const response=await chrome.runtime.sendMessage({type:'draftdesk:read-xhs-frame',url});if(response?.ok)frameText=response.result.text;else warnings.push(`${title}：${response?.error||'规则嵌入页不可读'}`);}catch(e){warnings.push(`${title}：规则嵌入页读取失败 ${e.message}`);}}
      const timeLines=rawBody.split('\n').map(clean).filter(Boolean);
      const timeIndex=timeLines.findIndex(x=>/^(活动时间|截止时间|投稿时间)/.test(x));
      const detailTime=timeIndex>=0?timeLines.slice(timeIndex,timeIndex+2).join(' '):'';
-     const verifiedDate=/20\d{2}/.test(detailTime)?detailTime:dateText;
-     add(make(title,url,`${brief}\n${body}\n注意：活动侧栏可能只包含简介，详细参与资格与奖励仍须在官方活动页核对。`,verifiedDate,url!==location.href&&body.length>=200&&/活动规则|参与方式|投稿要求/.test(body)?'detail':'summary'));
+     const frameLines=frameText.split('\n').map(clean).filter(Boolean);
+     const frameTimeIndex=frameLines.findIndex(x=>/(活动时间|截止时间|投稿时间|征稿时间)/.test(x));
+     const frameTime=frameTimeIndex>=0?frameLines.slice(frameTimeIndex,frameTimeIndex+2).join(' '):'';
+     const verifiedDate=/20\d{2}/.test(detailTime)?detailTime:/20\d{2}/.test(frameTime)?frameTime:dateText;
+     const ruleText=frameText||rawBody;
+     const complete=ruleText.length>=150&&/活动规则|参与方式|投稿要求|参与条件|创作要求/.test(ruleText);
+     add(make(title,url,`${brief}\n${body}\n${frameText}`,verifiedDate,complete?'detail':'summary',undefined,url===location.href?title:undefined));
      document.querySelector('.d-drawer .d-drawer-close')?.click();
     }
     const next=[...document.querySelectorAll('.pagination .d-pagination-page')].find(x=>clean(x.querySelector('.d-pagination-page-content')?.textContent)===String(page+1));
@@ -120,15 +131,19 @@ if (!globalThis.__draftdeskActivityCollector) {
     const title=clean(card.textContent);if(!title||titles.has(title))continue;titles.add(title);
     card.click();await pause(450);
     const dialog=document.querySelector('[role="dialog"]');
-    const body=clean(dialog?.innerText||'');
-    const dateText=body.match(/(?:20\d{2}[年/.\-])?\d{1,2}[月/.\-]\d{1,2}[^。\n]{0,40}(?:20\d{2}[年/.\-])?\d{1,2}[月/.\-]\d{1,2}/)?.[0]||body;
+    const rawBody=dialog?.innerText||'';
+    const body=clean(rawBody);
+    const lines=rawBody.split('\n').map(clean).filter(Boolean);
+    const timeIndex=lines.findIndex(x=>/(活动时间|投稿时间|征稿时间|截止时间)/.test(x)&&/\d{1,2}[月/.\-]\d{1,2}/.test(x));
+    const dateText=timeIndex>=0?lines.slice(timeIndex,timeIndex+2).join(' '):body.match(/(?:20\d{2}[年/.\-])?\d{1,2}[月/.\-]\d{1,2}[^。\n]{0,40}(?:20\d{2}[年/.\-])?\d{1,2}[月/.\-]\d{1,2}/)?.[0]||body;
     const link=dialog?.querySelector('a[href^="https://creator.douyin.com/"],a[href^="https://activity.douyin.com/"]');
     const url=link?.href||location.href;
-    add(make(title,url,body,dateText,link&&body.length>=50?'detail':'summary',year));
+    const complete=body.length>=100&&/(活动规则|参与方式|投稿要求|赛道|创作要求)/.test(body);
+    add(make(title,url,body,dateText,complete?'detail':'summary',year,link?.href?undefined:title));
     dialog?.querySelector('[aria-label="关闭"],.close,[class*="close"]')?.click();
     await pause(100);
    }
-   warnings.push('抖音仅扫描当前显示月份；跨月活动请在官方日历切换月份后再采集。活动侧栏虽有规则，但未提供单条官方活动链接时会保留为待核线索，不能直接交给 AI 分析。');
+   warnings.push('抖音仅扫描当前显示月份；跨月活动请在官方日历切换月份后再采集。没有单条链接时，会保留官方日历地址和活动标题供复核，分析结果不能直接通过审稿。');
   } else if (platform === '快手') {
    await progress('快手活动中心');
    warnings.push('快手活动列表的日期通常只有月日；若详情页未给出明确年份或单条官方链接，工作台会保留待核线索，不能据列表位置推断活动仍有效。');
@@ -169,7 +184,7 @@ if (!globalThis.__draftdeskActivityCollector) {
  chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
   if(message?.type!=='draftdesk:auto')return;
   const config={...message.config,startedAt:new Date().toISOString()};
-  chrome.storage.local.set({draftdeskActivityRun:{state:'running',progress:'正在读取官方活动页',startedAt:config.startedAt}}).then(()=>run(config)).then(bundle=>chrome.storage.local.set({draftdeskActivityRun:{state:'completed',bundle,progress:`完成：${bundle.items.length} 条活动线索，请到工作台核对是否可分析`,startedAt:config.startedAt}})).catch(e=>chrome.storage.local.set({draftdeskActivityRun:{state:'failed',progress:e.message,startedAt:config.startedAt}}));
+  saveRun({state:'running',progress:'正在读取官方活动页',startedAt:config.startedAt}).then(()=>run(config)).then(bundle=>saveRun({state:'completed',bundle,progress:`完成：${bundle.items.length} 条活动线索，请到工作台核对是否可分析`,startedAt:config.startedAt})).catch(e=>saveRun({state:'failed',progress:e.message,startedAt:config.startedAt}));
   respond({ok:true});
  });
 }
