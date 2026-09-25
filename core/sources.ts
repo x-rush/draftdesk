@@ -14,6 +14,23 @@ export async function readAggregatedHotlist(platform:AggregatePlatform,signal:Ab
   if(raw.length>1024*1024)throw new AppError("聚合榜单响应超过 1 MB。");
   return parseAggregateHotlist(JSON.parse(raw),platform,now());
 }
+export async function readHotspotSource(source:Source,signal:AbortSignal):Promise<EvidenceInput[]>{
+  if(!source.enabled)throw new AppError("来源未启用。");
+  if(source.type==="aggregated"){
+    if(!source.query||!isAggregatePlatform(source.query))throw new AppError("不支持的聚合榜单路由。");
+    return readAggregatedHotlist(source.query,signal);
+  }
+  if(source.type==="trends")return parseFeed(await safeRead(`https://trends.google.com/trending/rss?geo=${source.region||"US"}`,signal),source);
+  if(source.type!=="hotlist")throw new AppError("请选择热榜或趋势来源。");
+  if(source.url==="https://top.baidu.com/board?tab=realtime")return parseBaiduHotlist(await safeRead(source.url,signal),now());
+  if(source.url==="https://s.weibo.com/top/summary?cate=realtimehot"){
+    try{return parseWeiboHotlist(await safeRead(source.url,signal),now());}
+    catch{return readAggregatedHotlist("weibo",signal);}
+  }
+  if(source.url==="https://github.com/trending")return parseGithubTrending(await safeRead(source.url,signal),now());
+  if(source.url==="https://hacker-news.firebaseio.com/v0/topstories.json")return (await collectHackerNews(signal)).items;
+  throw new AppError("热榜入口尚未核验或不在允许列表中。");
+}
 export function publicIp(ip: string) {
   const p = ip.split(".").map(Number);
   return (
@@ -310,7 +327,7 @@ export async function collect(
         const reason=relevanceReason(item,plan);
         if(!reason)filtered.push(item);
         if(jobId&&index<100)
-          candidates.push({url:item.url,title:item.title,sourceId:s.id,sourceName:s.name,status:reason?"filtered":"watch",reason:reason||"符合策略，等待证据名额",observedAt:item.collectedAt});
+          candidates.push({url:item.url,title:item.title,sourceId:s.id,sourceName:s.name,status:reason?"filtered":"watch",reason:reason||"符合策略，等待证据名额",observedAt:item.collectedAt,rank:index+1,region:item.region,metric:item.metric});
       }
       groups.push(rankEvidence(filtered, plan));
       coverage.push({sourceId:s.id,sourceName:s.name,status:"ok",raw:items.length,matched:filtered.length,selected:0});

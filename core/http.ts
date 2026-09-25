@@ -19,7 +19,8 @@ import { skillCatalog, loadSkill } from "./skills";
 import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
-import { collect, readAggregatedHotlist } from "./sources";
+import { collect, readAggregatedHotlist, readHotspotSource } from "./sources";
+import type {DiscoveryRecord} from "./discovery";
 import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
 import { validateIntake } from "./intake-validation";
@@ -195,6 +196,23 @@ export async function handle(req: Request, path: string[]) {
       const sample={...plan,sourceIds,maxQueries:0,maxEvidence:Math.min(12,plan.maxEvidence)};
       const result=await collect(db,sample,AbortSignal.any([req.signal,AbortSignal.timeout(65000)]),()=>{},()=>{},id,"preview");
       return json({record:db.get("discovery",id),evidenceCount:result.evidence.length,warnings:result.warnings});
+    }
+    if(route === "hotspot-refresh") {
+      const {sourceId}=z.object({sourceId:z.string()}).strict().parse(input);
+      const source=db.get<Source>("sources",sourceId);
+      if(!source||!source.enabled||!["hotlist","aggregated","trends"].includes(source.type))throw new AppError("请选择已启用的热榜或趋势来源。",400);
+      const at=now(),id="hotspot-"+randomUUID();
+      try{
+        const items=(await readHotspotSource(source,AbortSignal.any([req.signal,AbortSignal.timeout(45000)]))).slice(0,100);
+        const record:DiscoveryRecord={jobId:id,at,planName:"独立热点快照",mode:"hotspot",limit:100,
+          candidates:items.map((item,index)=>({url:item.url,title:item.title,sourceId:source.id,sourceName:source.name,status:"watch",reason:"原始热点；未按研究策略筛选或经 AI 核实",observedAt:at,rank:index+1,region:item.region,metric:item.metric})),
+          sources:[{sourceId:source.id,sourceName:source.name,status:"ok",raw:items.length,matched:0,selected:0}]};
+        db.put("discovery",id,record);
+        return json({count:items.length,source:source.name,at});
+      }catch(error){
+        db.put("discovery",id,{jobId:id,at,planName:"独立热点快照",mode:"hotspot",limit:100,candidates:[],sources:[{sourceId:source.id,sourceName:source.name,status:"failed",raw:0,matched:0,selected:0,error:error instanceof AppError?error.message:"来源读取失败"}]} satisfies DiscoveryRecord);
+        throw error;
+      }
     }
     if (route === "config") {
       const cfg = configSchema.parse(input),

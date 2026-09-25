@@ -2,7 +2,9 @@
 import { creationLabels, readWorkspaceLocation, newlyFinished, type JobActivity } from "../core/workspace-ui";
 import { ActivityCard, ActivityTools } from "./Activities";
 import {DiscoveryLens} from "./DiscoveryLens";
+import {Hotspots} from "./Hotspots";
 import type {DiscoveryRecord} from "../core/discovery";
+import type {HotspotFeed} from "../core/hotspots";
 import { Pagination, type PageInfo } from "./Pagination";
 import { Select } from "./Select";
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +25,7 @@ import {
   RefreshCw,
   Users,
   Leaf,
+  Flame,
 } from "lucide-react";
 import type { Artifact, Plan, Source, Job } from "../core/schema";
 import { decisionLabels, decisionOf } from "../core/research-policy";
@@ -43,6 +46,7 @@ import {
 } from "./ui";
 const nav = [
   ["discover", "每日发现", Compass],
+  ["hotspots", "热点列表", Flame],
   ["library", "我的选题库", Library],
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
@@ -61,6 +65,7 @@ const headings: Record<string, [string, string]> = {
     "找到值得写，也值得做的事",
     "先看变化与个人影响，再决定投入哪一个想法。",
   ],
+  hotspots:["别让热点在筛选时消失","先看原始榜单线索，再决定哪些值得补查和分析。"],
   library: [
     "把值得继续的想法留下",
     "收藏不是发布。每条选题都可以继续补证据、推敲和创作。",
@@ -117,6 +122,7 @@ type Snapshot = {
   budget: { reserved: number; limit: number };
   evidence: any[];
   discovery: DiscoveryRecord|null;
+  hotspots:HotspotFeed|null;
 };
 export function Workbench() {
   const [data, setData] = useState<Snapshot | null>(null),
@@ -140,6 +146,7 @@ export function Workbench() {
     [legacyOpen, setLegacyOpen] = useState<any>(),
     [today, setToday] = useState("");
   const [page,setPage]=useState(1), [jobsPage,setJobsPage]=useState(1), [receiptsPage,setReceiptsPage]=useState(1);
+  const [hotspotPage,setHotspotPage]=useState(1),[hotspotQ,setHotspotQ]=useState(""),[hotspotStatus,setHotspotStatus]=useState("all"),[hotspotSource,setHotspotSource]=useState("all"),[hotspotPlan,setHotspotPlan]=useState("all");
   const [loading,setLoading]=useState(false);
   const [activityPlatform,setActivityPlatform]=useState("all"),[activityTime,setActivityTime]=useState("all");
   const [locationReady,setLocationReady]=useState(false), [creation,setCreation]=useState("all"), [jobId,setJobId]=useState(""), [runId,setRunId]=useState("");
@@ -148,7 +155,7 @@ export function Workbench() {
   const [sourceChecks,setSourceChecks]=useState<Record<string,string>>({});
   const [previewPlan,setPreviewPlan]=useState("daily-editorial");
   const knownJobs=useRef(new Map<string,string>()), activityReady=useRef(false), activitySince=useRef(Date.now()), restoreScroll=useRef(true);
-  const requestKey = new URLSearchParams({activityPlatform,activityTime,creation,jobId,runId,page:String(page),jobsPage:String(jobsPage),receiptsPage:String(receiptsPage),view,kind,quality,q:query,pageSize:"20"}).toString();
+  const requestKey = new URLSearchParams({activityPlatform,activityTime,creation,jobId,runId,page:String(page),jobsPage:String(jobsPage),receiptsPage:String(receiptsPage),hotspotPage:String(hotspotPage),hotspotQ,hotspotStatus,hotspotSource,hotspotPlan,view,kind,quality,q:query,pageSize:"20"}).toString();
   const currentKey=useRef(requestKey), requestVersion=useRef(0);
   currentKey.current=requestKey;
   async function refresh() {
@@ -163,7 +170,7 @@ export function Workbench() {
     }
   }
   useEffect(()=>{
-    const restore=()=>{const v=readWorkspaceLocation(window.location.search);setActivityPlatform(v.activityPlatform);setActivityTime(v.activityTime);setView(v.view);setQuery(v.q);setKind(v.kind);setQuality(v.quality);setPage(v.page);setJobsPage(v.jobsPage);setReceiptsPage(v.receiptsPage);setCreation(v.creation);setJobId(v.jobId);setRunId(v.runId);setSelected(null);restoreScroll.current=true;setLocationReady(true);};
+    const restore=()=>{const v=readWorkspaceLocation(window.location.search);setActivityPlatform(v.activityPlatform);setActivityTime(v.activityTime);setView(v.view);setQuery(v.q);setKind(v.kind);setQuality(v.quality);setPage(v.page);setJobsPage(v.jobsPage);setReceiptsPage(v.receiptsPage);setHotspotPage(v.hotspotPage);setHotspotQ(v.hotspotQ);setHotspotStatus(v.hotspotStatus);setHotspotSource(v.hotspotSource);setHotspotPlan(v.hotspotPlan);setCreation(v.creation);setJobId(v.jobId);setRunId(v.runId);setSelected(null);restoreScroll.current=true;setLocationReady(true);};
     restore();window.addEventListener("popstate",restore);return()=>window.removeEventListener("popstate",restore);
   },[]);
   useEffect(()=>{
@@ -217,6 +224,7 @@ export function Workbench() {
     setQuality(v==="library"?"active":"ready");setActivityTime(v==="activities"?"actionable":"all");
     setView(v);
     setPage(1);setJobsPage(1);setReceiptsPage(1);
+    setHotspotPage(1);
     setMobile(false);
     setQuery("");
     setNotice("");
@@ -370,6 +378,9 @@ export function Workbench() {
           {finished.map(j=><section className="task-notice" role="status" key={j.id}><div><strong>{j.name} · {j.state==="completed"?"已完成":j.state==="failed"?"失败":"已取消"}</strong><p>{j.state==="completed"?`新增 ${j.total} 条结果，其中 ${j.review} 条待验证。`:"查看运行说明，处理来源或配置后可手动重试。"}</p></div><button onClick={()=>{if(j.state==="completed")showResults(j.id);else{navigate("runs");setRunId(j.id);}}}>{j.state==="completed"?"查看本次结果":"查看运行说明"}</button><button aria-label="关闭任务提示" onClick={()=>setFinished(old=>old.filter(x=>x.id!==j.id))}>关闭</button></section>)}
           {data && (
             <>
+              {view==="hotspots"&&<Hotspots feed={data.hotspots} sources={data.sources} query={hotspotQ} status={hotspotStatus} source={hotspotSource} plan={hotspotPlan} busy={busy}
+                onQuery={value=>{setHotspotQ(value);setHotspotPage(1);}} onStatus={value=>{setHotspotStatus(value);setHotspotPage(1);}} onSource={value=>{setHotspotSource(value);setHotspotPage(1);}} onPlan={value=>{setHotspotPlan(value);setHotspotPage(1);}} onPage={setHotspotPage}
+                onRefresh={()=>void act(async()=>{const result=await api<{count:number;source:string}>("hotspot-refresh",{sourceId:hotspotSource});setNotice(`${result.source} 已刷新 ${result.count} 条热点线索，未调用 AI。`);})}/>}
               {["discover", "library", "trends", "ideas", "people", "activities"].includes(
                 view,
               ) && (
@@ -419,7 +430,7 @@ export function Workbench() {
                       </dl>
                     </section>
                   )}
-                  {view === "discover"&&<nav className="discovery-modes" aria-label="每日发现视图">{(["results","watch","coverage"] as const).map(mode=><button key={mode} className={discoveryMode===mode?"active":""} aria-current={discoveryMode===mode?"page":undefined} onClick={()=>setDiscoveryMode(mode)}>{mode==="results"?"推荐结果":mode==="watch"?`待观察${data.discovery?` ${data.discovery.candidates.filter(c=>c.status==="watch").length}`:""}`:"采集覆盖"}</button>)}</nav>}
+                  {view === "discover"&&<><nav className="discovery-modes" aria-label="每日发现视图">{(["results","watch","coverage"] as const).map(mode=><button key={mode} className={discoveryMode===mode?"active":""} aria-current={discoveryMode===mode?"page":undefined} onClick={()=>setDiscoveryMode(mode)}>{mode==="results"?"推荐结果":mode==="watch"?`待观察${data.discovery?` ${data.discovery.candidates.filter(c=>c.status==="watch").length}`:""}`:"采集覆盖"}</button>)}</nav><button className="text-button" onClick={()=>navigate("hotspots")}>查看完整热点列表 →</button></>}
                   {(view!=="discover"||discoveryMode==="results")&&<>
                   {jobId&&<p className="context-note">正在查看本次研究的全部结果（含待验证和已否决）。<button onClick={()=>{setJobId("");setPage(1);}}>查看所有研究</button></p>}
                   <div className="filter-row">

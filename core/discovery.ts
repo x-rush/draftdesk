@@ -1,9 +1,9 @@
 import type {EvidenceInput, Plan} from "./schema";
 
 export type CandidateStatus="selected"|"watch"|"filtered";
-export type DiscoveryCandidate={url:string;title:string;sourceId:string;sourceName:string;status:CandidateStatus;reason:string;observedAt:string};
+export type DiscoveryCandidate={url:string;title:string;sourceId:string;sourceName:string;status:CandidateStatus;reason:string;observedAt:string;rank?:number;region?:string;metric?:{name:string;value:string;unit:string;period:string}};
 export type SourceCoverage={sourceId:string;sourceName:string;status:"ok"|"failed";raw:number;matched:number;selected:number;error?:string};
-export type DiscoveryRecord={jobId:string;at:string;planName:string;candidates:DiscoveryCandidate[];sources:SourceCoverage[];limit:number;mode?:"analysis"|"preview"};
+export type DiscoveryRecord={jobId:string;at:string;planName:string;candidates:DiscoveryCandidate[];sources:SourceCoverage[];limit:number;mode?:"analysis"|"preview"|"hotspot"};
 
 const aliases:Record<string,string[]>={
   "vibe coding":["vibe coding","vibecoding","氛围编程","ai编程","ai 编程"],

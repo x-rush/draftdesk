@@ -1,5 +1,6 @@
 import { activityStatus } from "./activities";
 import type {DiscoveryRecord} from "./discovery";
+import {hotspotFeed} from "./hotspots";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -193,7 +194,9 @@ export class Store {
     const jobs=paginate(snapshot.jobs.filter(j=>!params.get("runId") || j.id===params.get("runId")),"jobsPage"), submissions=paginate(snapshot.submissions,"receiptsPage");
     const counts:Record<string,number>={};
     snapshot.artifacts.forEach(a=>counts[a.kind]=(counts[a.kind] || 0)+1);
-    return {...snapshot, discovery:params.get("jobId")?snapshot.discovery.find(d=>d.jobId===params.get("jobId"))||null:snapshot.discovery[0]||null, artifacts:artifacts.items, jobs:jobs.items,
+    const researchDiscovery=snapshot.discovery.filter(d=>d.mode!=="hotspot");
+    return {...snapshot, discovery:params.get("jobId")?researchDiscovery.find(d=>d.jobId===params.get("jobId"))||null:researchDiscovery[0]||null,
+      hotspots:view==="hotspots"?hotspotFeed(snapshot.discovery,params,pageSize):null, artifacts:artifacts.items, jobs:jobs.items,
       submissions:submissions.items.map(r=>({...r,artifacts:snapshot.artifacts.filter(a=>r.artifactIds?.includes(a.id)||r.jobs.some((j:Job)=>j.id===a.jobId))})),
       evidence:snapshot.evidence.filter(e=>artifacts.items.some(a=>a.evidenceIds.includes(e.id))),
       events:[], metrics:[],
