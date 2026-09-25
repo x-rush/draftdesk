@@ -7,7 +7,7 @@ import {activityBatchDecision} from "../core/activity-batch";
 test("浏览器采集器保留排除项供核对，模型前剔除过期活动和不匹配关键词",async()=>{
  let dialog:any=null,listener:((message:any,sender:any,respond:(v:any)=>void)=>void)|undefined;
  const cards=[
-  {textContent:"AI视频创作激励",text:"活动规则：2026年09月01日至2099年09月30日；创作者使用 AI 视频工具完成作品，标记指定话题并公开发布。",click(){dialog={innerText:this.text,querySelector:()=>({click(){dialog=null;}})};}},
+  {textContent:"抖音全民写作大赛",text:"活动时间：05.13-09.30；活动期间带话题发布公开原创内容；如使用 AI 生成视频，需带 #AI文学视频赛道。",click(){dialog={innerText:this.text,querySelector:()=>({click(){dialog=null;}})};}},
   {textContent:"AI视频往年活动",text:"活动规则：2000年09月01日至2000年09月20日；创作者使用 AI 视频工具完成作品，标记指定话题并公开发布。",click(){dialog={innerText:this.text,querySelector:()=>({click(){dialog=null;}})};}},
   {textContent:"美食征稿",text:"活动规则：2026年09月01日至2099年09月30日；拍摄美食短片参加征稿，创作者必须使用对应话题并公开发布。",click(){dialog={innerText:this.text,querySelector:()=>({click(){dialog=null;}})};}},
  ];
@@ -22,6 +22,8 @@ test("浏览器采集器保留排除项供核对，模型前剔除过期活动�
  assert.equal(stored.draftdeskActivityRun?.state,"completed",stored.draftdeskActivityRun?.progress);
  const bundle=stored.draftdeskActivityRun.bundle;
  assert.equal(bundle.items.length,3);
+ assert.match(bundle.items[0].text,/AI文学视频赛道/);
+ assert.equal(bundle.items[0].endsAt,"2026-09-30T15:59:59.000Z");
  assert.equal(bundle.items.find((x:any)=>x.title==="AI视频往年活动")?.endsAt,"2000-09-20T15:59:59.000Z");
  assert.equal(activityBatchDecision(bundle.items[1],["AI视频"]).reason,"活动已过期");
  assert.equal(activityBatchDecision(bundle.items[2],["AI视频"]).reason,"未命中目标关键词");
