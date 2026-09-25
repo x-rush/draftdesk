@@ -11,7 +11,7 @@ docker compose up -d
 docker compose ps
 ```
 
-OpenClaw is at `http://127.0.0.1:18789/`. Hermes exposes its gateway at `http://127.0.0.1:8642/` and dashboard at `http://127.0.0.1:9119/`. All ports are loopback-only.
+OpenClaw is at `http://127.0.0.1:18789/`. Hermes exposes its gateway at `http://127.0.0.1:8642/`. The optional Hermes dashboard is disabled by default. To use `http://127.0.0.1:9119/`, configure a dashboard auth provider before setting `HERMES_DASHBOARD=1`; a dashboard without authentication will refuse to start and repeatedly restart. All published ports are loopback-only.
 
 Set the Bailian key, the exact OpenAI-compatible base URL, and `BAILIAN_MODEL=qwen3.8-flash` in the untracked `.env`. Do not put keys in Git, chat, issues, or screenshots. Agent state uses named Docker volumes to avoid SQLite and permissions problems on Docker Desktop's Windows bind mounts.
 
