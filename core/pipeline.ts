@@ -118,6 +118,7 @@ export async function runJob(
       { plan: job.plan, profile: db.config().profile, asOf: now(), evidence: material },
       researchClusterSchema(evidence.map(e=>e.id)),
       signal,
+      (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 6000 }),
     );
     const ids = new Set(evidence.map((e) => e.id));
     if (clusters.clusters.some((c) => c.evidenceIds.some((id) => !ids.has(id))) ||
@@ -127,14 +128,16 @@ export async function runJob(
     if (!clusters.clusters.length) { noFindings("资料不满足研究方向，筛除原因已保留；没有凑数推荐。"); return; }
     const canSearch = !job.external && job.plan.sourceIds.some(id => { const s = db.get<any>("sources",id); return s?.enabled && s.type === "web"; });
     const requiredGaps = collectionGaps(job.plan, evidence);
-    const followups = supplementQueries([
-      ...requiredGaps.map(gap=>({label: clusters.clusters[0].label, missing:[gap]})),
-      ...clusters.clusters,
-    ], job.plan.kind, 2);
-    const verification: {question: string; evidenceIds: string[]; status: string}[] = [];
+    const followups = [
+      ...supplementQueries(requiredGaps.map(gap=>({label:job.plan.goal,missing:[gap]})),job.plan.kind,2)
+        .map(query=>({...query,targetEvidenceIds:[] as string[]})),
+      ...clusters.clusters.flatMap(cluster=>supplementQueries([cluster],job.plan.kind,2)
+        .map(query=>({...query,targetEvidenceIds:cluster.evidenceIds}))),
+    ].slice(0,2);
+    const verification: {question: string; evidenceIds: string[]; status: string; targetEvidenceIds: string[]}[] = [];
     for (const query of followups) {
       if (!canSearch || !db.config().tavilyKey || evidence.length >= job.plan.maxEvidence || searches >= job.plan.maxQueries) {
-        verification.push({question:query.purpose,evidenceIds:[],status:"未补证：来源、密钥或证据预算不足"}); continue;
+        verification.push({question:query.purpose,evidenceIds:[],status:"未补证：来源、密钥或证据预算不足",targetEvidenceIds:query.targetEvidenceIds}); continue;
       }
       signal.throwIfAborted();
       countSearch();
@@ -143,10 +146,10 @@ export async function runJob(
         const found = await (deps.search || searchWeb)(db,job.plan,query.query,signal);
         const added = found.slice(0,job.plan.maxEvidence-evidence.length).map(e => db.addEvidence(e,"targeted-verification/1.0"));
         evidence = [...new Map([...evidence,...added].map(e => [e.id,e])).values()];
-        verification.push({question:query.purpose,evidenceIds:added.map(e=>e.id),status:added.length ? "检索到候选，尚需逐条核验，不代表已证实" : "未知：没有找到补充材料"});
+        verification.push({question:query.purpose,evidenceIds:added.map(e=>e.id),status:added.length ? "检索到候选，尚需逐条核验，不代表已证实" : "未知：没有找到补充材料",targetEvidenceIds:query.targetEvidenceIds});
       } catch (error) {
         if (signal.aborted) throw error;
-        verification.push({question:query.purpose,evidenceIds:[],status:"未知：补证搜索失败"});
+        verification.push({question:query.purpose,evidenceIds:[],status:"未知：补证搜索失败",targetEvidenceIds:query.targetEvidenceIds});
       }
     }
     db.put("job-verification",job.id,verification);
@@ -179,6 +182,7 @@ export async function runJob(
       },
       researchBatchSchema(job.plan.kind, job.plan.maxItems, evidence.map((e) => e.id)),
       signal,
+      (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 8000 }),
     );
     if (batch.items.length > job.plan.maxItems)
       throw new AppError("模型输出超过策略数量限制。");
@@ -192,7 +196,8 @@ export async function runJob(
     if (batch.items.some((a) => !allowed.includes(a.kind)))
       throw new AppError("模型输出类型与研究策略不符。");
     for (const a of batch.items) {
-      const unresolved = verification.filter(v=>!v.evidenceIds.length).map(v=>`未核实：${v.question}（${v.status}）`);
+      const unresolved = verification.filter(v=>!v.evidenceIds.length && v.targetEvidenceIds.some(id=>a.evidenceIds.includes(id)))
+        .map(v=>`未核实：${v.question}（${v.status}）`);
       a.unknowns = [...new Set([...unresolved,...a.unknowns])].slice(0,20);
     }
     db.put("job-draft", job.id, batch);
@@ -231,6 +236,7 @@ export async function runJob(
           ...(a.kind === "trend" && !history.metrics.some(m=>a.evidenceIds.includes(m.evidenceId) && m.comparison.percent !== null)
             ? ["历史指标不足或口径不可比；这是热词线索，不是已验证的增长趋势。"] : []),
           ...(r?.issues || []),
+          ...(r && !r.note && !r.issues.length ? ["审稿未提供判断依据，需人工复核。"] : []),
           ...(!r
             ? ["缺少审稿结果"]
             : r.verdict !== "pass"
@@ -242,7 +248,7 @@ export async function runJob(
           job.id,
           issues.length ? "review" : "ready",
           issues,
-          r?.note || "",
+          r?.note || r?.issues[0] || "",
           skills[skillFor[job.plan.kind]].version,
         );
       });

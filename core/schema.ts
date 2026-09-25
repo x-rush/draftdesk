@@ -237,7 +237,7 @@ export const reviewSchema = z
           index: z.number().int().min(0).max(11),
           verdict: z.enum(["pass", "revise", "reject"]),
           issues: strings,
-          note: text,
+          note: text.optional(),
         }),
       )
       .max(12),

@@ -236,6 +236,24 @@ export class Store {
       )
       .run(b.day, tokens);
   }
+  settleReservation(day: string, reservation: number, usage: number, jobId?: string) {
+    // A provider-reported usage total is the only basis for returning unused
+    // headroom. Unknown usage and interrupted calls keep the full reservation.
+    if (!Number.isSafeInteger(usage) || usage <= 0) return;
+    const charged = Math.max(usage + 500, Math.ceil(usage * 1.2));
+    const delta = charged - reservation;
+    this.transaction(() => {
+      this.db.prepare("UPDATE budgets SET reserved=MAX(0,reserved+?) WHERE day=?").run(delta, day);
+      if (jobId) {
+        const job = this.get<Job>("jobs", jobId);
+        if (job) this.put("jobs", jobId, {
+          ...job,
+          reservedTokens: Math.max(0, job.reservedTokens + delta),
+          actualTokens: job.actualTokens + usage,
+        });
+      }
+    });
+  }
   addEvidence(input: unknown, producer: string) {
     const v = evidenceSchema.parse(input);
     const normalized = canonicalUrl(v.url);

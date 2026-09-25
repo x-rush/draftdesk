@@ -69,6 +69,30 @@ test("补证共用总查询预算，失败被记录且缺口写入产物",async(
   assert.ok(db.list<Artifact>("artifacts")[0].unknowns.some(s=>s.includes("补证搜索失败")));
   assert.equal(db.list<any>("job-verification")[0].length,2);
 }));
+test("一个事件的待核实问题不会混入另一事件的产物",async()=>fixture(async db=>{
+  const p={...plan,maxQueries:0};db.put("plans",p.id,p);
+  const a=db.addEvidence(input(1,{title:"产品甲更新"}),"test");
+  const b=db.addEvidence(input(2,{title:"产品乙更新"}),"test");
+  const job=db.enqueue(p.id,[a.id,b.id])!;
+  let stage=0;
+  const draft=(id:string,title:string)=>({...topic,title,evidenceIds:[id],claims:[]});
+  await runJob(db,job,{structured:(async()=>{
+    stage++;
+    if(stage===1)return {clusters:[
+      {label:"产品甲",summary:"甲更新",evidenceIds:[a.id],contradictions:[],missing:["甲价格未知"]},
+      {label:"产品乙",summary:"乙更新",evidenceIds:[b.id],contradictions:[],missing:["乙地区限制"]},
+    ],excluded:[]};
+    if(stage===2)return {items:[draft(a.id,"甲选题"),draft(b.id,"乙选题")],rejected:[]};
+    return {reviews:[{index:0,verdict:"revise",issues:[],note:"待核实"},{index:1,verdict:"revise",issues:[],note:"待核实"}]};
+  }) as any});
+  const artifacts=db.list<Artifact>("artifacts");
+  assert.equal(db.get<Job>("jobs",job.id)?.state,"completed");
+  const first=artifacts.find(x=>x.title==="甲选题")!,second=artifacts.find(x=>x.title==="乙选题")!;
+  assert.ok(first.unknowns.some(x=>x.includes("甲价格未知")));
+  assert.ok(!first.unknowns.some(x=>x.includes("乙地区限制")));
+  assert.ok(second.unknowns.some(x=>x.includes("乙地区限制")));
+  assert.ok(!second.unknowns.some(x=>x.includes("甲价格未知")));
+}));
 test("固定评测区分引用存在、引文匹配与待人工评价，空输出不满分",()=>{
   const baseline=evaluateOutput([topic],evidence);assert.equal(baseline.referenceValidity,1);assert.equal(baseline.semanticQuality,null);
   const forged=structuredClone(topic);forged.claims[0].quote="证据中没有这句话";assert.equal(evaluateOutput([forged],evidence).exactQuoteMatch,0);
