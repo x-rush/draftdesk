@@ -14,13 +14,15 @@ cd draftdesk
 docker compose up -d --build
 ```
 
-正式本机地址 http://127.0.0.1:5173 。`start.cmd` 启动，`stop.cmd` 停止，`verify.cmd` 运行校验。宿主机无需 Node、Python、数据库或全局环境变量。
+正式本机地址 http://127.0.0.1:5173 。`start.cmd` 启动，`stop.cmd` 停止，`verify.cmd` 运行校验。宿主机无需 Node、Python、数据库或全局环境变量。需要换本机端口时，把项目根目录 `.env.example` 复制为 `.env` 修改 `DRAFTDESK_PORT`。
+
+**升级**：`git pull` 后执行 `docker compose up -d --build`，数据库在 `data/` 目录不受重建影响；重大版本有数据迁移时会随启动自动完成，升级前建议按「数据与边界」先备份 `data/`。
 
 Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node Worker 运行长任务，SQLite WAL 保存任务、证据、结果与会话。数据库在 `data/draftdesk.sqlite`，不会随着容器重建丢失。电脑和 Docker 关闭时不采集，重启后只补当天到期任务。
 
 ## 首次使用
 
-1. 模型与设置：填写百炼 Base URL、账号已开通的模型标识和 API Key，保存后测试模型连接。`.env.example` 使用 `qwen3.8-flash`；请以自己账号的可用模型为准，不预设免费额度。这里需要百炼 API Key，不是阿里云 AccessKey ID/Secret。
+1. 模型与设置：填写百炼 Base URL、账号已开通的模型标识和 API Key，保存后测试模型连接。`.env.example` 使用 `qwen3.8-flash`；请以自己账号的可用模型为准，不预设免费额度。这里需要百炼 API Key，不是阿里云 AccessKey ID/Secret。两把密钥的申请步骤、填写位置（页面或环境变量）与常见报错见[密钥获取与配置指南](docs/api-keys.md)。
 2. 数据源：AIHOT 精选/产品动态 RSS、百度热搜、Google Trends 地域热榜、GitHub Trending、Hacker News Top、Product Hunt 新产品 Feed、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。Docker 内另提供 DailyHotApi 聚合补充，知乎、抖音、头条、贴吧、掘金本机试跑可读；B站有过超时但复测成功，微博和快手本机仍失败，这三项默认停用。可在「数据源」逐个检测连接，按需启用并加入研究策略；原平台链接和榜单更新时间会保留，过期或无效榜单会报错。网页搜索另需 Tavily Key；即时热榜的热度不作为跨天增长率。完整操作与排障见[数据源配置指南](docs/data-source-configuration.md)，各来源状态见[热榜来源说明](docs/hotlist-sources.md)。
 3. 研究策略：调整受众、目标、关键词、域名、排除词、回看天数和预算，先手动运行。
 4. 创作活动：在自己的 Chrome / Edge 登录 B站、抖音、快手、小红书创作者中心，打开工作台提供的开源扩展即可进入该平台活动页并采集。扩展默认将活动包送到本机工作台，保留原始快照与历史；也支持 JSON 导出／导入。可对命中关键词的线索单独运行 AI 初筛，查看相关性、缺失证据和条件性内容方向；这不是活动有效性或参与资格证明。过期、未知截止时间和只有摘要的活动不会进入正式推荐分析。新版采集包记录扫描范围；旧包和有限页数采集不能证明已抓全平台最新活动。只有活动中心链接而无单条规则链接的结果需按标题回原平台核对。参见 [四平台活动采集说明](docs/creator-activities.md)。
