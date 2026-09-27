@@ -39,12 +39,21 @@ async function activeTab(){const [tab]=await chrome.tabs.query({active:true,curr
 function platformName(value){try{const host=new URL(value).hostname;return ['www.bilibili.com','member.bilibili.com'].includes(host)?'哔哩哔哩':host==='creator.douyin.com'?'抖音':host==='cp.kuaishou.com'?'快手':host==='creator.xiaohongshu.com'?'小红书':'';}catch{return '';}}
 function isActivityPage(value,platform){try{const current=new URL(value),target=new URL(activityPages[platform]);return current.protocol==='https:'&&current.hostname===target.hostname&&current.pathname===target.pathname;}catch{return false;}}
 let currentBundle;
+let savedPlatforms=[];
+async function saveConnection(){
+ const parsed=new URL($('workbenchUrl').value.trim());
+ if(parsed.protocol!=='http:'||!['127.0.0.1','localhost'].includes(parsed.hostname)||parsed.username||parsed.password||parsed.pathname!=='/'||parsed.search||parsed.hash)throw Error('只能填写本机 http://127.0.0.1:端口 或 http://localhost:端口');
+ await chrome.storage.local.set({draftdeskLocalUrl:parsed.origin,draftdeskAutoSync:$('autoSync').checked});
+}
+async function loadConnection(){const data=await chrome.storage.local.get(['draftdeskLocalUrl','draftdeskAutoSync']);$('workbenchUrl').value=data.draftdeskLocalUrl||'http://127.0.0.1:5173';$('autoSync').checked=data.draftdeskAutoSync!==false;}
 function download(data,name){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
 async function refreshRun(){
  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
  const platform=platformName(tab?.url),onActivityPage=platform&&isActivityPage(tab.url,platform);
  const {draftdeskActivityRuns={}}=await chrome.storage.local.get('draftdeskActivityRuns');
  const run=draftdeskActivityRuns[platform];
+ const syncStarted=Date.parse(run?.syncStartedAt||'');
+ const staleSending=run?.syncState==='sending'&&(!Number.isFinite(syncStarted)||Date.now()-syncStarted>25000);
  $('pageState').className='page-state'+(platform?(onActivityPage?'':' needs-page'):' unsupported');
  $('platformPill').textContent=platform||'未识别到创作者中心';
  $('pageStatus').textContent=onActivityPage?'已在活动页，可以开始采集。':platform?'当前是创作者中心的其他页面，点击下方按钮会打开活动中心并开始采集。':'请选择下方平台，在新标签页登录后打开扩展采集。';
@@ -52,9 +61,18 @@ async function refreshRun(){
  $('auto').disabled=!platform||run?.state==='running';
  $('runStatus').textContent=run?`${platform}：${run.progress||run.state}`:platform?`${platform}尚无采集结果`:'选择平台后显示采集进度';
  currentBundle=run?.state==='completed'?run.bundle:null;
+ savedPlatforms=Object.entries(draftdeskActivityRuns).filter(([,value])=>value.state==='completed'&&value.bundle).map(([name])=>name);
  $('downloadBatch').disabled=!currentBundle;
+ $('sendBatch').disabled=!savedPlatforms.length||(run?.syncState==='sending'&&!staleSending);
+ $('sendBatch').textContent=currentBundle?`发送${platform}本次结果`:`发送已保存的 ${savedPlatforms.length} 个平台结果`;
+ $('syncStatus').textContent=run?.syncState==='sent'?`${platform}已送达工作台，可在创作活动中预览。`:staleSending?`${platform}上次发送未收到确认；可重试，原始结果仍保留。`:run?.syncState==='sending'?`${platform}正在发送到工作台…`:run?.syncState==='failed'?`${platform}发送失败：${run.syncError}。可重试或导出 JSON。`:!platform&&savedPlatforms.length?`已保存 ${savedPlatforms.join('、')} 的采集结果；可直接发送。`:'';
 }
-setInterval(()=>void refreshRun(),1500);void refreshRun();
+setInterval(()=>void refreshRun(),1500);void loadConnection();void refreshRun();
+$('workbenchUrl').onchange=()=>{void saveConnection().catch(e=>{$('connectionStatus').textContent=e.message;});};
+$('autoSync').onchange=()=>{void saveConnection().catch(e=>{$('connectionStatus').textContent=e.message;});};
+$('checkWorkbench').onclick=async()=>{try{await saveConnection();$('connectionStatus').textContent='正在连接本地工作台…';const result=await chrome.runtime.sendMessage({type:'draftdesk:check-workbench'});$('connectionStatus').textContent=result?.ok?'连接成功。采集完成后可直接送达。':result?.error||'连接失败';}catch(e){$('connectionStatus').textContent=e.message;}};
+$('openWorkbench').onclick=async()=>{try{await saveConnection();const result=await chrome.runtime.sendMessage({type:'draftdesk:open-workbench'});if(!result?.ok)throw Error(result?.error||'未能打开工作台');window.close();}catch(e){$('connectionStatus').textContent=e.message;}};
+$('sendBatch').onclick=async()=>{try{await saveConnection();$('syncStatus').textContent='已开始后台发送，正在等待工作台确认…';const [tab]=await chrome.tabs.query({active:true,currentWindow:true});const platform=platformName(tab?.url);const result=await chrome.runtime.sendMessage(currentBundle&&platform?{type:'draftdesk:send-batch',platform}:{type:'draftdesk:send-all'});if(!result?.ok)throw Error(result?.error||'未能启动后台发送');}catch(e){$('syncStatus').textContent=`发送未启动：${e.message}。本地结果仍可导出 JSON。`;}};
 $('auto').onclick=async()=>{try{const tab=await activeTab();const platform=platformName(tab.url);const keywords=$('keywords').value.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean).slice(0,20);const maxPages=Math.max(1,Math.min(5,Number($('maxPages').value)||2));$('auto').disabled=true;$('runStatus').textContent=`${platform}：正在准备官方活动页…`;const result=await chrome.runtime.sendMessage({type:'draftdesk:start-collection',tabId:tab.id,platform,config:{keywords,maxPages,maxItems:100}});if(!result?.ok)throw Error(result?.error||'未能启动采集');await refreshRun();}catch(e){$('auto').disabled=false;$('runStatus').textContent=e.message;}};
 for(const button of document.querySelectorAll?.('[data-platform]')||[]){button.onclick=()=>chrome.tabs.create({url:activityPages[button.dataset.platform],active:true});}
 $('downloadBatch').onclick=()=>{if(currentBundle)download(currentBundle,'draftdesk-activities-batch.json');};

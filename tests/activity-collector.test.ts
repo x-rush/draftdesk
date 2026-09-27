@@ -22,6 +22,9 @@ test("浏览器采集器保留排除项供核对，模型前剔除过期活动�
  assert.equal((Object.values(stored.draftdeskActivityRuns||{})[0] as any)?.state,"completed",(Object.values(stored.draftdeskActivityRuns||{})[0] as any)?.progress);
  const bundle=(Object.values(stored.draftdeskActivityRuns||{})[0] as any).bundle;
  assert.equal(bundle.items.length,3);
+ assert.equal(bundle.coverage.scope,"current_month");
+ assert.equal(bundle.coverage.scannedPages,1);
+ assert.equal(bundle.coverage.hasMore,true);
  assert.match(bundle.items[0].text,/AI文学视频赛道/);
  assert.equal(bundle.items[0].endsAt,"2026-09-30T15:59:59.000Z");
  assert.equal(bundle.items.find((x:any)=>x.title==="AI视频往年活动")?.endsAt,"2000-09-20T15:59:59.000Z");
@@ -29,20 +32,78 @@ test("浏览器采集器保留排除项供核对，模型前剔除过期活动�
  assert.equal(activityBatchDecision(bundle.items[2],["AI视频"]).reason,"未命中目标关键词");
 });
 
-test("B站采集读取已渲染卡片，并保留其他平台已导出的结果",async()=>{
+function makeBiliDocument(pages:Array<null|Array<{title:string;url:string;dateText:string}>>){
+ let created=0;
+ return {createElement:(tag:string)=>{ if(tag!=="iframe")return {style:{cssText:""}}; const frame={style:{cssText:""},src:"",contentDocument:null as unknown,remove(){}}; const cards=pages[created++]; if(cards){ frame.contentDocument={querySelectorAll:(sel:string)=>sel==='h2 a[href*="/blackboard/era/"]'?cards.map(c=>({textContent:c.title,getAttribute:()=>c.url,closest:()=>({querySelector:()=>({textContent:c.dateText})})})):[]}; } return frame; }, body:{appendChild(){},removeChild(){}}};
+}
+
+test("B站用隐藏 iframe 逐页读取卡片并抓取详情，保留其他平台已导出的结果",async()=>{
  let listener:any;const stored:any={draftdeskActivityRuns:{抖音:{state:"completed",bundle:{items:[{title:"之前的抖音活动"}]}}}};
- const title="AI 视频创作者激励计划",url="https://www.bilibili.com/blackboard/era/abc.html";
- const anchor={textContent:title,getAttribute:()=>url,closest:()=>({querySelector:()=>({textContent:"【进行中】 2026-09-01 至 2099-09-30"})})};
- const chrome={runtime:{onMessage:{addListener(fn:any){listener=fn;}},sendMessage:async()=>({ok:true,result:{text:"活动规则：面向 AI 视频创作者，使用活动话题投稿视频，符合活动主题和公开发布要求后可参与创作激励。投稿时间与审核规则以官方页面为准。"}})},storage:{local:{get:async()=>stored,set:async(value:any)=>Object.assign(stored,value)}}};
- const document={querySelectorAll:()=>[anchor],querySelector:()=>null};
+ let detailCalls=0;
+ const document=makeBiliDocument([[{title:"AI 视频创作者激励计划",url:"https://www.bilibili.com/blackboard/era/abc.html",dateText:"【进行中】 2026-09-01 至 2099-09-30"}]]);
+ const chrome={runtime:{onMessage:{addListener(fn:any){listener=fn;}},sendMessage:async(msg:any)=>{if(msg.type==="draftdesk:read-url"){detailCalls++;return {ok:true,result:{url:msg.url,text:"活动规则：面向 AI 视频创作者，使用活动话题投稿视频，符合活动主题和公开发布要求后可参与创作激励。投稿时间与审核规则以官方页面为准。"}};}return {};}},storage:{local:{get:async()=>stored,set:async(value:any)=>Object.assign(stored,value)}}};
  const code=readFileSync(new URL("../public/activity-collector/auto.js",import.meta.url),"utf8");
- runInNewContext(code,{chrome,document,location:{hostname:"www.bilibili.com",origin:"https://www.bilibili.com"},setTimeout,Date,URL,console});
+ runInNewContext(code,{chrome,document,location:{hostname:"www.bilibili.com",origin:"https://www.bilibili.com"},setTimeout:(fn: ()=>void)=>fn(),Date,URL,console});
  listener({type:"draftdesk:auto",config:{keywords:["AI"],maxPages:1,maxItems:20}},{},()=>{});
- for(let i=0;i<30 && !["completed","failed"].includes(stored.draftdeskActivityRuns?.["哔哩哔哩"]?.state);i++)await new Promise(resolve=>setTimeout(resolve,100));
- assert.equal(stored.draftdeskActivityRuns?.["哔哩哔哩"]?.state,"completed",stored.draftdeskActivityRuns?.["哔哩哔哩"]?.progress);
- assert.equal(stored.draftdeskActivityRuns["哔哩哔哩"].bundle.items[0].title,title);
+ for(let i=0;i<60 && !["completed","failed"].includes(stored.draftdeskActivityRuns?.["哔哩哔哩"]?.state);i++)await new Promise(resolve=>setTimeout(resolve,50));
+ const run=stored.draftdeskActivityRuns["哔哩哔哩"];
+ assert.equal(run.state,"completed",run.progress);
+ assert.equal(run.bundle.items[0].title,"AI 视频创作者激励计划");
+ assert.equal(run.bundle.items[0].completeness,"detail");
+ assert.equal(run.bundle.coverage.scannedPages,1);
+ assert.equal(detailCalls,1);
  assert.equal(stored.draftdeskActivityRuns["抖音"].bundle.items[0].title,"之前的抖音活动");
- assert.equal(activityBatchDecision(stored.draftdeskActivityRuns["哔哩哔哩"].bundle.items[0],["AI"]).eligible,true);
+ assert.equal(activityBatchDecision(run.bundle.items[0],["AI"]).eligible,true);
+});
+
+test("B站按配置页数用 iframe 逐页扫描，全部过期的页面只警告不中断",async()=>{
+ let listener:any;const stored:any={};
+ const pages=[
+  [{title:"近期 AI 创作征集",url:"https://www.bilibili.com/blackboard/era/1.html",dateText:"【进行中】 2026-09-24 至 2099-09-30"}],
+  [{title:"2025 年旧活动",url:"https://www.bilibili.com/blackboard/era/2.html",dateText:"【已结束】 2025-01-01 至 2025-02-01"}],
+  [{title:"2024 年旧活动",url:"https://www.bilibili.com/blackboard/era/3.html",dateText:"【已结束】 2024-01-01 至 2024-02-01"}],
+  [{title:"更旧但长期开放的活动",url:"https://www.bilibili.com/blackboard/era/4.html",dateText:"【进行中】 2023-01-01 至 2099-12-31"}],
+  null,
+ ];
+ const document=makeBiliDocument(pages);
+ const chrome={runtime:{onMessage:{addListener(fn:any){listener=fn;}},sendMessage:async()=>({ok:true,result:{text:"官方规则：参与 AI 创作活动，按指定主题和时间提交原创作品。"}})},storage:{local:{get:async()=>stored,set:async(value:Record<string,unknown>)=>Object.assign(stored,value)}}};
+ const code=readFileSync(new URL("../public/activity-collector/auto.js",import.meta.url),"utf8");
+ runInNewContext(code,{chrome,document,location:{hostname:"www.bilibili.com",origin:"https://www.bilibili.com"},setTimeout:(fn: ()=>void)=>fn(),Date,URL,console});
+ listener?.({type:"draftdesk:auto",config:{keywords:["AI"],maxPages:5,maxItems:100}},{},()=>{});
+ for(let i=0;i<60;i++){
+  const runs=stored.draftdeskActivityRuns as Record<string,{state:string}>|undefined;
+  if(["completed","failed"].includes(runs?.["哔哩哔哩"]?.state||""))break;
+  await new Promise(resolve=>setTimeout(resolve,50));
+ }
+ const runs=stored.draftdeskActivityRuns as Record<string,{state:string;progress:string;bundle:{items:Array<{title:string}>;coverage:{scannedPages:number};warnings:string[]}}>;
+ const result=runs["哔哩哔哩"];
+ assert.equal(result.state,"completed",result.progress);
+ // 配置的页数是硬预算：中间页全部过期也继续扫完，只在警告里说明。
+ assert.equal(result.bundle.coverage.scannedPages,4);
+ assert.ok(result.bundle.warnings.some((w: string)=>/活动截止日都已过期/.test(w)));
+ assert.ok(result.bundle.warnings.some((w: string)=>/第 5 页/.test(w)));
+ assert.equal(result.bundle.items.length,4);
+ assert.equal(result.bundle.items.some(item=>item.title==="更旧但长期开放的活动"),true);
+});
+
+test("B站第 1 页加载失败时如实报告并完成空批次",async()=>{
+ let listener:any;const stored:any={};
+ const document=makeBiliDocument([null]);
+ const chrome={runtime:{onMessage:{addListener(fn:any){listener=fn;}},sendMessage:async()=>({})},storage:{local:{get:async()=>stored,set:async(value:Record<string,unknown>)=>Object.assign(stored,value)}}};
+ const code=readFileSync(new URL("../public/activity-collector/auto.js",import.meta.url),"utf8");
+ runInNewContext(code,{chrome,document,location:{hostname:"www.bilibili.com",origin:"https://www.bilibili.com"},setTimeout:(fn: ()=>void)=>fn(),Date,URL,console});
+ listener?.({type:"draftdesk:auto",config:{keywords:["AI"],maxPages:2,maxItems:100}},{},()=>{});
+ for(let i=0;i<60;i++){
+  const runs=stored.draftdeskActivityRuns as Record<string,{state:string}>|undefined;
+  if(["completed","failed"].includes(runs?.["哔哩哔哩"]?.state||""))break;
+  await new Promise(resolve=>setTimeout(resolve,50));
+ }
+ const runs=stored.draftdeskActivityRuns as Record<string,{state:string;progress:string;bundle:{items:unknown[];coverage:{scannedPages:number};warnings:string[]}}>;
+ const result=runs["哔哩哔哩"];
+ assert.equal(result.state,"completed",result.progress);
+ assert.equal(result.bundle.coverage.scannedPages,0);
+ assert.equal(result.bundle.items.length,0);
+ assert.ok(result.bundle.warnings.some((w: string)=>/第 1 页：20 秒内未渲染出活动卡片/.test(w)));
 });
 
 test("没有明确年份的小红书活动只作待核线索",async()=>{
@@ -89,6 +150,46 @@ test("小红书官方规则 iframe 可补齐年份和正文",async()=>{
  assert.equal(item.completeness,"detail");
  assert.equal(item.endsAt,"2026-09-30T15:59:59.000Z");
  assert.equal(activityBatchDecision(item,["AI"],Date.parse("2026-09-25T00:00:00Z")).eligible,true);
+});
+
+test("快手下滑加载更多：逐屏收集，详情页不重复打开，条数上限生效",async()=>{
+ let listener:any;const stored:any={};let detailCalls=0;
+ const mk=(i:number)=>({querySelector:()=>({textContent:"快手 AI 征集活动 "+i,closest:()=>({href:`https://cp.kuaishou.com/creative/detail-${i}`}),querySelector:()=>null,click(){}})});
+ const all=Array.from({length:200},(_,i)=>mk(i));
+ let loaded=20,defer=0,grow=0;
+ const document={body:{innerText:"共 200 个活动"},querySelectorAll:(sel:string)=>{if(sel!==".list_item")return [];if(defer>0){defer--;if(defer===0)loaded=Math.min(200,loaded+grow);}return all.slice(0,loaded);},querySelector:()=>null};
+ const chrome={runtime:{onMessage:{addListener(fn:any){listener=fn;}},sendMessage:async(msg:any)=>{if(msg.type==="draftdesk:read-url"){detailCalls++;return {ok:true,result:{url:msg.url,text:"官方规则：参与创作活动，按要求投稿原创作品，遵守平台 AI 内容标识规范，奖励以官方活动页公示与审核结果为准。"}};}return {};}},storage:{local:{get:async()=>stored,set:async(v:any)=>Object.assign(stored,v)}}};
+ const code=readFileSync(new URL("../public/activity-collector/auto.js",import.meta.url),"utf8");
+ runInNewContext(code,{chrome,document,location:{hostname:"cp.kuaishou.com",href:"https://cp.kuaishou.com/creative/activity-calendar"},window:{scrollBy(){grow=20;defer=2;}},innerHeight:800,setTimeout,Date,URL,console});
+ listener({type:"draftdesk:auto",config:{keywords:["AI"],maxPages:5,maxItems:100}},{},()=>{});
+ for(let i=0;i<200&&(Object.values(stored.draftdeskActivityRuns||{})[0] as any)?.state!=="completed"&&(Object.values(stored.draftdeskActivityRuns||{})[0] as any)?.state!=="failed";i++)await new Promise(r=>setTimeout(r,100));
+ const run=(Object.values(stored.draftdeskActivityRuns||{})[0] as any);
+ assert.equal(run.state,"completed",run.progress);
+ assert.equal(run.bundle.coverage.scannedPages,5);
+ assert.equal(run.bundle.items.length,100);
+ assert.equal(detailCalls,100);
+ assert.equal(run.bundle.coverage.hasMore,true);
+});
+
+test("快手下滑到列表末尾没有新内容时如实停止",async()=>{
+ let listener:any;const stored:any={};let detailCalls=0;
+ const mk=(i:number)=>({querySelector:()=>({textContent:"快手 AI 征集活动 "+i,closest:()=>({href:`https://cp.kuaishou.com/creative/detail-${i}`}),querySelector:()=>null,click(){}})});
+ const all=Array.from({length:20},(_,i)=>mk(i));
+ let defer=0;
+ const document={body:{innerText:"共 20 个活动"},querySelectorAll:(sel:string)=>{if(sel!==".list_item")return [];if(defer>0){defer--;}return all.slice(0);},querySelector:()=>null};
+ const chrome={runtime:{onMessage:{addListener(fn:any){listener=fn;}},sendMessage:async(msg:any)=>{if(msg.type==="draftdesk:read-url"){detailCalls++;return {ok:true,result:{url:msg.url,text:"官方规则：参与创作活动，按要求投稿原创作品，遵守平台 AI 内容标识规范，奖励以官方活动页公示与审核结果为准。"}};}return {};}},storage:{local:{get:async()=>stored,set:async(v:any)=>Object.assign(stored,v)}}};
+ const code=readFileSync(new URL("../public/activity-collector/auto.js",import.meta.url),"utf8");
+ runInNewContext(code,{chrome,document,location:{hostname:"cp.kuaishou.com",href:"https://cp.kuaishou.com/creative/activity-calendar"},window:{scrollBy(){defer=1;}},innerHeight:800,setTimeout,Date,URL,console});
+ listener({type:"draftdesk:auto",config:{keywords:["AI"],maxPages:5,maxItems:100}},{},()=>{});
+ for(let i=0;i<120&&(Object.values(stored.draftdeskActivityRuns||{})[0] as any)?.state!=="completed"&&(Object.values(stored.draftdeskActivityRuns||{})[0] as any)?.state!=="failed";i++)await new Promise(r=>setTimeout(r,100));
+ const run=(Object.values(stored.draftdeskActivityRuns||{})[0] as any);
+ assert.equal(run.state,"completed",run.progress);
+ assert.equal(run.bundle.coverage.scannedPages,1);
+ assert.equal(run.bundle.items.length,20);
+ assert.equal(detailCalls,20);
+ assert.equal(run.bundle.coverage.hasMore,false);
+ assert.match(run.bundle.coverage.note,/已到当前列表末尾/);
+ assert.ok(run.bundle.warnings.some((w: string)=>/没有继续加载新活动/.test(w)));
 });
 
 test("抖音完整官方弹窗虽无单条链接仍可待验证分析",async()=>{

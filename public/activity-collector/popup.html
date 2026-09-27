@@ -15,11 +15,17 @@
     <section class="body">
       <div class="page-state" id="pageState" aria-live="polite"><span class="state-dot" aria-hidden="true"></span><div><strong id="platformPill">检测当前页面</strong><p id="pageStatus">正在识别官方平台…</p></div></div>
       <div class="section-heading"><h1>创作活动</h1><span>官方活动中心</span></div>
-      <p class="intro">读取你已登录账号可见的活动与规则，过期或日期不明的线索留给工作台核对。</p>
+      <p class="intro">读取近期活动与规则；最多扫描设定的页数。B 站连续遇到已过期的倒序列表页会提前停止，无需翻完整个历史档案。</p>
       <div class="field"><label for="keywords">关注方向</label><textarea id="keywords" rows="2" spellcheck="false">AI,AIGC,AI视频,Vibe Coding,vibecoding,AI编程,AI工具</textarea><small>用逗号分隔，最多 20 个关键词</small></div>
       <div class="field compact"><label for="maxPages">扫描范围</label><div class="range-control"><input id="maxPages" type="number" min="1" max="5" value="2"><span>页 / 屏，最多 5</span></div></div>
       <button class="primary" id="auto" type="button" disabled>检测活动页中…</button>
       <div class="run-state" role="status" aria-live="polite"><span class="run-icon" aria-hidden="true">●</span><span id="runStatus">尚未采集</span></div>
+      <div class="workbench-connect"><div class="section-heading small"><h2>本地工作台</h2><span>采集后自动送达待核列表</span></div>
+        <label for="workbenchUrl">工作台地址</label><input id="workbenchUrl" type="url" value="http://127.0.0.1:5173" spellcheck="false">
+        <label class="check-row"><input id="autoSync" type="checkbox" checked><span>采集完成后自动发送；不会自动运行 AI</span></label>
+        <div class="connect-actions"><button id="openWorkbench" type="button">打开工作台</button><button id="checkWorkbench" type="button">检查连接</button><button id="sendBatch" type="button" disabled>发送本次结果</button></div>
+        <p id="connectionStatus" class="connection-status" role="status"></p><p id="syncStatus" class="connection-status" role="status"></p>
+      </div>
       <button class="secondary" id="downloadBatch" type="button" disabled>导出本平台采集结果</button>
       <div class="platform-section"><div class="section-heading small"><h2>打开其他平台</h2><span>在浏览器中继续</span></div><div class="platform-grid" id="openGrid">
         <button type="button" data-platform="哔哩哔哩">哔哩哔哩</button><button type="button" data-platform="抖音">抖音</button>
@@ -34,7 +40,7 @@
         <label for="text">规则正文</label><textarea id="text" rows="5" maxlength="12000"></textarea>
         <button id="save" type="button" disabled>导出单条活动 JSON</button>
       </div></details>
-      <p class="footnote">导出后返回拾题「创作活动」合并预览，再决定是否运行 AI 分析。扩展不会报名、发布或读取 Cookie。</p>
+      <p class="footnote">同步结果会出现在拾题「创作活动」的待核预览；也可继续导出 JSON 手动导入。你决定何时运行 AI 分析。扩展不会报名、发布或读取 Cookie。</p>
     </section>
   </main>
   <script src="popup.js"></script>

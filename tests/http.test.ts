@@ -143,3 +143,22 @@ test("HTTP 拒绝跨站提交与超限正文，下载技能包是真实 tar", as
   assert.equal(raw.subarray(257, 262).toString(), "ustar");
   assert.ok(raw.includes(Buffer.from("scripts/submit.py")));
 });
+test("插件活动包同源入库、重试去重，接收时不启动付费分析",async()=>{
+ const beforeJobs=store().list("jobs").length,beforeBudget=store().dayBudget().reserved;
+ const bundle={schemaVersion:"draftdesk.activity-batch.v1",platform:"小红书",keywords:["AI"],warnings:["详情待核"],items:[{platform:"小红书",title:"AI 小工具创作活动",url:"https://creator.xiaohongshu.com/new/events",text:"列表摘要",dateText:"09-01 至 09-30",completeness:"summary",capturedAt:"2026-09-26T00:00:00.000Z"}]};
+ const first=await request("activity-batches",bundle,{origin:"http://127.0.0.1:5173"});
+ assert.equal(first.status,201);
+ const saved=await first.json();
+ assert.equal(saved.count,1);
+ const again=await request("activity-batches",bundle);
+ assert.equal(again.status,200);
+ assert.equal((await again.json()).duplicate,true);
+ const list=await (await request("activity-batches")).json();
+ assert.equal(list.filter((x:{id:string})=>x.id===saved.id).length,1);
+ const detail=await (await request("activity-batches/"+saved.id)).json();
+ assert.deepEqual(detail.bundle,bundle);
+ assert.equal(store().list("jobs").length,beforeJobs);
+ assert.equal(store().dayBudget().reserved,beforeBudget);
+ assert.equal((await request("activity-batches",bundle,{origin:"https://evil.example"})).status,403);
+ assert.equal((await request("activity-batches",{...bundle,items:[{...bundle.items[0],platform:"抖音"}]})).status,400);
+});

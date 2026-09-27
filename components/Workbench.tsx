@@ -226,7 +226,11 @@ export function Workbench() {
   function navigate(v: string) {
     window.history.pushState(null,"","?view="+v);
     setCreation("all");setJobId("");setRunId("");
-    setQuality("active");setActivityTime(v==="activities"?"actionable":"all");
+    setQuality("active");
+    // Keep the full activity result set visible when entering the section. Users can
+    // narrow it with the explicit time filter, but navigation should never hide old
+    // or unverified records silently.
+    setActivityTime("all");
     setView(v);
     setPage(1);setJobsPage(1);setReceiptsPage(1);
     setHotspotPage(1);
@@ -448,7 +452,7 @@ export function Workbench() {
                       指标来自原始来源，保留地域、时间与单位。不把单次上榜解释为增长，也不把热度等同付费需求。
                     </p>
                   )}
-                  {view === "activities" && <p className="context-note">默认展示当前可参与、推荐或待验证的活动；切换「活动时间」可查看截止时间未知与已结束的历史记录，切换「质量状态」可查看已否决及其原因。</p>}
+                  {view === "activities" && <p className="context-note">默认展示全部活动结果；使用「活动时间」和「质量状态」筛选当前可参与、待验证、已结束或已否决的记录。原始快照请在上方「创作活动」资料视图中查看。</p>}
                   {view === "ideas" && (
                     <p className="context-note">
                       此区域始终私有。每个机会都应包含现有替代、最小流程、实验与停止条件。

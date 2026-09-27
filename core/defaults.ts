@@ -85,8 +85,8 @@ const base = {
   maxEvidence: 18,
   maxQueries: 2,
   maxItems: 4,
-  maxModelCalls: 4,
-  maxTokens: 200000,
+  maxModelCalls: 8,
+  maxTokens: 400000,
   scheduleEnabled: false,
   dailyTime: "01:00",
   publishPolicy: "manual" as const,
@@ -140,5 +140,5 @@ export const defaultPlans: Plan[] = [
     maxItems: 3,
     dailyTime: "01:45",
   },
-  {...base,id:"creator-activities",name:"AI 与 Vibe Coding 创作活动",kind:"activities",goal:"搜罗四平台适合个人AI工作流、Vibe Coding、独立开发、软件实测创作者参与的流量激励与征稿活动。核对投稿时间、资格、奖励和原始规则链接；每活动生成3–5个内容方向，资料不足不凑数。",audience:"个人创作者与独立开发者；粉丝数、学生身份及平台邀约资格未知",sourceIds:["web"],keywords:["B站 AI 创作大赛","抖音 AI 创作活动","快手 AI 创作大赛","小红书 AI 编程 活动"],includeDomains:["bilibili.com","douyin.com","douyinstatic.com","kuaishou.com","xiaohongshu.com"],lookbackDays:365,maxQueries:8,maxEvidence:24,maxItems:4,maxModelCalls:6,dailyTime:"02:30"},
+  {...base,id:"creator-activities",name:"AI 与 Vibe Coding 创作活动",kind:"activities",goal:"搜罗四平台适合个人AI工作流、Vibe Coding、独立开发、软件实测创作者参与的流量激励与征稿活动。核对投稿时间、资格、奖励和原始规则链接；每活动生成3–5个内容方向，资料不足不凑数。",audience:"个人创作者与独立开发者；粉丝数、学生身份及平台邀约资格未知",sourceIds:["web"],keywords:["B站 AI 创作大赛","抖音 AI 创作活动","快手 AI 创作大赛","小红书 AI 编程 活动"],includeDomains:["bilibili.com","douyin.com","douyinstatic.com","kuaishou.com","xiaohongshu.com"],lookbackDays:365,maxQueries:8,maxEvidence:24,maxItems:4,maxModelCalls:8,dailyTime:"02:30"},
 ];

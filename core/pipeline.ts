@@ -1,4 +1,5 @@
 import { Store, AppError, now } from "./store";
+import type { z } from "zod";
 import { collect, searchWeb } from "./sources";
 import { supplementQueries } from "./research-policy";
 import { type ResearchEvent, type MetricSnapshot, metricComparison } from "./history";
@@ -209,20 +210,31 @@ export async function runJob(
       "running",
       "独立审稿与确定性引用检查；不足项留在待审区",
     );
-    const review = await call(
-      db,
-      job,
-      skills["quality-editor"].content,
-      { items: batch.items, evidence: material, plan: job.plan, profile: db.config().profile, clusters, verification, history,
-        evidenceChecks: batch.items.map(item=>({title:item.title,checks:evidenceReadiness(item,evidence)})) },
-      reviewSchema,
-      signal,
-      (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 5000 }),
-    );
-    const indexes = review.reviews.map((r) => r.index);
+    let review: z.infer<typeof reviewSchema> | null = null;
+    let reviewSkipped = "";
+    try {
+      review = await call(
+        db,
+        job,
+        skills["quality-editor"].content,
+        { items: batch.items, evidence: material, plan: job.plan, profile: db.config().profile, clusters, verification, history,
+          evidenceChecks: batch.items.map(item=>({title:item.title,checks:evidenceReadiness(item,evidence)})) },
+        reviewSchema,
+        signal,
+        (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 5000 }),
+      );
+    } catch (error) {
+      // 前三个付费阶段已完成，草稿已入库。审稿是最后一环：预算耗尽时按
+      // "待人工复核" 交付已产出的草稿，而不是把整个任务作废。
+      if (signal.aborted || !(error instanceof AppError) || !error.message.includes("预算")) throw error;
+      reviewSkipped = error.message;
+      db.step(job.id, "质量审核", "running", `审稿未执行：${reviewSkipped}；产物按待审保存，需人工复核。`);
+    }
+    const indexes = (review?.reviews ?? []).map((r) => r.index);
     if (
-      new Set(indexes).size !== indexes.length ||
-      indexes.some((i) => i >= batch.items.length)
+      review &&
+      (new Set(indexes).size !== indexes.length ||
+        indexes.some((i) => i >= batch.items.length))
     )
       throw new AppError("审稿结果索引无效。");
     signal.throwIfAborted();
@@ -230,18 +242,20 @@ export async function runJob(
       if (db.get<Job>("jobs", job.id)?.cancelRequested)
         throw new AppError("任务已取消");
       batch.items.forEach((a, index) => {
-        const r = review.reviews.find((x) => x.index === index);
+        const r = review?.reviews.find((x) => x.index === index);
         const issues = [
           ...qualityIssues(a, evidence),
           ...(a.kind === "trend" && !history.metrics.some(m=>a.evidenceIds.includes(m.evidenceId) && m.comparison.percent !== null)
             ? ["历史指标不足或口径不可比；这是热词线索，不是已验证的增长趋势。"] : []),
           ...(r?.issues || []),
           ...(r && !r.note && !r.issues.length ? ["审稿未提供判断依据，需人工复核。"] : []),
-          ...(!r
-            ? ["缺少审稿结果"]
-            : r.verdict !== "pass"
-              ? ["审稿建议：" + r.verdict]
-              : []),
+          ...(!review
+            ? ["缺少审稿结果：" + reviewSkipped + "；需人工复核。"]
+            : !r
+              ? ["缺少审稿结果"]
+              : r.verdict !== "pass"
+                ? ["审稿建议：" + r.verdict]
+                : []),
         ];
         db.saveArtifact(
           a,
@@ -257,7 +271,7 @@ export async function runJob(
       job.id,
       "完成",
       "completed",
-      `${batch.items.length} 条产物已进入工作台；全部默认私有`,
+      `${batch.items.length} 条产物已进入工作台${review ? "" : "；审稿未执行，全部待人工复核"}；全部默认私有`,
     );
     db.patchJob(job.id, { state: "completed", outcome:"produced", finishedAt: now() });
   } catch (e) {

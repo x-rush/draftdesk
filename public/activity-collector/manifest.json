@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "DraftDesk 活动页采集",
-  "version": "1.4.0",
-  "description": "在已登录的官方创作者中心打开活动页、读取规则并导出给自己的工作台。",
+  "version": "1.6.8",
+  "description": "在已登录的官方创作者中心读取活动规则，自动发送到本机 DraftDesk 或导出 JSON。",
   "permissions": ["activeTab", "scripting", "tabs", "storage"],
   "host_permissions": [
     "https://www.bilibili.com/*",
@@ -10,7 +10,9 @@
     "https://creator.douyin.com/*",
     "https://cp.kuaishou.com/*",
     "https://creator.xiaohongshu.com/*",
-    "https://fe.xiaohongshu.com/ditto/vincent/*"
+    "https://fe.xiaohongshu.com/ditto/vincent/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "icons": {"16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png"},
   "background": {"service_worker": "background.js"},

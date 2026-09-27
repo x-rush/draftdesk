@@ -146,8 +146,8 @@ export function PlanEditor({
               ["maxQueries", "最多网页搜索次数", 0, 8],
               ["maxEvidence", "最多候选证据", 3, 60],
               ["maxItems", "最多研究产物", 1, 8],
-              ["maxModelCalls", "最多模型调用（含修复）", 3, 6],
-              ["maxTokens", "单任务 token 预留上限", 30000, 200000],
+              ["maxModelCalls", "最多模型调用（含修复）", 3, 12],
+              ["maxTokens", "单任务 token 预留上限", 30000, 1000000],
             ] as const
           ).map(([key, label, min, max]) => (
             <Field label={label} key={key}>

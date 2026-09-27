@@ -12,8 +12,22 @@ export const activityBatchItemSchema=z.object({
  sourceLocator:z.string().trim().min(3).max(200).optional(),
  capturedAt:z.string().datetime(),
 }).strict();
-export const activityBatchSchema=z.object({schemaVersion:z.literal("draftdesk.activity-batch.v1"),keywords:z.array(z.string().trim().min(1).max(80)).max(20),platform:z.string().max(30),items:z.array(activityBatchItemSchema).max(100),warnings:z.array(z.string().max(500)).max(50).default([])}).strict();
+export const activityBatchSchema=z.object({schemaVersion:z.literal("draftdesk.activity-batch.v1"),keywords:z.array(z.string().trim().min(1).max(80)).max(20),platform:z.string().max(30),items:z.array(activityBatchItemSchema).max(100),warnings:z.array(z.string().max(500)).max(50).default([]),coverage:z.object({scope:z.enum(["pages","screens","current_month"]),requestedPages:z.number().int().min(1).max(5),scannedPages:z.number().int().min(0).max(5),hasMore:z.boolean().nullable().default(null),visibleTotal:z.number().int().min(0).max(100000).nullable().default(null),note:z.string().max(300)}).strict().optional()}).strict();
 export type ActivityBatchItem=z.infer<typeof activityBatchItemSchema>;
+
+export function activityBatchMatches(item:ActivityBatchItem,keywords:string[]){
+ return !keywords.length||keywords.some(word=>(item.title+" "+item.text).toLocaleLowerCase().includes(word.toLocaleLowerCase()));
+}
+
+export function activityBatchLead(item:ActivityBatchItem,keywords:string[],at=Date.now()){
+ return activityBatchMatches(item,keywords)&&(!item.endsAt||Date.parse(item.endsAt)>=at);
+}
+
+export type ActivityMaterialStatus="live"|"expired"|"unknown";
+export function activityMaterialStatus(item:ActivityBatchItem,at=Date.now()):ActivityMaterialStatus{
+ if(!item.endsAt)return "unknown";
+ return Number.isFinite(Date.parse(item.endsAt))&&Date.parse(item.endsAt)>=at?"live":"expired";
+}
 
 export function manualActivityDeadline(date:string,sourceText:string,at=Date.now()){
  const match=/^(20\d{2})-(\d{2})-(\d{2})$/.exec(date);
@@ -33,7 +47,7 @@ export function activityBatchDecision(item:ActivityBatchItem,keywords:string[],a
  const deadline=Date.parse(item.endsAt);
  if(!Number.isFinite(deadline))return {eligible:false,reason:"截止日期无效"};
  if(deadline<at)return {eligible:false,reason:"活动已过期"};
- if(keywords.length&&!keywords.some(word=>(item.title+" "+item.text).toLocaleLowerCase().includes(word.toLocaleLowerCase())))return {eligible:false,reason:"未命中目标关键词"};
+ if(!activityBatchMatches(item,keywords))return {eligible:false,reason:"未命中目标关键词"};
  if(item.completeness!=="detail"||item.text.trim().length<50)return {eligible:false,reason:"只有列表摘要，缺少可分析的规则详情"};
  if(isActivityIndexUrl(item.url)){
   if(item.sourceLocator!==item.title)return {eligible:false,reason:"只有活动中心地址，缺少可按标题定位的完整官方规则"};

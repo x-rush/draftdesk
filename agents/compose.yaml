@@ -26,10 +26,28 @@ services:
       OPENAI_MODEL: ${BAILIAN_MODEL:-qwen3.8-flash}
       HERMES_DASHBOARD: ${HERMES_DASHBOARD:-0}
       SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
+      # Dashboard on a non-loopback bind REQUIRES an auth provider (the gateway
+      # fails closed without one). Basic auth is the zero-infra option.
+      # Leave these empty while HERMES_DASHBOARD=0 — they are then inert.
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}
+      HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}
+      # Bind the OpenAI-compatible API server to all interfaces so the published
+      # port 8642 works behind Docker port-mapping (default is loopback-only,
+      # which only works with network_mode: host). API_SERVER_KEY is mandatory
+      # in hermes when the API server is not bound to localhost.
+      API_SERVER_HOST: ${API_SERVER_HOST:-0.0.0.0}
+      API_SERVER_KEY: ${API_SERVER_KEY:-}
     ports:
       - "127.0.0.1:${HERMES_GATEWAY_PORT:-8642}:8642"
       - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
-    volumes: ["hermes-data:/opt/data"]
+    volumes:
+      - "hermes-data:/opt/data"
+      # Required by terminal.backend: docker — the gateway spawns sandbox containers
+      # through the host daemon. Note this grants the container control over the
+      # Docker daemon; revert terminal.backend to "local" and drop this mount if you
+      # no longer want the sandbox.
+      - "/var/run/docker.sock:/var/run/docker.sock"
     networks: [agent-net, draftdesk-search]
 networks:
   agent-net:

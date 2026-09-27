@@ -1,7 +1,9 @@
 import {activityPageSchema,trustedActivityRulesUrl} from "./activity-import";
+import {activityBatchSchema} from "./activity-batch";
+import {triageActivityBatches,type ActivityTriageRecord} from "./activity-triage";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { store, AppError, now } from "./store";
+import { store, AppError, now, hash } from "./store";
 import {
   artifactSchema,
   configSchema,
@@ -44,7 +46,7 @@ export function checkRequest(req: Request) {
   if (req.headers.get("sec-fetch-site") === "cross-site")
     throw new AppError("拒绝跨站请求。", 403);
 }
-async function body(req: Request) {
+async function body(req: Request, maxLength = 1000000) {
   if (!req.headers.get("content-type")?.includes("application/json"))
     throw new AppError("请求需使用 application/json。", 415);
   const reader = req.body?.getReader();
@@ -55,7 +57,7 @@ async function body(req: Request) {
     const part = await reader.read();
     if (part.done) break;
     length += part.value.length;
-    if (length > 1000000) {
+    if (length > maxLength) {
       await reader.cancel();
       throw new AppError("请求超过 1 MB。", 413);
     }
@@ -76,6 +78,20 @@ export async function handle(req: Request, path: string[]) {
       throw new AppError("提交令牌只允许写入收件接口。", 403);
     if (req.method === "GET") {
       if (route === "health") return json({ ok: true, version: "2.0.0" });
+      if (route === "activity-batches")
+        return json(db.list<{id:string;receivedAt:string;bundle:{platform:string;items:unknown[];coverage?:unknown}}>("activity-batches").map(({id,receivedAt,bundle})=>({id,receivedAt,platform:bundle.platform,count:bundle.items.length,hasCoverage:Boolean(bundle.coverage)})));
+      if (path[0] === "activity-batches" && path[1]) {
+        const record=db.get("activity-batches",path[1]);
+        if(!record)throw new AppError("采集结果不存在",404);
+        return json(record);
+      }
+      if (route === "activity-triage")
+        return json(db.list<ActivityTriageRecord>("activity-triage").map(({id,createdAt,batchIds,keywords,totalCount,selectedCount,modelTokens})=>({id,createdAt,batchIds,keywords,totalCount,selectedCount,modelTokens})));
+      if (path[0] === "activity-triage" && path[1]) {
+        const record=db.get<ActivityTriageRecord>("activity-triage",path[1]);
+        if(!record)throw new AppError("活动初筛结果不存在",404);
+        return json(record);
+      }
       if (route === "public")
         return json({
           items: db
@@ -177,7 +193,20 @@ export async function handle(req: Request, path: string[]) {
     }
     if (req.headers.has("authorization"))
       throw new AppError("提交令牌只允许写入收件接口。", 403);
-    const input = await body(req);
+    const input = await body(req,route === "activity-batches" ? 5000000 : 1000000);
+    if(route === "activity-batches") {
+      const bundle=activityBatchSchema.parse(input);
+      if(bundle.items.some(item=>item.platform!==bundle.platform))throw new AppError("活动包的平台与条目不一致");
+      const id=hash(JSON.stringify(bundle));
+      const previous=db.get<{receivedAt:string}>("activity-batches",id);
+      const receivedAt=previous?.receivedAt||now();
+      if(!previous)db.put("activity-batches",id,{id,receivedAt,bundle});
+      return json({ok:true,id,platform:bundle.platform,count:bundle.items.length,duplicate:!!previous,receivedAt},previous?200:201);
+    }
+    if(route === "activity-triage") {
+      const value=z.object({batchIds:z.array(z.string().min(1)).min(1).max(4),keywords:z.array(z.string().trim().min(1).max(80)).min(1).max(8)}).strict().parse(input);
+      return json(await triageActivityBatches(db,value.batchIds,value.keywords,req.signal),201);
+    }
     if(route === "validate-intake") { const report=validateIntake(input); return json(report); }
     if(route === "source-check") {
       const {sourceId}=z.object({sourceId:z.string()}).strict().parse(input);

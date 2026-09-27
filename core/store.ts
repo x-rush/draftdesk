@@ -92,6 +92,17 @@ export class Store {
           if(!this.get("sources",source.id))this.put("sources",source.id,source);
         this.put("meta","aggregate-hotlists-v1",{version:1});
       }
+      if(!this.get("meta","job-budget-v2")){
+        // 研究流水线最坏需要 3 阶段 × 2 次模型调用；旧默认预算会在修复轮中途撞墙，
+        // 把已付费任务变成失败。这里对存量策略一次性上调到能完成全流程的尺寸。
+        for(const p of this.list<Plan>("plans")){
+          const next={...p};
+          if(next.maxModelCalls<8)next.maxModelCalls=8;
+          if(next.maxTokens<400000)next.maxTokens=400000;
+          if(next.maxModelCalls!==p.maxModelCalls||next.maxTokens!==p.maxTokens)this.put("plans",p.id,next);
+        }
+        this.put("meta","job-budget-v2",{version:1});
+      }
     });
   }
   close() {
