@@ -19,6 +19,10 @@ Run `docker compose logs --tail=200 openclaw` or `docker compose logs --tail=200
 
 After credentials are available, validate in order: plain completion, structured output, tool-call continuation, fixed evidence analysis, a small live search, and duplicate-safe DraftDesk intake. Both agents will use the same prompt, source list, time limit, and token budget.
 
+## Dashboards and credentials
+
+From `agents/`, run `bash docker/dashboards.sh` to print every dashboard URL with its credential already filled in; `--open` launches them in the default browser. OpenClaw's Control UI token is fetched live from the gateway each run. Hermes uses the basic-auth username/password in `.env`, and the script logs in once to confirm the pair works. dsh prints a one-shot token into its container log on every start, so the script reads the newest one from there. `bash docker/build-browsers.sh` (build the Playwright-enabled images, restart, smoke test) ends by printing the same block.
+
 ## SearXNG and submission
 
 Start `search/compose.yaml` first so that the external `draftdesk-search` network exists. The configuration script handles the following settings; these manual commands are useful when debugging. Hermes uses SearXNG for discovery and Exa's keyless extraction endpoint for public article text. That endpoint is rate-limited and may fail on JavaScript-heavy, login-only, or blocked pages. OpenClaw uses the official SearXNG provider plugin for search and its bundled `web_fetch` for public page reading:

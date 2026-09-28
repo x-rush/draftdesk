@@ -1,0 +1,41 @@
+name: tools
+
+# 共享工具服务层：给任意 agent（openclaw/hermes/dsh）和工作台（draftdesk app/worker）
+# 提供公共能力。所有消费者通过共享网络 stack-net 接入，服务名即 DNS：
+#   http://dailyhot:6688  热点榜单 API（仅内网，无宿主端口）
+#   http://searxng:8080   元搜索引擎（宿主机 127.0.0.1:8080 也可访问）
+
+services:
+  dailyhot:
+    image: imsyy/dailyhot-api@sha256:748fc79d29a422f512018e8a58ef1a0e20306dd6254637933960573fa37b1e5e
+    restart: unless-stopped
+    # 无宿主端口：仅限 stack-net 内部消费（工作台 sources.ts 写死 http://dailyhot:6688）
+    networks: [stack-net]
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
+    environment:
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://127.0.0.1:8080/}
+    volumes:
+      # settings 单一来源仍在旧 search 目录
+      - ../search/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    networks: [stack-net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # 沿用退役项目留下的缓存卷，避免丢缓存
+  searxng-cache:
+    name: draftdesk-search_searxng-cache
+    external: true
+
+networks:
+  stack-net:
+    external: true
+    name: stack-net
