@@ -17,15 +17,6 @@ test("社区宣传、未引用的问题和伪造引文不能成为需求候选",
   assert.ok(collectionGaps({...plan,kind:"opportunity"},promotional).length);
   assert.ok(qualityIssues(draft,evidence).some(i=>i.includes("实际付费行为")));
 });
-test("人物渠道要求具体页面，不以同域名或相同姓名自动合并账号",()=>{
-  const person: ArtifactDraft={...topic,kind:"person",details:{name:"测试作者",identity:"待核对",publicChannels:["https://example.com/profile?id=b"],recentWork:[],angles:[],identityCaveat:"同名待核对"}};
-  const sources=[{...evidence[0],url:"https://example.com/profile?id=a",excerpt:"测试作者的公开主页，提供作品与组织署名。"},evidence[1]];
-  const checks=evidenceReadiness(person,sources);
-  assert.equal(checks.find(c=>c.key==="identity")?.status,"candidate");
-  assert.equal(checks.find(c=>c.key==="channels")?.status,"missing");
-  person.details.publicChannels=[sources[0].url];
-  assert.equal(evidenceReadiness(person,sources).find(c=>c.key==="channels")?.status,"candidate");
-});
 test("关键价格事实需要对应官方原文而不是只挂一个来源ID",()=>{
   const draft={...topic,claims:[{statement:"工具免费开放",type:"fact" as const,evidenceIds:["ev-one"]}]};
   assert.ok(qualityIssues(draft,evidence).some(i=>i.includes("原文锚点")));

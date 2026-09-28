@@ -23,7 +23,6 @@ import {
   ArrowUpRight,
   Search,
   RefreshCw,
-  Users,
   Leaf,
   Flame,
 } from "lucide-react";
@@ -52,7 +51,6 @@ const nav = [
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
   ["activities", "创作活动", Compass],
-  ["people", "人物观察", Users],
   ["plans", "研究策略", Layers],
   ["sources", "数据源", BookOpen],
   ["runs", "运行记录", Play],
@@ -62,7 +60,7 @@ const nav = [
 ] as const;
 const navGroups=[
   {label:"发现与创作",ids:["discover","hotspots","library","chat"]},
-  {label:"机会观察",ids:["trends","ideas","activities","people"]},
+  {label:"机会观察",ids:["trends","ideas","activities"]},
   {label:"研究与设置",ids:["plans","sources","runs","connections","skills","settings"]},
 ] as const;
 const headings: Record<string, [string, string]> = {
@@ -84,10 +82,6 @@ const headings: Record<string, [string, string]> = {
     "产品动态提供可能性，真实用户任务决定是否值得做。",
   ],
   activities:["找到值得参与的创作活动","AI、Vibe Coding 与可参与的创作激励；先核对规则，再选择内容方向。"],
-  people: [
-    "观察作者的作品与方法",
-    "追踪公开工作，不把同名、转载或个人推测当事实。",
-  ],
   chat: ["让观点多走一步", "带着证据讨论，整理成可继续编辑的内容或应用方案。"],
   plans: [
     "设计你的研究节奏",
@@ -351,7 +345,7 @@ export function Workbench() {
               <p>{titles[1]}</p>
             </div>
             {data &&
-              ["discover", "trends", "ideas", "people", "activities"].includes(view) && (
+              ["discover", "trends", "ideas", "activities"].includes(view) && (
                 <button
                   className="primary"
                   disabled={busy}
@@ -381,7 +375,7 @@ export function Workbench() {
               {view==="hotspots"&&<Hotspots feed={data.hotspots} sources={data.sources} query={hotspotQ} status={hotspotStatus} source={hotspotSource} plan={hotspotPlan} busy={busy}
                 onQuery={value=>{setHotspotQ(value);setHotspotPage(1);}} onStatus={value=>{setHotspotStatus(value);setHotspotPage(1);}} onSource={value=>{setHotspotSource(value);setHotspotPage(1);}} onPlan={value=>{setHotspotPlan(value);setHotspotPage(1);}} onPage={setHotspotPage}
                 onRefresh={()=>void act(async()=>{const result=await api<{count:number;source:string}>("hotspot-refresh",{sourceId:hotspotSource});setNotice(`${result.source} 已刷新 ${result.count} 条热点线索，未调用 AI。`);})}/>}
-              {["discover", "library", "trends", "ideas", "people", "activities"].includes(
+              {["discover", "library", "trends", "ideas", "activities"].includes(
                 view,
               ) && (
                 <>

@@ -241,13 +241,14 @@ export function SourceEditor({
           <Select
             value={s.type}
             onChange={(e) =>
-              setS({ ...s, type: e.target.value as Source["type"], ...(e.target.value==="hotlist"?{url:"https://top.baidu.com/board?tab=realtime",sourceType:"trend" as const}:{}), ...(e.target.value==="aggregated"?{query:"bilibili",url:undefined,sourceType:"trend" as const}:{}) })
+              setS({ ...s, type: e.target.value as Source["type"], ...(e.target.value==="hotlist"?{url:"https://top.baidu.com/board?tab=realtime",sourceType:"trend" as const}:{}), ...(e.target.value==="aggregated"?{query:"bilibili",url:undefined,sourceType:"trend" as const}:{}), ...(e.target.value==="suggest"?{query:"AI 工具",url:undefined,sourceType:"trend" as const}:{}) })
             }
           >
             <option value="rss">HTTPS RSS / Atom</option>
             <option value="trends">Google Trends 地域热榜</option>
             <option value="hotlist">平台热榜（国内／国际）</option>
             <option value="aggregated">DailyHotApi 聚合热榜</option>
+            <option value="suggest">搜索联想词（需求雷达）</option>
             <option value="github">GitHub 仓库搜索</option>
             <option value="web">Tavily 网页搜索</option>
           </Select>
@@ -276,6 +277,8 @@ export function SourceEditor({
         )}
         {s.type === "hotlist" && <Field label="平台热榜入口"><Select value={s.url||"https://top.baidu.com/board?tab=realtime"} onChange={e=>setS({...s,url:e.target.value,sourceType:e.target.value.includes("github.com")?"repository":e.target.value.includes("hacker-news")?"community":"trend"})}><option value="https://top.baidu.com/board?tab=realtime">百度热搜</option><option value="https://s.weibo.com/top/summary?cate=realtimehot">微博热搜（可能需要登录）</option><option value="https://github.com/trending">GitHub Trending</option><option value="https://hacker-news.firebaseio.com/v0/topstories.json">Hacker News Top</option></Select></Field>}
         {s.type === "aggregated" && <Field label="聚合平台" hint="读取同一 Docker Compose 内的 DailyHotApi。只保存原平台链接与标题；聚合数据是发现线索，重要事实须另找一手证据。"><Select value={s.query||"bilibili"} onChange={e=>setS({...s,query:e.target.value,sourceType:"trend"})}><option value="bilibili">B站</option><option value="weibo">微博</option><option value="zhihu">知乎</option><option value="douyin">抖音</option><option value="kuaishou">快手</option><option value="toutiao">今日头条</option><option value="tieba">百度贴吧</option><option value="juejin">掘金</option></Select></Field>}
+        {s.type === "suggest" && <Field label="种子关键词（逗号分隔，最多 4 个）" hint="每个种子读取一组搜索联想；联想词代表正在形成的搜索意图，不是搜索量数据，机会仍需核验竞争与供给。"><input value={s.query || ""} onChange={(e) => setS({ ...s, query: e.target.value })} /></Field>}
+        {s.type === "suggest" && <Field label="联想提供方"><Select value={s.url === "https://www.baidu.com/sugrec" ? "baidu" : "google"} onChange={(e) => setS({ ...s, url: e.target.value === "baidu" ? "https://www.baidu.com/sugrec" : undefined, sourceType: "trend" as const })}><option value="google">Google 联想（全球英文需求）</option><option value="baidu">百度联想（中文需求）</option></Select></Field>}
         {s.type === "github" && (
           <Field label="GitHub 搜索条件">
             <input

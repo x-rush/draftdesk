@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,parseAggregateHotlist} from "../core/hotlists";
 import {metricComparison,type MetricSnapshot} from "../core/history";
-import {defaultPlans} from "../core/defaults";
+import {defaultPlans,defaultSources} from "../core/defaults";
 
 test("百度官方热榜提取词条、来源和即时指数，不把列表 HTML 当空结果",()=>{
  const html='<div class="category-wrap_iQLoo horizontal"><div class="hot-index_1Bl1a"> 123456 </div><div class="content_1YWBm"><a href="https://www.baidu.com/s?wd=AI%E8%A7%86%E9%A2%91&amp;sa=fyb" class="title_dIF3B " target="_blank"><div class="c-single-text-ellipsis"> AI视频工具 </div></a><div class="hot-desc_1m_jR small_Uvkd3">创作者讨论AI视频</div></div></div>';
@@ -18,11 +18,24 @@ test("微博访客验证明确失败；即时热榜快照不计算增长率",()=
  assert.equal(metricComparison([first,second],second).percent,null);
 });
 
-test("国内热词策略含 AI 视频与 Vibe Coding，并默认启用百度热搜",()=>{
+test("热词策略采集层不设话题门禁：热度全收，联想来源用需求形状种子",()=>{
  const plan=defaultPlans.find(p=>p.id==="trend-radar")!;
  assert.ok(plan.sourceIds.includes("baidu-hot"));
- assert.ok(plan.keywords.includes("AI视频"));
- assert.ok(plan.keywords.includes("Vibe Coding"));
+ assert.ok(plan.sourceIds.includes("suggest-cn"));
+ assert.ok(plan.sourceIds.includes("suggest-global"));
+ // 采集层完全开放：空 keywords/focusTerms 让 relevanceReason 跳过话题筛选，
+ // AI 话题之外的社会热度也能进入分析层。
+ assert.equal(plan.keywords.length,0);
+ assert.equal(plan.focusTerms?.length,0);
+ // 转化判断（AI 内容/web-app 工具/SEO 站群）写在分析目标里。
+ assert.match(plan.goal,/AI 内容/);
+ assert.match(plan.goal,/web\/app 工具机会/);
+ assert.match(plan.goal,/SEO\/站群价值/);
+ const suggest=defaultSources.find(s=>s.id==="suggest-cn")!;
+ const seeds=suggest.query??"";
+ assert.match(seeds,/替代/);
+ assert.match(seeds,/怎么查/);
+ assert.doesNotMatch(seeds,/Codex/);
 });
 
 test("GitHub Trending 只取仓库链接及当日 Stars，不把登录链接当来源",()=>{

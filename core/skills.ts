@@ -24,11 +24,6 @@ export const skillCatalog = [
     purpose: "用户任务、替代方案、一周验证与停止条件",
   },
   {
-    id: "people-research",
-    name: "人物与作者观察员",
-    purpose: "公开作品、身份消歧、时间线和选题启发",
-  },
-  {
     id: "quality-editor",
     name: "证据与质量审稿员",
     purpose: "拒绝宏大空话、伪造实测、无证据结论",
@@ -51,7 +46,6 @@ export const skillReferences: Record<string, string[]> = {
   "trend-research": ["references/trend-decisions.md"],
   "opportunity-research": ["references/opportunity-decisions.md"],
   "quality-editor": ["references/review-rubric.md"],
-  "people-research": ["references/identity-checks.md"],
   "discussion-partner": ["references/working-dialogue.md"],
 };
 export function loadSkill(id: string) {

@@ -21,6 +21,7 @@ export async function readHotspotSource(source:Source,signal:AbortSignal):Promis
     return readAggregatedHotlist(source.query,signal);
   }
   if(source.type==="trends")return parseFeed(await safeRead(`https://trends.google.com/trending/rss?geo=${source.region||"US"}`,signal),source);
+  if(source.type==="suggest")return readSuggestSource(source,signal);
   if(source.type!=="hotlist")throw new AppError("请选择热榜或趋势来源。");
   if(source.url==="https://top.baidu.com/board?tab=realtime")return parseBaiduHotlist(await safeRead(source.url,signal),now());
   if(source.url==="https://s.weibo.com/top/summary?cate=realtimehot"){
@@ -30,6 +31,57 @@ export async function readHotspotSource(source:Source,signal:AbortSignal):Promis
   if(source.url==="https://github.com/trending")return parseGithubTrending(await safeRead(source.url,signal),now());
   if(source.url==="https://hacker-news.firebaseio.com/v0/topstories.json")return (await collectHackerNews(signal)).items;
   throw new AppError("热榜入口尚未核验或不在允许列表中。");
+}
+// 搜索联想词是"需求正在露头"的信号层：用户开始搜，但供给还没跟上。
+// 联想词本身不是搜索量或趋势数据，只能作为待验证的需求线索。
+export function parseSuggest(raw: string, s: Source, seed: string): EvidenceInput[] {
+  const data = JSON.parse(raw) as unknown;
+  const suggestions: string[] = [];
+  if (Array.isArray(data) && Array.isArray(data[1])) suggestions.push(...data[1].map(String));
+  else if (data && typeof data === "object" && Array.isArray((data as { g?: unknown }).g))
+    suggestions.push(...((data as { g?: Array<{ q?: unknown }> }).g ?? []).map((x) => String(x?.q ?? "")));
+  const baidu = s.url === "https://www.baidu.com/sugrec";
+  const base = baidu ? "https://www.baidu.com/s?wd=" : "https://www.google.com/search?q=";
+  return suggestions
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 10)
+    .flatMap((text) => {
+      try {
+        const url = new URL(base + encodeURIComponent(text));
+        return [
+          {
+            title: text.slice(0, 300),
+            url: url.href,
+            excerpt: `搜索联想词（${baidu ? "百度" : "Google"}）：种子「${seed}」的联想需求，代表正在形成的搜索意图；联想词不是搜索量或趋势数据，需另行核验竞争与供给。`,
+            collectedAt: now(),
+            sourceType: s.sourceType,
+            region: s.region || (baidu ? "中国" : "全球"),
+            language: baidu ? "zh" : "未知",
+            contentLevel: "headline" as const,
+          },
+        ];
+      } catch {
+        return [];
+      }
+    });
+}
+export async function readSuggestSource(source: Source, signal: AbortSignal): Promise<EvidenceInput[]> {
+  if (!source.enabled) throw new AppError("来源未启用。");
+  if (source.type !== "suggest") throw new AppError("请选择搜索联想来源。");
+  const seeds = (source.query || "").split(/[,，、\s]+/).filter(Boolean).slice(0, 4);
+  if (!seeds.length) throw new AppError("搜索联想来源需要至少一个种子关键词。");
+  const baidu = source.url === "https://www.baidu.com/sugrec";
+  const out: EvidenceInput[] = [];
+  for (const seed of seeds) {
+    signal.throwIfAborted();
+    const address = baidu
+      ? `https://www.baidu.com/sugrec?prod=pc&wd=${encodeURIComponent(seed)}`
+      : `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(seed)}`;
+    out.push(...parseSuggest(await safeRead(address, signal), source, seed));
+  }
+  if (!out.length) throw new AppError("联想接口没有返回任何建议。");
+  return out;
 }
 export function publicIp(ip: string) {
   const p = ip.split(".").map(Number);
@@ -274,6 +326,8 @@ export async function collect(
       } else if(s.type==="aggregated"){
         if(!s.query||!isAggregatePlatform(s.query))throw new AppError("不支持的聚合榜单路由。");
         items=await readAggregatedHotlist(s.query,signal);
+      } else if(s.type==="suggest"){
+        items=await readSuggestSource(s,signal);
       } else if (s.type === "github") {
         const q =
           (s.query || "topic:ai") +

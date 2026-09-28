@@ -50,7 +50,14 @@ test("搜索诊断独立于模型，未配置时不发请求，配置后验证�
     assert.equal(calls, 1);
   } finally { globalThis.fetch = original; db.put("config", "main", config); }
 });
-test("只采集预览拒绝纯网页搜索策略，不调用模型或增加预算",async()=>{const before=store().dayBudget();const response=await request("source-preview",{planId:"people-watch"});assert.equal(response.status,400);assert.equal(store().dayBudget().reserved,before.reserved);});
+test("只采集预览拒绝纯网页搜索策略，不调用模型或增加预算",async()=>{
+  const plan={id:"web-only-preview",name:"纯网页搜索测试策略",kind:"editorial",goal:"验证纯网页搜索策略不能预览。",audience:"个人开发者",keywords:["测试"],excludeKeywords:[],includeDomains:[],sourceIds:["web"],lookbackDays:14,maxEvidence:6,maxQueries:2,maxItems:2,maxModelCalls:3,maxTokens:60000,scheduleEnabled:false,dailyTime:"03:00",publishPolicy:"manual" as const};
+  await request("plans",plan);
+  const before=store().dayBudget();
+  const response=await request("source-preview",{planId:"web-only-preview"});
+  assert.equal(response.status,400);
+  assert.equal(store().dayBudget().reserved,before.reserved);
+});
 test("HTTP 外部令牌仅能收件，不能读工作区或修改策略", async () => {
   const r = await request("connections", { name: "OpenClaw" });
   const c = await r.json();

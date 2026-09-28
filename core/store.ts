@@ -103,6 +103,39 @@ export class Store {
         }
         this.put("meta","job-budget-v2",{version:1});
       }
+      if(!this.get("meta","seo-radar-v1")){
+        // 趋势/应用机会策略升级：新增搜索联想来源（SEO/站群/web-app 机会的需求露头信号），
+        // 趋势策略改以 Google Trends+联想词为主、关键词门禁扩到机会方向。
+        for(const source of defaultSources.filter(s=>s.type==="suggest"))
+          if(!this.get("sources",source.id))this.put("sources",source.id,source);
+        const trend=this.get<Plan>("plans","trend-radar");
+        const trendDefault=defaultPlans.find(p=>p.id==="trend-radar")!;
+        if(trend)this.put("plans",trend.id,{...trend,sourceIds:trendDefault.sourceIds,keywords:trendDefault.keywords,focusTerms:trendDefault.focusTerms,goal:trendDefault.goal});
+        const products=this.get<Plan>("plans","small-products");
+        const productsDefault=defaultPlans.find(p=>p.id==="small-products")!;
+        if(products)this.put("plans",products.id,{...products,sourceIds:productsDefault.sourceIds,keywords:productsDefault.keywords,goal:productsDefault.goal});
+        this.put("meta","seo-radar-v1",{version:1});
+      }
+      if(!this.get("meta","open-radar-v2")){
+        // 采集层去话题门禁：热度本身就是信号，AI 话题之外的社会热度同样采集；
+        // 转化判断（AI 内容 / web-app 工具 / SEO 站群）移到分析层目标里。
+        // 联想种子改为需求形状词（替代/怎么查/alternative to…），不绑定已被做掉的具体机会。
+        for(const source of defaultSources.filter(s=>s.type==="suggest"))this.put("sources",source.id,source);
+        const trend2=this.get<Plan>("plans","trend-radar");
+        const trend2Default=defaultPlans.find(p=>p.id==="trend-radar")!;
+        if(trend2)this.put("plans",trend2.id,{...trend2,keywords:[],focusTerms:[],goal:trend2Default.goal});
+        const products2=this.get<Plan>("plans","small-products");
+        const products2Default=defaultPlans.find(p=>p.id==="small-products")!;
+        if(products2)this.put("plans",products2.id,{...products2,keywords:products2Default.keywords,goal:products2Default.goal});
+        this.put("meta","open-radar-v2",{version:1});
+      }
+      if(!this.get("meta","people-removal-v1")){
+        // 人物观察功能已移除：清掉对应策略与任务，防止调度或流水线再触达已删除的人物技能链。
+        // 旧库存量仍可能是 "people"，比较用宽松字符串而不是收窄后的联合类型。
+        for(const p of this.list<Plan>("plans"))if((p.kind as string)==="people")this.del("plans",p.id);
+        for(const j of this.list<Job>("jobs"))if((j.plan?.kind as string)==="people")this.del("jobs",j.id);
+        this.put("meta","people-removal-v1",{version:1});
+      }
     });
   }
   close() {
@@ -142,6 +175,11 @@ export class Store {
       .run(collection, id, JSON.stringify(value));
     return value;
   }
+  del(collection: string, id: string) {
+    this.db
+      .prepare("DELETE FROM documents WHERE collection=? AND id=?")
+      .run(collection, id);
+  }
   config() {
     const c = this.get<Config>("config", "main")!;
     return {
@@ -165,7 +203,7 @@ export class Store {
         a.dailyTime.localeCompare(b.dailyTime),
       ),
       sources: this.list<Source>("sources"),
-      artifacts: this.list<Artifact>("artifacts").filter((a) => !a.archived).map(a => ({...a, quality: decisionOf(a)})),
+      artifacts: this.list<Artifact>("artifacts").filter((a) => !a.archived && (a.kind as string) !== "person").map(a => ({...a, quality: decisionOf(a)})),
       events: this.list("events"),
       metrics: metrics.map(m => ({...m, comparison: metricComparison(metrics, m)})),
       evidence: this.list<Evidence>("evidence"),
@@ -198,7 +236,7 @@ export class Store {
       (!params.get("jobId") || a.jobId===params.get("jobId")) &&
       (!params.get("creation") || params.get("creation")==="all" || (a.creationStatus || "inbox")===params.get("creation")) && (view!=="trends" || a.kind==="trend") &&
       (view!=="activities" || a.kind==="activity") &&
-      (a.kind!=="activity" || ((!params.get("activityPlatform") || params.get("activityPlatform")==="all" || a.details.platform===params.get("activityPlatform")) && (activityTime==="all" || (activityTime==="actionable" ? (activityStatus(a)==="ongoing"||activityStatus(a)==="upcoming") : activityStatus(a)===activityTime)))) && (view!=="ideas" || a.kind==="idea") && (view!=="people" || a.kind==="person") &&
+      (a.kind!=="activity" || ((!params.get("activityPlatform") || params.get("activityPlatform")==="all" || a.details.platform===params.get("activityPlatform")) && (activityTime==="all" || (activityTime==="actionable" ? (activityStatus(a)==="ongoing"||activityStatus(a)==="upcoming") : activityStatus(a)===activityTime)))) && (view!=="ideas" || a.kind==="idea") &&
       (view!=="discover" || kind==="all" || a.kind===kind) &&
       (quality==="all" || (quality==="active" ? a.quality!=="rejected" : a.quality===quality)) &&
       [a.title,a.summary,a.audience,...a.tags].join(" ").toLocaleLowerCase().includes(query)),"page");

@@ -141,20 +141,6 @@ export const artifactSchema = z.discriminatedUnion("kind", [
       }),
     })
     .strict(),
-  z
-    .object({
-      ...common,
-      kind: z.literal("person"),
-      details: z.object({
-        name: text,
-        identity: text,
-        publicChannels: z.array(url).min(1).max(8),
-        recentWork: strings,
-        angles: strings,
-        identityCaveat: text,
-      }),
-    })
-    .strict(),
   z.object({...common,kind:z.literal("activity"),details:z.object({
     platform:z.enum(["哔哩哔哩","抖音","快手","小红书"]),
     activityUrl:url,
@@ -195,11 +181,11 @@ export const batchSchema = z
       .max(30),
   })
   .strict();
-export function researchBatchSchema(kind: "editorial" | "trends" | "opportunity" | "people" | "activities" | "topic", maxItems: number, evidenceIds?: string[]) {
+export function researchBatchSchema(kind: "editorial" | "trends" | "opportunity" | "activities" | "topic", maxItems: number, evidenceIds?: string[]) {
   const item = kind === "editorial" ? z.union([artifactSchema.options[0], artifactSchema.options[1]])
     : kind === "topic" ? artifactSchema.options[1]
     : kind === "trends" ? artifactSchema.options[2]
-    : kind === "opportunity" ? artifactSchema.options[3] : kind === "activities" ? artifactSchema.options[5] : artifactSchema.options[4];
+    : kind === "opportunity" ? artifactSchema.options[3] : artifactSchema.options[4];
   return z.object({ items: z.array(item).max(maxItems), rejected: batchSchema.shape.rejected }).strict().superRefine((batch, ctx) => {
     if (!evidenceIds) return;
     batch.items.forEach((draft, index) => {
@@ -256,7 +242,7 @@ export const sourceSchema = z
   .object({
     id,
     name: z.string().min(1).max(100),
-    type: z.enum(["rss", "trends", "hotlist", "aggregated", "github", "web"]),
+    type: z.enum(["rss", "trends", "hotlist", "aggregated", "github", "web", "suggest"]),
     url: url.optional(),
     region: z
       .string()
@@ -274,7 +260,7 @@ export const planSchema = z
   .object({
     id,
     name: z.string().min(1).max(100),
-    kind: z.enum(["editorial", "trends", "opportunity", "people", "activities"]),
+    kind: z.enum(["editorial", "trends", "opportunity", "activities"]),
     goal: text,
     audience: text,
     keywords: z.array(z.string().min(1).max(250)).max(8),

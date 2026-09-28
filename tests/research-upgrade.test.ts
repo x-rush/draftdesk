@@ -12,8 +12,8 @@ import { runJob } from "../core/pipeline";
 import type { Job, Artifact } from "../core/schema";
 async function fixture(fn:(db:Store)=>unknown) {const dir=mkdtempSync(path.join(tmpdir(),"dd-upgrade-"));const db=new Store(dir);db.put("config","main",{...db.config(),apiKey:"isolated-test-key"});try{await fn(db)}finally{db.close();rmSync(dir,{recursive:true,force:true})}}
 const input = (n:number, extra:object={}) => {const {id,provenance,fingerprint,...rest}=evidence[0];return {...rest,title:"同一工具发布",url:`https://example.com/update-${n}`,excerpt:"同一公告明确开放功能并说明限制。".repeat(15),...extra};};
-test("四种检索分别覆盖官方、问题、指标和人物身份，且受查询数量限制",()=>{
-  for(const [kind,term] of [["editorial","官方"],["opportunity","求助"],["trends","指数"],["people","本人"]] as const){const q=queryPlan({...plan,kind,keywords:["测试工具"]},2);assert.equal(q.length,2);assert.match(q[0].query,new RegExp(term));assert.notEqual(q[0].purpose,q[1].purpose)}
+test("三种检索分别覆盖官方、问题和指标方向，且受查询数量限制",()=>{
+  for(const [kind,term] of [["editorial","官方"],["opportunity","求助"],["trends","指数"]] as const){const q=queryPlan({...plan,kind,keywords:["测试工具"]},2);assert.equal(q.length,2);assert.match(q[0].query,new RegExp(term));assert.notEqual(q[0].purpose,q[1].purpose)}
   assert.deepEqual(queryPlan({...plan,keywords:[]}),[]);assert.deepEqual(queryPlan(plan,0),[]);
   assert.equal(rankEvidence([...evidence].reverse(),{...plan,kind:"editorial"})[0].sourceType,"official");
   assert.equal(rankEvidence(evidence,{...plan,kind:"opportunity"})[0].sourceType,"community");

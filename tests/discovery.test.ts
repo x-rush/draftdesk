@@ -21,8 +21,13 @@ test("相近表达进入同一研究方向，英文 AI 不误命中普通单词"
 });
 
 test("筛选理由区分未命中、排除词与通过，供线索池回看",()=>{
+ // 默认热词策略采集层开放：不设话题门禁，任何热度都通过。
  assert.equal(relevanceReason(item("氛围编程活动"),plan),null);
- assert.equal(relevanceReason(item("普通娱乐节目"),plan),"未命中内容方向词");
+ assert.equal(relevanceReason(item("普通娱乐节目"),plan),null);
+ // 配置了方向词/关键词的策略仍按原逻辑筛。
+ const focused={...plan,focusTerms:["氛围编程"]};
+ assert.equal(relevanceReason(item("氛围编程活动"),focused),null);
+ assert.equal(relevanceReason(item("普通娱乐节目"),focused),"未命中内容方向词");
  assert.equal(relevanceReason(item("AI 日常随笔"),{...plan,keywords:["大模型"]}),"未命中热词关键词");
  assert.equal(relevanceReason(item("AI 股价预测"),{...plan,excludeKeywords:["股价"]}),"命中排除词");
 });

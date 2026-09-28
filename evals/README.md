@@ -26,7 +26,7 @@ docker compose exec worker npx tsx scripts/summarize-evaluation.ts data/evaluati
 
 `docker compose exec worker npm run eval:skills`
 
-列出 8 个场景与业务标准，不调用模型。`npm test` 检查资料加载、版本、参考文件打包和材料裁剪等运行行为。
+列出 7 个场景与业务标准，不调用模型。`npm test` 检查资料加载、版本、参考文件打包和材料裁剪等运行行为。
 
 ## 真实模型对照
 

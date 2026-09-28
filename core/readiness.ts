@@ -7,8 +7,6 @@ export type EvidenceCheck = {
 };
 const problem = /求助|困扰|麻烦|手工|手动|耗时|漏掉|遗漏|漏一|无法|不能|不好用|太贵|失败|workaround|struggl|manual|frustrat|can't|cannot|pain point/i;
 const concrete = (e: Evidence) => e.contentLevel !== "headline" && e.excerpt.trim().length >= 20;
-const keyText = (s: string) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
-const canonical = (value: string) => { const u = new URL(value); u.searchParams.sort(); return u.origin + u.pathname.replace(/\/$/, "") + u.search; };
 export function problemCandidates(evidence: Evidence[]) {
   return evidence.filter(e => e.sourceType === "community" && concrete(e) && problem.test(e.excerpt));
 }
@@ -19,7 +17,7 @@ export function evidenceReadiness(item: ArtifactDraft, all: Evidence[]): Evidenc
   const checks: EvidenceCheck[] = [];
   const add = (key: string, label: string, candidates: Evidence[], reason: string, action: string, query: string) =>
     checks.push({key, label, status: candidates.length ? "candidate" : "missing", evidenceIds: candidates.map(e=>e.id), reason, action, query});
-  const subject = item.kind === "trend" ? item.details.keyword : item.kind === "person" ? item.details.name : item.title;
+  const subject = item.kind === "trend" ? item.details.keyword : item.title;
   const searchSubject = item.tags.filter(t=>!["公众号","小红书","待验证"].includes(t)).slice(0,3).join(" ") || subject.slice(0,60);
   const quoted = (e: Evidence) => item.claims.some(c => c.evidenceIds.includes(e.id) && !!c.quote && e.excerpt.includes(c.quote));
   if (item.kind === "activity") {
@@ -38,15 +36,6 @@ export function evidenceReadiness(item: ArtifactDraft, all: Evidence[]): Evidenc
       "付费行为线索仍需核对上下文；没有材料时，付费意愿必须保留为假设。",
       "验证用户是否为当前替代付费及为何付费；报价实验需另行安排，不能编造访谈。",
       `${searchSubject} 付费 订阅 使用反馈`);
-  } else if (item.kind === "person") {
-    const name = keyText(item.details.name);
-    add("identity", "姓名与一手材料关联", evidence.filter(e => e.sourceType === "official" && concrete(e) && keyText(e.title + e.excerpt).includes(name)),
-      "同名与来源标签都不能完成身份认证，只检查是否有带姓名的一手材料候选。",
-      "核对本人主页、组织署名或作品归属的互链；未消歧时不要合并履历。", `${subject} 本人 官方主页 作品`);
-    const linked = item.details.publicChannels.filter(channel => evidence.some(e => canonical(e.url) === canonical(channel)));
-    add("channels", "公开渠道可追溯", linked.length === item.details.publicChannels.length ? evidence.filter(e=>linked.some(c=>canonical(c)===canonical(e.url))) : [],
-      "每个公开渠道都应有对应的已采集页面；同一个域名不是同一个账号。",
-      "补采缺失的公开渠道页面，或移除没有材料支持的账号地址。", `${subject} 作品 个人主页`);
   } else if (item.kind === "trend") {
     add("metric", "原始指标", evidence.filter(e => item.details.signalEvidenceIds.includes(e.id) && !!e.metric),
       "没有指标就是讨论线索；一次热榜或分桶数值不能证明增长。",
@@ -73,7 +62,6 @@ export function evidenceReadiness(item: ArtifactDraft, all: Evidence[]): Evidenc
 export function collectionGaps(plan: Plan, evidence: Evidence[]) {
   const missing: string[] = [];
   if (plan.kind === "opportunity" && !problemCandidates(evidence).length) missing.push("具体用户问题原话和现有替代方案缺失");
-  if (plan.kind === "people" && !evidence.some(e=>e.sourceType==="official" && concrete(e))) missing.push("人物身份对应的本人主页或作品出处缺失");
   if (plan.kind === "editorial" && !evidence.some(e=>e.sourceType==="official" && concrete(e))) missing.push("官方更新和使用限制的原始出处缺失");
   if (plan.kind === "trends" && !evidence.some(e=>e.metric)) missing.push("热词原始指标及地域时间口径缺失");
   return missing;

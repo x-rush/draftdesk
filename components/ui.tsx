@@ -115,14 +115,12 @@ export const kindLabels = {
   topic: "内容选题",
   trend: "热词趋势",
   idea: "应用机会",
-  person: "人物观察",
   activity: "创作活动",
 };
 export const kindPlanLabels = {
   editorial: "资讯与选题",
   trends: "热词趋势",
   opportunity: "应用机会",
-  people: "人物与作者",
   activities: "创作活动与激励",
 };
 export function date(value: string) {

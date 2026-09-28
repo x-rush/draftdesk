@@ -23,7 +23,6 @@ const skillFor = {
   editorial: "editorial-research",
   trends: "trend-research",
   opportunity: "opportunity-research",
-  people: "people-research",
 };
 export async function runJob(
   db: Store,
@@ -192,7 +191,6 @@ export async function runJob(
       editorial: ["news", "topic"],
       trends: ["trend"],
       opportunity: ["idea"],
-      people: ["person"],
     }[job.plan.kind];
     if (batch.items.some((a) => !allowed.includes(a.kind)))
       throw new AppError("模型输出类型与研究策略不符。");

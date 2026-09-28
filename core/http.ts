@@ -294,6 +294,10 @@ export async function handle(req: Request, path: string[]) {
         throw new AppError("聚合热榜仅支持已列出的平台路由");
       if(source.type === "aggregated" && (source.sourceType !== "trend" || source.url))
         throw new AppError("聚合热榜固定为趋势线索，不能标记为官方来源或自定义采集地址");
+      if(source.type === "suggest" && !(source.query||"").trim())
+        throw new AppError("搜索联想来源需要至少一个种子关键词");
+      if(source.type === "suggest" && source.url && source.url !== "https://www.baidu.com/sugrec")
+        throw new AppError("搜索联想来源只支持默认 Google 联想或百度 sugrec 入口");
       db.put("sources", source.id, source);
       return json(source);
     }
