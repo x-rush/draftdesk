@@ -909,6 +909,8 @@ function Settings({
       tavilyKey: "",
       clearApiKey: false,
       clearTavilyKey: false,
+      webSearchProvider: config.webSearchProvider || "hybrid",
+      searxngUrl: config.searxngUrl || "",
     }),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
@@ -990,6 +992,32 @@ function Settings({
       <hr />
       <h2>搜索与质量预算</h2>
       <Field
+        label="网页搜索后端"
+        hint="Tavily 先行 + SearXNG 补位：先走 Tavily，无 Key、请求失败或相关结果不足 3 条时自动用本地 SearXNG 补位合并；仅 SearXNG 则完全不消耗 Tavily 额度。"
+      >
+        <select
+          value={value.webSearchProvider}
+          onChange={(e) =>
+            setValue({ ...value, webSearchProvider: e.target.value })
+          }
+        >
+          <option value="hybrid">Tavily 先行 + SearXNG 补位</option>
+          <option value="tavily">仅 Tavily</option>
+          <option value="searxng">仅 SearXNG（本地）</option>
+        </select>
+      </Field>
+      <Field
+        label="SearXNG 地址"
+        hint="随工作台内置，默认 http://searxng:8080；自建在其他位置时修改。"
+      >
+        <input
+          type="url"
+          placeholder="http://searxng:8080"
+          value={value.searxngUrl}
+          onChange={(e) => setValue({ ...value, searxngUrl: e.target.value })}
+        />
+      </Field>
+      <Field
         label={
           "Tavily Key · " +
           (config.hasTavilyKey ? "已配置，留空保留" : "可选，网页搜索需要")
@@ -1058,12 +1086,12 @@ function Settings({
         >
           测试模型连接
         </button>
-        <button type="button" disabled={busy || !config.hasTavilyKey}
+        <button type="button" disabled={busy || (config.webSearchProvider || "hybrid") === "tavily" && !config.hasTavilyKey}
           onClick={() => void act(async () => {
             const r = await api("test-search", {});
             setNotice(r.message);
           })}>
-          测试搜索（1 次 basic）
+          测试搜索
         </button>
         <button className="primary" disabled={busy}>
           {busy ? "处理中…" : "保存设置"}

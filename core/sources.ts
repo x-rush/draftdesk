@@ -252,11 +252,32 @@ export async function collectHackerNews(signal:AbortSignal):Promise<{items:Evide
  if(!items.length)throw new AppError(`Hacker News 官方条目读取失败（${failures}/${selected.length}）。`);
  return {items,failures};
 }
-export async function searchWeb(db: Store, plan: Plan, query: string, signal: AbortSignal, fallback: Source['sourceType'] = "other"): Promise<EvidenceInput[]> {
-  if(plan.kind==="activities"){
-    const domains=/哔哩哔哩|B站/i.test(query)?["bilibili.com"]:/抖音/.test(query)?["douyin.com","douyinstatic.com"]:/快手/.test(query)?["kuaishou.com"]:/小红书/.test(query)?["xiaohongshu.com"]:null;
-    if(domains){const allowed=domains.filter(d=>!plan.includeDomains.length||plan.includeDomains.some(x=>x===d||x.endsWith("."+d)));if(!allowed.length)return [];plan={...plan,includeDomains:allowed};}
-  }
+// 混合模式下 Tavily 相关结果少于此条数时，SearXNG 补位并合并去重。
+const HYBRID_MIN_RESULTS = 3;
+
+function officialHostList(db: Store): string[] {
+  return db.list<Source>("sources").filter(s=>s.enabled && s.type==="rss" && s.sourceType==="official" && s.url)
+    .flatMap(s=>[new URL(s.url!).hostname,...(s.officialDomains || []).map(d=>d.toLowerCase())]);
+}
+
+// 搜索引擎原始结果 → 证据条目。dateKey：Tavily 为 published_date，SearXNG 为 publishedDate。
+function mapWebResults(db: Store, plan: Plan, fallback: Source['sourceType'], results: any[], dateKey: string): EvidenceInput[] {
+  const officialHosts = officialHostList(db);
+  return (results || []).flatMap((r: any): EvidenceInput[] => {
+    try {
+      const parsed = new URL(r.url);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) return [];
+      // SearXNG 的 site: 只是查询提示（上游引擎不保证遵守），域名限定必须在客户端兜底过滤。
+      if (plan.includeDomains.length && !plan.includeDomains.some(d=>parsed.hostname===d||parsed.hostname.endsWith("."+d))) return [];
+      const entry: EvidenceInput = {title:String(r.title).slice(0,300),url:r.url,excerpt:String(r.content || "").slice(0,8000),collectedAt:now(),
+        sourceType:plan.kind==="activities"?activitySourceType(r.url):webSourceType(r.url, fallback, officialHosts), region:"未知", language:"未知",contentLevel:"excerpt",
+        ...(Number.isFinite(Date.parse(r[dateKey])) ? {publishedAt:new Date(r[dateKey]).toISOString()} : {})};
+      return relevant(entry,plan) ? [entry] : [];
+    } catch { return []; }
+  });
+}
+
+async function tavilySearch(db: Store, plan: Plan, query: string, signal: AbortSignal, fallback: Source['sourceType']): Promise<EvidenceInput[]> {
   const key = db.config().tavilyKey;
   if (!key) throw new AppError("未配置 Tavily Key。");
   const response = await fetch("https://api.tavily.com/search", {
@@ -267,18 +288,53 @@ export async function searchWeb(db: Store, plan: Plan, query: string, signal: Ab
   });
   if (!response.ok) throw new AppError(`搜索服务 HTTP ${response.status}`);
   const result = await response.json();
-  const officialHosts = db.list<Source>("sources").filter(s=>s.enabled && s.type==="rss" && s.sourceType==="official" && s.url)
-    .flatMap(s=>[new URL(s.url!).hostname,...(s.officialDomains || []).map(d=>d.toLowerCase())]);
-  return (result.results || []).flatMap((r: any): EvidenceInput[] => {
-    try {
-      const parsed = new URL(r.url);
-      if (parsed.protocol !== "https:" || parsed.username || parsed.password) return [];
-      const entry: EvidenceInput = {title:String(r.title).slice(0,300),url:r.url,excerpt:String(r.content || "").slice(0,8000),collectedAt:now(),
-        sourceType:plan.kind==="activities"?activitySourceType(r.url):webSourceType(r.url, fallback, officialHosts), region:"未知", language:"未知",contentLevel:"excerpt",
-        ...(Number.isFinite(Date.parse(r.published_date)) ? {publishedAt:new Date(r.published_date).toISOString()} : {})};
-      return relevant(entry,plan) ? [entry] : [];
-    } catch { return []; }
+  return mapWebResults(db, plan, fallback, result.results || [], "published_date");
+}
+
+async function searxngSearch(db: Store, plan: Plan, query: string, signal: AbortSignal, fallback: Source['sourceType']): Promise<EvidenceInput[]> {
+  const base = (db.config().searxngUrl || "http://searxng:8080").replace(/\/+$/,"");
+  // site: 限定只对支持该语法的引擎生效，真正兜底在 mapWebResults 的客户端过滤。
+  const sites = plan.includeDomains.length ? " " + plan.includeDomains.map(d=>`site:${d}`).join(" OR ") : "";
+  const response = await fetch(`${base}/search?format=json&q=${encodeURIComponent(query+sites)}`, {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]),
+    headers: {"accept":"application/json"},
   });
+  if (!response.ok) throw new AppError(`SearXNG HTTP ${response.status}`);
+  const result = await response.json();
+  return mapWebResults(db, plan, fallback, result.results || [], "publishedDate");
+}
+
+export function searchProvider(db: Store): "tavily"|"searxng"|"hybrid" {
+  // 缺省 hybrid：SearXNG 随主 compose 内置，零密钥即可用；显式选 tavily 才是旧行为。
+  return db.config().webSearchProvider || "hybrid";
+}
+
+export async function searchWeb(db: Store, plan: Plan, query: string, signal: AbortSignal, fallback: Source['sourceType'] = "other"): Promise<EvidenceInput[]> {
+  if(plan.kind==="activities"){
+    const domains=/哔哩哔哩|B站/i.test(query)?["bilibili.com"]:/抖音/.test(query)?["douyin.com","douyinstatic.com"]:/快手/.test(query)?["kuaishou.com"]:/小红书/.test(query)?["xiaohongshu.com"]:null;
+    if(domains){const allowed=domains.filter(d=>!plan.includeDomains.length||plan.includeDomains.some(x=>x===d||x.endsWith("."+d)));if(!allowed.length)return [];plan={...plan,includeDomains:allowed};}
+  }
+  const provider = searchProvider(db);
+  if (provider === "searxng") return searxngSearch(db, plan, query, signal, fallback);
+  if (provider === "tavily") return tavilySearch(db, plan, query, signal, fallback);
+  // hybrid：Tavily 先行；无 Key、请求失败或相关结果不足时由 SearXNG 补位。
+  let tavily: EvidenceInput[] = [];
+  let tavilyError: unknown = null;
+  try {
+    tavily = await tavilySearch(db, plan, query, signal, fallback);
+  } catch (error) { tavilyError = error; }
+  if (!tavilyError && tavily.length >= HYBRID_MIN_RESULTS) return tavily;
+  let searxng: EvidenceInput[] = [];
+  let searxngError: unknown = null;
+  try {
+    searxng = await searxngSearch(db, plan, query, signal, fallback);
+  } catch (error) { searxngError = error; }
+  if (!searxngError) {
+    const seen = new Set(tavily.map(e=>e.url));
+    return [...tavily, ...searxng.filter(e=>!seen.has(e.url))];
+  }
+  if (tavily.length) return tavily;
+  throw tavilyError ?? searxngError ?? new AppError("网页搜索失败：Tavily 与 SearXNG 均不可用。");
 }
 export async function collect(
   db: Store,

@@ -32,12 +32,13 @@ after(() => {
 test("搜索诊断独立于模型，未配置时不发请求，配置后验证真实返回结构", async () => {
   const db = store();
   const config = db.config();
-  db.put("config", "main", { ...config, tavilyKey: undefined });
+  // 显式钉住 tavily 后端：缺省现在是 hybrid，那会去测 SearXNG 而不是报「未配置」。
+  db.put("config", "main", { ...config, tavilyKey: undefined, webSearchProvider: "tavily" });
   assert.equal((await request("test-search", {})).status, 400);
   const original = globalThis.fetch;
   let calls = 0;
   try {
-    db.put("config", "main", { ...config, tavilyKey: "test-tavily" });
+    db.put("config", "main", { ...config, tavilyKey: "test-tavily", webSearchProvider: "tavily" });
     globalThis.fetch = async (url, init) => {
       assert.equal(url, "https://api.tavily.com/search");
       const body = JSON.parse(String(init?.body));

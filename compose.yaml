@@ -14,7 +14,6 @@ services:
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
       DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}
     restart: unless-stopped
-    networks: [stack-net]
     healthcheck:
       test:
         [
@@ -40,12 +39,29 @@ services:
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
       DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}
     restart: unless-stopped
-    networks: [stack-net]
+  dailyhot:
+    # 热榜聚合 API：仅项目内网（工作台 core/sources.ts 写死 http://dailyhot:6688），
+    # 不占宿主端口。镜像按 sha256 digest 固定，升级需显式改这里。
+    image: imsyy/dailyhot-api@sha256:748fc79d29a422f512018e8a58ef1a0e20306dd6254637933960573fa37b1e5e
+    restart: unless-stopped
+  searxng:
+    # 本地元搜索：网页搜索「SearXNG 补位」后端（模型与设置里可选），零成本零密钥。
+    # 仅项目内网消费（工作台写死 http://searxng:8080），不占宿主端口；
+    # JSON 输出在 search/settings.yml 放行。
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://127.0.0.1:8080/}
+    volumes:
+      - ./search/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 5
 
-# dailyhot 已迁至 draftdesk-tools 项目（共享工具层），经 stack-net 以
-# http://dailyhot:6688 访问，对 core/sources.ts 透明。
-
-networks:
-  stack-net:
-    external: true
-    name: stack-net
+# 不声明外部网络：服务都在 compose 默认项目网络里，服务名即 DNS
+# （http://dailyhot:6688、http://searxng:8080），fresh clone 一条命令即可启动。
+volumes:
+  searxng-cache:

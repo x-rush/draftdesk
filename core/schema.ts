@@ -302,6 +302,14 @@ export const configSchema = z
     tavilyKey: z.string().max(500).optional(),
     clearApiKey: z.boolean().optional(),
     clearTavilyKey: z.boolean().optional(),
+    // 网页搜索后端：tavily=仅 Tavily（缺省，兼容旧行为）；searxng=仅本地 SearXNG；
+    // hybrid=Tavily 先行，结果不足或失败时由 SearXNG 补位。
+    webSearchProvider: z.enum(["tavily", "searxng", "hybrid"]).optional(),
+    searxngUrl: z
+      .string()
+      .max(300)
+      .refine((v) => !v || /^https?:\/\//.test(v), "SearXNG 地址需以 http(s):// 开头")
+      .optional(),
     dailyTokenLimit: z.number().int().min(30000).max(2000000),
   })
   .strict();

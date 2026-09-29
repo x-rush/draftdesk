@@ -23,7 +23,7 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 ## 首次使用
 
 1. 模型与设置：填写百炼 Base URL、账号已开通的模型标识和 API Key，保存后测试模型连接。`.env.example` 使用 `qwen3.8-flash`；请以自己账号的可用模型为准，不预设免费额度。这里需要百炼 API Key，不是阿里云 AccessKey ID/Secret。两把密钥的申请步骤、填写位置（页面或环境变量）与常见报错见[密钥获取与配置指南](docs/api-keys.md)。
-2. 数据源：AIHOT 精选/产品动态 RSS、百度热搜、Google Trends 地域热榜、GitHub Trending、Hacker News Top、Product Hunt 新产品 Feed、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。Docker 内另提供 DailyHotApi 聚合补充，知乎、抖音、头条、贴吧、掘金本机试跑可读；B站有过超时但复测成功，微博和快手本机仍失败，这三项默认停用。可在「数据源」逐个检测连接，按需启用并加入研究策略；原平台链接和榜单更新时间会保留，过期或无效榜单会报错。网页搜索另需 Tavily Key；即时热榜的热度不作为跨天增长率。完整操作与排障见[数据源配置指南](docs/data-source-configuration.md)，各来源状态见[热榜来源说明](docs/hotlist-sources.md)。
+2. 数据源：AIHOT 精选/产品动态 RSS、百度热搜、Google Trends 地域热榜、GitHub Trending、Hacker News Top、Product Hunt 新产品 Feed、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。DailyHotApi 聚合（知乎、抖音、头条、贴吧、掘金可读；B站有过超时但复测成功，微博和快手本机仍失败，这三项默认停用）与 SearXNG 元搜索都随主 compose 一并启动，无需额外步骤。可在「数据源」逐个检测连接，按需启用并加入研究策略；原平台链接和榜单更新时间会保留，过期或无效榜单会报错。网页搜索三档后端：Tavily 先行 + SearXNG 补位（缺省，不配 Key 也能搜索）、仅 Tavily、仅本地 SearXNG；即时热榜的热度不作为跨天增长率。完整操作与排障见[数据源配置指南](docs/data-source-configuration.md)，各来源状态见[热榜来源说明](docs/hotlist-sources.md)。
 3. 研究策略：调整受众、目标、关键词、域名、排除词、回看天数和预算，先手动运行。
 4. 创作活动：在自己的 Chrome / Edge 登录 B站、抖音、快手、小红书创作者中心，打开工作台提供的开源扩展即可进入该平台活动页并采集。扩展默认将活动包送到本机工作台，保留原始快照与历史；也支持 JSON 导出／导入。可对命中关键词的线索单独运行 AI 初筛，查看相关性、缺失证据和条件性内容方向；这不是活动有效性或参与资格证明。过期、未知截止时间和只有摘要的活动不会进入正式推荐分析。新版采集包记录扫描范围；旧包和有限页数采集不能证明已抓全平台最新活动。只有活动中心链接而无单条规则链接的结果需按标题回原平台核对。参见 [四平台活动采集说明](docs/creator-activities.md)。
 5. 运行记录：查看来源失败、任务步骤、模型调用和用量。默认关闭每日定时，可按北京时间启用。
@@ -33,7 +33,7 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 
 「采集覆盖」可先选研究策略，点击“只采集预览 · 不调用 AI”，检查最多三个已启用的非网页搜索来源实际读到、命中和选入的条目，再决定是否运行付费分析。预览不能代表全网覆盖，热榜即时指数也不能单独证明增长。活动列表默认显示当前可参与的通过检查与待验证条目，两种状态分别标注；时间未知、已结束和已否决活动可用筛选器回看。只有通过检查的记录才属于推荐。
 
-模型连接与网页搜索分别验证：填写 Tavily Key 后使用“测试搜索（1 次 basic）”。模型可调用不代表搜索已接通，测试会消耗对应供应商额度。
+模型连接与网页搜索分别验证：用「测试搜索」按当前后端实测（SearXNG 零成本；Tavily 消耗一次 basic 额度；混合档两项都测，Tavily 未配置不算失败）。模型可调用不代表搜索已接通，测试会消耗对应供应商额度。
 
 没有真实来源时不生成示例新闻；没有密钥时仍可使用外部证据导入、查看和编辑。启用模型功能必须完成真实连接。
 
@@ -67,7 +67,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 Hermes 可将技能目录放入 `~/.hermes/skills/`；OpenClaw 可放入其工作区 `skills/` 或用户技能目录。按各自当前官方文档安装，不自动替用户安装、创建日程或接通付费搜索。附带 Skill 描述了如何按工作台导出的策略运行外部每日研究。远程智能体需显式设置可达的安全入口；Docker 容器的 localhost 不是宿主机。
 
-同机 Docker 运行时，推荐让 Agent 只返回严格 JSON 证据包，由宿主机执行 `agents/sync-result.ps1 -ResponseFile` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。OpenClaw 用新会话执行每轮任务，Hermes 的一次性命令若拦截写文件，也可以把最终响应保存给宿主机适配器。`agents/configure.ps1` 配置两者的 SearXNG 搜索、公开网页读取及 DraftDesk Skills；网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
+同机运行外部 Agent 时，推荐让 Agent 只返回严格 JSON 证据包，由用户在宿主机用提交令牌直接调用 `POST /api/v1/intake` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 
 ## 数据与边界
 

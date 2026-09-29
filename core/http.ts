@@ -21,7 +21,7 @@ import { skillCatalog, loadSkill } from "./skills";
 import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
-import { collect, readAggregatedHotlist, readHotspotSource } from "./sources";
+import { collect, readAggregatedHotlist, readHotspotSource, searchProvider } from "./sources";
 import type {DiscoveryRecord} from "./discovery";
 import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
@@ -265,24 +265,52 @@ export async function handle(req: Request, path: string[]) {
       return json({ message: result.text, usage: result.usage });
     }
     if (route === "test-search") {
-      const key = db.config().tavilyKey;
-      if (!key) throw new AppError("请先保存 Tavily Key。");
-      try {
-        const response = await fetch("https://api.tavily.com/search", {
-          method: "POST",
-          signal: AbortSignal.any([req.signal, AbortSignal.timeout(30000)]),
-          headers: { "content-type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({ query: "AI productivity tools", search_depth: "basic", max_results: 1 }),
-        });
-        if (!response.ok) throw new AppError(`Tavily 搜索失败（HTTP ${response.status}），请检查密钥与额度。`, 502);
-        const result = await response.json();
-        const count = Array.isArray(result.results) ? result.results.length : 0;
-        if (!count) throw new AppError("Tavily 已响应，但本次未返回搜索结果。", 502);
-        return json({ message: `Tavily 实际搜索成功，返回 ${count} 条结果（消耗一次 basic 搜索额度）。` });
-      } catch (error) {
-        if (error instanceof AppError) throw error;
-        throw new AppError("Tavily 连接失败或超时，请检查网络；密钥不会回显。", 502);
-      }
+      const runTavily = async () => {
+        const key = db.config().tavilyKey;
+        if (!key) throw new AppError("请先保存 Tavily Key。");
+        try {
+          const response = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            signal: AbortSignal.any([req.signal, AbortSignal.timeout(30000)]),
+            headers: { "content-type": "application/json", Authorization: `Bearer ${key}` },
+            body: JSON.stringify({ query: "AI productivity tools", search_depth: "basic", max_results: 1 }),
+          });
+          if (!response.ok) throw new AppError(`Tavily 搜索失败（HTTP ${response.status}），请检查密钥与额度。`, 502);
+          const result = await response.json();
+          const count = Array.isArray(result.results) ? result.results.length : 0;
+          if (!count) throw new AppError("Tavily 已响应，但本次未返回搜索结果。", 502);
+          return `Tavily 实际搜索成功，返回 ${count} 条结果（消耗一次 basic 搜索额度）。`;
+        } catch (error) {
+          if (error instanceof AppError) throw error;
+          throw new AppError("Tavily 连接失败或超时，请检查网络；密钥不会回显。", 502);
+        }
+      };
+      const runSearxng = async () => {
+        const base = (db.config().searxngUrl || "http://searxng:8080").replace(/\/+$/,"");
+        try {
+          const response = await fetch(`${base}/search?format=json&q=${encodeURIComponent("AI productivity tools")}`, {
+            signal: AbortSignal.any([req.signal, AbortSignal.timeout(20000)]),
+            headers: { "accept": "application/json" },
+          });
+          if (!response.ok) throw new AppError(`SearXNG 搜索失败（HTTP ${response.status}），请检查地址与 JSON 输出是否放行。`, 502);
+          const result = await response.json();
+          const count = Array.isArray(result.results) ? result.results.length : 0;
+          if (!count) throw new AppError("SearXNG 已响应，但本次未返回搜索结果。", 502);
+          return `SearXNG 实际搜索成功，返回 ${count} 条结果（本地零成本）。`;
+        } catch (error) {
+          if (error instanceof AppError) throw error;
+          throw new AppError("SearXNG 连接失败或超时，请检查地址与网络。", 502);
+        }
+      };
+      const provider = searchProvider(db);
+      if (provider === "tavily") return json({ message: await runTavily() });
+      if (provider === "searxng") return json({ message: await runSearxng() });
+      // hybrid：SearXNG 必测（零成本兜底）；Tavily 配了 Key 才实测，未配置不算失败。
+      const searxngMessage = await runSearxng();
+      const tavilyMessage = db.config().tavilyKey
+        ? await runTavily()
+        : "Tavily 未配置 Key，补位搜索将由 SearXNG 承担";
+      return json({ message: `${searxngMessage}；${tavilyMessage}` });
     }
     if (route === "sources") {
       const source = sourceSchema.parse(input);
