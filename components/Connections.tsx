@@ -44,10 +44,13 @@ export function Connections({
       <section className="surface">
         <h2>让外部研究进入同一个工作台</h2>
         <p>
-          接入指导对任何 Agent 通用（OpenClaw、Hermes
-          只是已实测的样例）：外部 Agent
-          按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，可替代或补充内置研究管线。接收后先待审，需要时再交给内置研究流程。
+          两条研究路径二选一即可，随时可切换：<strong>内置管线</strong>是默认路径，零额外组件，在「研究策略」打开「每天自动运行」即可；<strong>外部回传</strong>适合已有
+          OpenClaw／Hermes 等个人助理的用户——关掉内置定时，让
+          Agent 按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，替代内置管线。接收后先待审，需要时再交给内置研究流程。
         </p>
+        {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="notice">
+          所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请到「研究策略」关闭该策略的「每天自动运行」。
+        </p>}
         <ol className="setup-steps">
           <li>下载 Skill 包，交给你的智能体安装。</li>
           <li>创建只具备提交权限的令牌，通过环境变量配置地址和令牌。</li>

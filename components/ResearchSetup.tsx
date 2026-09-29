@@ -171,6 +171,9 @@ export function PlanEditor({
           />
           每天自动运行
         </label>
+        <p className="muted">内置定时是默认研究路径，零额外组件。已有 OpenClaw／Hermes
+          等个人助理在跑同样策略的话，关掉它，改用「外部接入」让
+          Agent 自主搜罗回传，避免两边同时消耗模型额度。</p>
         <Field label="北京时间">
           <TimePicker
             value={p.dailyTime}
