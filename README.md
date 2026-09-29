@@ -53,7 +53,9 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 
 ## 外部智能体
 
-“外部接入”提供 Agent / 运行位置 / 研究模式向导，生成不含密钥的配置提示词。用户把提示词交给自己的 OpenClaw、Hermes 或其他 Agent，由它检查环境、安装或读取 Skill、配置已授权搜索工具，并报告缺项；模型与提交令牌由用户在该 Agent 的安全环境中自行处理。工作台提供协议预检和收件状态，不远程替用户修改 Agent 配置。预检不入库、不调用工作台模型。收件箱关联分析状态与产物，相同回执和策略重复点击不会重复创建任务。详细流程见 [接入说明](docs/external-onboarding.md)。
+外部接入是**通用能力**，不绑定特定产品：工作台提供版本化的研究指导（Skills 包、搜索计划、JSON Schema 和收件协议），任何能执行提示词、调用 HTTP 的外部 Agent 都能接入——由它按工作台导出的策略自主搜罗、整理，并在自己的调度能力下定时把结果回传，用来替代或补充内置研究与整理管线。OpenClaw 与 Hermes 只是本机实测过的样例，不是依赖。
+
+“外部接入”提供 Agent / 运行位置 / 研究模式向导，生成不含密钥的配置提示词。用户把提示词交给自己的 Agent，由它检查环境、安装或读取 Skill、配置已授权搜索工具，并报告缺项；模型与提交令牌由用户在该 Agent 的安全环境中自行处理。工作台提供协议预检和收件状态，不远程替用户修改 Agent 配置。预检不入库、不调用工作台模型。收件箱关联分析状态与产物，相同回执和策略重复点击不会重复创建任务。详细流程见 [接入说明](docs/external-onboarding.md)。
 
 在“外部接入”创建专用提交令牌，下载 Skills 包和 JSON Schema。令牌只用于 `POST /api/v1/intake`，可以单独撤销，服务端只保存散列。外部提交默认待审且私有；不会自行触发付费研究。
 
@@ -65,7 +67,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 环境变量只在运行工具的终端/容器配置，不必污染系统环境。协议例子见 `skills/draftdesk-submit/references/intake-example.json`。同一批次稳定使用 submissionId，重复提交不重复写入；同 ID 不同内容返回 409。
 
-Hermes 可将技能目录放入 `~/.hermes/skills/`；OpenClaw 可放入其工作区 `skills/` 或用户技能目录。按各自当前官方文档安装，不自动替用户安装、创建日程或接通付费搜索。附带 Skill 描述了如何按工作台导出的策略运行外部每日研究。远程智能体需显式设置可达的安全入口；Docker 容器的 localhost 不是宿主机。
+技能安装路径由各运行器决定，指导本身与 Agent 无关：已实测样例中 Hermes 放 `~/.hermes/skills/`，OpenClaw 放其工作区 `skills/` 或用户技能目录，其他 Agent 按各自官方文档加载 Skill 目录即可。工作台不自动替用户安装、创建日程或接通付费搜索；定时搜罗由 Agent 在自己的调度功能里安排。附带 Skill 描述了如何按工作台导出的策略运行外部每日研究。远程智能体需显式设置可达的安全入口；Docker 容器的 localhost 不是宿主机。
 
 同机运行外部 Agent 时，推荐让 Agent 只返回严格 JSON 证据包，由用户在宿主机用提交令牌直接调用 `POST /api/v1/intake` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 

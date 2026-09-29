@@ -5,7 +5,7 @@ import {Field,download} from "./ui";
 import {queryPlan,searchIntents} from "../core/research-policy";
 import type {Plan,Source} from "../core/schema";
 export function AgentSetup({plan,sources}:{plan?:Plan;sources:Source[]}) {
-  const [agent,setAgent]=useState("OpenClaw"),[location,setLocation]=useState("host"),[mode,setMode]=useState("evidence"),[remote,setRemote]=useState(""),[notice,setNotice]=useState("");
+  const [agent,setAgent]=useState("其他 Agent"),[location,setLocation]=useState("host"),[mode,setMode]=useState("evidence"),[remote,setRemote]=useState(""),[notice,setNotice]=useState("");
   if(!plan)return <p>先创建研究策略。</p>;
   const base=location==="host"?"http://127.0.0.1:5173":location==="docker"?"http://host.docker.internal:5173":remote;
   let validBase=location!=="remote";
@@ -17,7 +17,7 @@ export function AgentSetup({plan,sources}:{plan?:Plan;sources:Source[]}) {
     <Field label="Agent 运行位置"><Select value={location} onChange={e=>setLocation(e.target.value)}><option value="host">与工作台同一台电脑</option><option value="docker">同机 Docker 容器</option><option value="remote">另一台机器</option></Select></Field>
     {location==="remote"&&<Field label="Agent 可访问的 HTTPS 地址"><input value={remote} placeholder="https://你的安全入口" onChange={e=>setRemote(e.target.value)}/></Field>}
     <Field label="研究模式"><Select value={mode} onChange={e=>setMode(e.target.value)}><option value="evidence">仅采集证据</option><option value="full">完整研究，提交草稿</option></Select></Field>
-    <p>把下方提示词交给你的 Agent，由它检查环境、安装或读取 Skill、配置搜索与提交方式，并向你报告缺项。{agent==="OpenClaw"?"OpenClaw 每轮宜使用新会话。":agent==="Hermes"?"Hermes 若限制写文件，可改为输出标准 JSON 由受信工具提交。":"具体安装路径由对应运行器决定。"}</p>
+    <p>接入指导对任何 Agent 通用，OpenClaw／Hermes 只是本机实测过的样例。把下方提示词交给你的 Agent，由它检查环境、安装或读取 Skill、配置搜索与提交方式，并向你报告缺项；确认后再让它在自己的调度能力里安排定时搜罗回传。{agent==="OpenClaw"?"OpenClaw 每轮宜使用新会话。":agent==="Hermes"?"Hermes 若限制写文件，可改为输出标准 JSON 由受信工具提交。":"具体安装路径由对应运行器决定。"}</p>
     <p className="muted">这是配置辅助，不是工作台替你修改 Agent 环境。模型、搜索及提交令牌由你在自己的 Agent 环境中处理；提示词不包含任何密钥。</p>
     <pre className="code">{`DRAFTDESK_URL=${base}\nDRAFTDESK_TOKEN=由用户在 Agent 的安全环境中自行配置`}</pre>
     {!validBase&&<p role="alert">请填写不含凭据、查询参数和路径的 HTTPS 入口地址。</p>}
@@ -26,6 +26,6 @@ export function AgentSetup({plan,sources}:{plan?:Plan;sources:Source[]}) {
     {notice&&<p role="status">{notice}</p>}
     <details><summary>预览任务说明与搜索计划</summary><pre className="code" style={{whiteSpace:"pre-wrap"}}>{instructions}</pre><ul>{queryPlan(plan,Math.max(0,plan.maxQueries-Math.min(2,Math.floor(plan.maxQueries/2)))).map((q,i)=><li key={i}>{q.query}</li>)}</ul><p>检索意图是建议，外部 Agent 须按自己的工具执行。最多预留 2 次补证，包含在总次数内。</p></details>
     <h3>2. 由 Agent 自检并试跑</h3><ol><li>复制提示词，让你的 Agent 自行检查地址、Skill 和搜索工具。</li><li>你在 Agent 的安全配置中设置提交令牌；不要把它粘贴到提示词。</li><li>让 Agent 返回一次真实搜索的小样本与预检结果，核对来源和日期。</li><li>确认工作台收到回执后，再决定是否运行正式研究或安排日程。</li></ol>
-    <p>工作台只提供配置提示词、协议和验收入口，不会远程控制 OpenClaw／Hermes 或替用户填写密钥。完整研究提交后仍需审核，不会自动公开。</p>
+    <p>工作台只提供配置提示词、协议和验收入口，对任何 Agent 通用；不会远程控制外部 Agent 或替用户填写密钥。完整研究提交后仍需审核，不会自动公开。</p>
   </section>;
 }

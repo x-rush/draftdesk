@@ -44,8 +44,9 @@ export function Connections({
       <section className="surface">
         <h2>让外部研究进入同一个工作台</h2>
         <p>
-          OpenClaw、Hermes
-          或你自己的脚本，提交统一证据包。接收后先待审，需要时再交给内置研究流程。
+          接入指导对任何 Agent 通用（OpenClaw、Hermes
+          只是已实测的样例）：外部 Agent
+          按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，可替代或补充内置研究管线。接收后先待审，需要时再交给内置研究流程。
         </p>
         <ol className="setup-steps">
           <li>下载 Skill 包，交给你的智能体安装。</li>

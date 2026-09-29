@@ -36,7 +36,7 @@ export const skillCatalog = [
   {
     id: "draftdesk-submit",
     name: "外部智能体提交",
-    purpose: "Hermes、OpenClaw 等使用统一收件协议",
+    purpose: "任意外部 Agent（Hermes、OpenClaw 等为实测样例）使用统一收件协议",
   },
 ];
 export const skillReferences: Record<string, string[]> = {
