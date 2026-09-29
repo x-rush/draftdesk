@@ -21,6 +21,7 @@ export function Connections({
 }) {
   const [name, setName] = useState("Hermes 研究助手"),
     [token, setToken] = useState(""),
+    [readScope, setReadScope] = useState(false),
     [payload, setPayload] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -103,7 +104,7 @@ export function Connections({
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
-              const r = await api("connections", { name });
+              const r = await api("connections", { name, scopes: readScope ? ["submit", "read"] : undefined });
               setToken(r.token);
               setNotice("令牌已创建，仅在这次显示。");
             });
@@ -117,8 +118,16 @@ export function Connections({
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={readScope}
+              onChange={(e) => setReadScope(e.target.checked)}
+            />
+            同时允许只读访问（agent API / MCP 读取搜罗数据）
+          </label>
           <button className="primary" disabled={busy}>
-            创建提交令牌
+            创建令牌
           </button>
         </form>
         {token && (
@@ -136,10 +145,11 @@ export function Connections({
             <div>
               <strong>{c.name}</strong>
               <small>
+                {(c.scopes || ["submit"]).includes("read") ? "提交+读取" : "仅提交"} ·{" "}
                 {c.revoked
                   ? "已撤销"
                   : c.lastUsedAt
-                    ? "最近提交 " + date(c.lastUsedAt)
+                    ? "最近使用 " + date(c.lastUsedAt)
                     : "尚未使用"}
               </small>
             </div>

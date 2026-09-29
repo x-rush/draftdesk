@@ -22,6 +22,7 @@ import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
 import { collect, readAggregatedHotlist, readHotspotSource, searchProvider } from "./sources";
+import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc } from "./agent-read";
 import type {DiscoveryRecord} from "./discovery";
 import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
@@ -74,8 +75,44 @@ export async function handle(req: Request, path: string[]) {
     checkRequest(req);
     const db = store(),
       route = path.join("/");
-    if (req.headers.has("authorization") && !["intake","intake-check"].includes(route))
+    // 只读 agent 命名空间与 MCP 端点同样允许 Bearer 令牌（要求 read scope）。
+    const readScopedRoute = route === "mcp" || path[0] === "agent";
+    if (req.headers.has("authorization") && !["intake","intake-check"].includes(route) && !readScopedRoute)
       throw new AppError("提交令牌只允许写入收件接口。", 403);
+    if (readScopedRoute) {
+      if (route === "mcp" ? req.method !== "POST" : req.method !== "GET")
+        throw new AppError("方法不支持", 405);
+      db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "read");
+      if (route === "mcp") {
+        const reply = mcpRpc(db, await body(req));
+        // 通知（无 id）按约定不回包；其余返回单对象或批量数组
+        if (!reply) return new Response(null, { status: 202 });
+        return json(reply);
+      }
+      const query = Object.fromEntries(new URL(req.url).searchParams.entries());
+      const numeric = (key: string) => (query[key] === undefined ? undefined : Number(query[key]));
+      const params = {
+        q: query.q,
+        source: query.source,
+        sourceType: query.sourceType,
+        kind: query.kind,
+        quality: query.quality,
+        days: numeric("days"),
+        limit: numeric("limit"),
+        cursor: query.cursor,
+      };
+      Object.keys(params).forEach((k) => params[k as keyof typeof params] === undefined && delete params[k as keyof typeof params]);
+      if (route === "agent/hotspots") return json(agentHotspots(db, params));
+      if (route === "agent/evidence") return json(agentEvidence(db, params));
+      if (route === "agent/artifacts" && path.length === 2) return json(agentArtifacts(db, params));
+      if (path[0] === "agent" && path[1] === "artifacts" && path[2]) {
+        const detail = agentArtifact(db, path[2]);
+        if (!detail) throw new AppError("产物不存在", 404);
+        return json(detail);
+      }
+      if (route === "agent/stats") return json(agentStats(db));
+      throw new AppError("接口不存在", 404);
+    }
     if (req.method === "GET") {
       if (route === "health") return json({ ok: true, version: "2.0.0" });
       if (route === "activity-batches")
@@ -403,10 +440,10 @@ export async function handle(req: Request, path: string[]) {
       ]);
       return json(db.put("artifacts", a.id, { ...a, saved: true }));
     }
-    if (route === "connections")
-      return json(
-        db.createConnection(z.string().min(1).max(80).parse(input.name)),
-      );
+    if (route === "connections") {
+      const parsed = z.object({ name: z.string().min(1).max(80), scopes: z.array(z.enum(["submit","read"])).min(1).max(2).optional() }).parse(input);
+      return json(db.createConnection(parsed.name, parsed.scopes));
+    }
     if (route === "revoke") {
       const id = z.string().parse(input.id),
         c = db.get<any>("connections", id);

@@ -2,6 +2,21 @@
 
 外部接入是通用能力：接入指导（配置提示词、Skills 包、JSON Schema、收件协议）对**任何外部 Agent** 都适用，不依赖特定产品——向导里的 OpenClaw / Hermes 选项只是本机实测过的样例。目标用法是让外部 Agent 按工作台导出的策略自主搜罗、整理，并在它自己的调度能力下定时回传收件，作为内置研究与整理管线的替代或补充；工作台不远程控制 Agent、不替用户配置运行器，也不自动创建日程。
 
+## 读取 API 与 MCP（外部 Agent 消费搜罗数据）
+
+收件是写方向；读取是反方向——让外部 Agent 把工作台已搜罗的热榜、证据与选题产物当作素材库，先读后补，避免重复搜罗。
+
+- **令牌**：在「外部接入 → 接入令牌」创建连接时勾选「同时允许只读访问」，得到带 `submit`+`read` 双权限的令牌（旧令牌默认仅提交）。请求头 `Authorization: Bearer <令牌>`；只读令牌调收件接口返回 403，提交令牌调读取接口同样 403，权限不互通。
+- **REST**（全部 GET、游标分页、`nextCursor` 翻页）：
+  - `GET /api/v1/agent/hotspots?q=&source=&days=&limit=&cursor=` —— 近 N 天原始热榜候选（含被策略筛除的，`status`/`reason` 标注去向）
+  - `GET /api/v1/agent/evidence?q=&sourceType=&days=&limit=&cursor=` —— 证据库检索，摘要 ≤2000 字符并带 `provenance`
+  - `GET /api/v1/agent/artifacts?kind=&quality=&days=&limit=&cursor=` —— 产物列表，**全部质量分层带标签**（ready 通过检查 / review 待验证 / rejected 已否决）
+  - `GET /api/v1/agent/artifacts/{id}` —— 产物详情，含分析字段与引用证据摘要内联
+  - `GET /api/v1/agent/stats` —— 库存概览（各类型/质量/创作状态数量、最近任务）
+- **MCP**：`POST /api/v1/mcp`（JSON-RPC over Streamable HTTP 的纯 POST 简化档，无 SSE；与 REST 同一令牌鉴权）。工具：`search_hotspots` / `search_evidence` / `list_artifacts` / `get_artifact` / `get_workspace_stats`。支持远程 MCP 的运行器（OpenClaw 等）直接配端点 URL + 令牌即可，无需安装。
+- **stdio 桥**（只支持本地 stdio MCP 的运行器）：`node scripts/mcp-bridge.mjs`，环境变量 `DRAFTDESK_URL` + `DRAFTDESK_READ_TOKEN`，工具清单与 HTTP MCP 一致。
+- **边界**：只读，不触发模型调用、不消耗预算；永不返回密钥、模型配置、讨论会话与外部原始提交包；证据只给摘要不给全文；每个响应带 `notice`——热榜标题与摘录仅为线索，引用前核对原链接。「是否公开」仍只由发布流程决定，此 API 不改变产物可见性。
+
 ## 使用
 
 1. 在外部接入选择研究策略，再选择 OpenClaw / Hermes / 其他 Agent、宿主机 / Docker Desktop / 远程位置，以及采集或完整研究模式。

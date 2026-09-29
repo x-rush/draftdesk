@@ -499,20 +499,21 @@ export class Store {
       });
     });
   }
-  createConnection(name: string) {
+  createConnection(name: string, scopes: string[] = ["submit"]) {
     const token = "dd_" + randomBytes(32).toString("hex");
     const c = {
       id: randomUUID(),
       name,
       digest: hash(token),
+      scopes: scopes.filter((s) => ["submit", "read"].includes(s)),
       createdAt: now(),
       lastUsedAt: null,
       revoked: false,
     };
     this.put("connections", c.id, c);
-    return { id: c.id, name, token };
+    return { id: c.id, name, scopes: c.scopes, token };
   }
-  authenticate(token: string) {
+  authenticate(token: string, scope: "submit" | "read" = "submit") {
     const digest = hash(token);
     const c = this.list<any>("connections").find(
       (c) =>
@@ -520,6 +521,9 @@ export class Store {
         timingSafeEqual(Buffer.from(c.digest), Buffer.from(digest)),
     );
     if (!c) throw new AppError("提交令牌无效或已撤销。", 401);
+    // 旧连接无 scopes 字段：视为仅提交（与历史行为一致）
+    if (!(c.scopes || ["submit"]).includes(scope))
+      throw new AppError(`令牌无 ${scope} 权限；请在工作台创建对应权限的连接令牌。`, 403);
     return c;
   }
   intake(raw: unknown, connectionId: string) {

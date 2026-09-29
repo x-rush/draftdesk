@@ -59,6 +59,8 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 
 在“外部接入”创建专用提交令牌，下载 Skills 包和 JSON Schema。令牌只用于 `POST /api/v1/intake`，可以单独撤销，服务端只保存散列。外部提交默认待审且私有；不会自行触发付费研究。
 
+外部 Agent 也可以**读取**工作台已搜罗的数据：创建连接时勾选「同时允许只读访问」，同一令牌即可访问只读 REST（`/api/v1/agent/hotspots|evidence|artifacts|stats`，热榜、证据摘要、带质量标签的选题产物）与内置 MCP 端点（`POST /api/v1/mcp`，工具 search_hotspots / search_evidence / list_artifacts / get_artifact / get_workspace_stats）；只支持本地 stdio MCP 的运行器可用 `scripts/mcp-bridge.mjs` 桥接。读写权限按令牌隔离、互不越界，详见[接入说明](docs/external-onboarding.md)。
+
 ```sh
 export DRAFTDESK_URL=http://127.0.0.1:5173
 export DRAFTDESK_TOKEN=你的提交令牌
