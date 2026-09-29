@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,parseAggregateHotlist} from "../core/hotlists";
+import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch} from "../core/hotlists";
 import {metricComparison,type MetricSnapshot} from "../core/history";
 import {defaultPlans,defaultSources} from "../core/defaults";
 
@@ -69,4 +69,33 @@ test("聚合热榜只接收原平台 HTTPS 链接，明确标记获取方式和�
  assert.throws(()=>parseAggregateHotlist({code:500,data:[]},"bilibili","2026-09-24T02:00:00.000Z"),/格式异常/);
  assert.throws(()=>parseAggregateHotlist({code:200,updateTime:"2026-09-24T01:45:00.000Z",data:[{title:"标题",url:"https://example.com"}]},"bilibili","2026-09-24T02:00:00.000Z"),/没有有效原平台链接/);
  assert.throws(()=>parseAggregateHotlist({code:200,updateTime:"2026-09-23T00:00:00.000Z",data:[{title:"AI",url:"https://www.bilibili.com/video/BV123"}]},"bilibili","2026-09-24T02:00:00.000Z"),/超过 2 小时/);
+});
+
+test("B站官方热门接口：解析视频条目与播放量，短链优先，坏载荷报格式异常",()=>{
+ const items=parseBilibiliPopular({code:0,data:{list:[
+  {title:"AI 工作流实测",bvid:"BV1xx411c7mD",short_link_v2:"https://b23.tv/abc123",owner:{name:"测试UP主"},stat:{view:123456}},
+  {title:"无编号条目",owner:{name:"x"},stat:{view:99}},
+ ]}},"2026-09-29T10:00:00.000Z");
+ assert.equal(items.length,1);
+ assert.equal(items[0].url,"https://b23.tv/abc123");
+ assert.equal(items[0].metric?.value,"123456");
+ assert.equal(items[0].metric?.name,"B站热门播放量");
+ assert.deepEqual(items[0].acquisition,{method:"platform",provider:"B站官方接口",platform:"哔哩哔哩"});
+ assert.throws(()=>parseBilibiliPopular({code:-404,data:{}},"2026-09-29T10:00:00.000Z"),/格式异常/);
+ assert.throws(()=>parseBilibiliPopular({code:0,data:{list:[]}},"2026-09-29T10:00:00.000Z"),/未解析到视频/);
+});
+
+test("微博官方热搜接口：word 缺失回退 note，广告位跳过，热度即时口径",()=>{
+ const items=parseWeiboHotSearch({ok:1,data:{realtime:[
+  {word:"AI 视频工具",num:1807290},
+  {note:"宫廷糕点 泼天流量",num:500000},
+  {word:"广告位",num:1,is_ad:1},
+ ]}},"2026-09-29T10:00:00.000Z");
+ assert.equal(items.length,2);
+ assert.equal(items[0].title,"AI 视频工具");
+ assert.equal(items[0].metric?.value,"1807290");
+ assert.equal(items[1].title,"宫廷糕点 泼天流量");
+ assert.match(items[1].url,/s\.weibo\.com\/weibo\?q=%23/);
+ assert.deepEqual(items[0].acquisition,{method:"platform",provider:"微博官方接口",platform:"微博"});
+ assert.throws(()=>parseWeiboHotSearch({ok:0},"2026-09-29T10:00:00.000Z"),/格式异常/);
 });

@@ -5,7 +5,35 @@ import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
 import {relevanceReason,type DiscoveryCandidate,type SourceCoverage,type DiscoveryRecord} from "./discovery";
-import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,type AggregatePlatform} from "./hotlists";
+import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform} from "./hotlists";
+// 官方公开 JSON 接口（允许列表以精确 URL 匹配，配置来源时不可自填）：
+const BILIBILI_POPULAR_URL="https://api.bilibili.com/x/web-interface/popular";
+const WEIBO_HOTSEARCH_URL="https://weibo.com/ajax/side/hotSearch";
+// 这些接口的 CDN 对 node:https 的 TLS 握手不友好（实测超时），undici fetch 可通；
+// URL 均为上方常量白名单，不接受用户输入，无 SSRF 面。
+// 实测本机到 api.bilibili.com 的链路存在波动（约 1/6 成功率），网络级失败做有限重试，
+// 每次重试都重新走 DNS，不重试 HTTP 4xx/5xx（那是接口本身的问题）。
+async function apiJsonRead(url: string, referer: string, signal: AbortSignal): Promise<unknown> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, attempt * 800));
+    signal.throwIfAborted();
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]),
+        headers: { ...BROWSER_HEADERS, Referer: referer },
+      });
+      if (!response.ok) throw new AppError(`官方接口返回 HTTP ${response.status}。`);
+      const raw = await response.text();
+      if (raw.length > 2 * 1024 * 1024) throw new AppError("官方接口响应超过 2 MB。");
+      return JSON.parse(raw);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      lastError = error;
+    }
+  }
+  throw new AppError(`官方接口连接失败（已重试 4 次）：${lastError instanceof Error ? lastError.message : String(lastError)}`);
+}
 export async function readAggregatedHotlist(platform:AggregatePlatform,signal:AbortSignal):Promise<EvidenceInput[]>{
   // Fixed Compose service and allowlisted route: user-controlled URLs never reach the Docker network.
   const response=await fetch(`http://dailyhot:6688/${platform}`,{signal:AbortSignal.any([signal,AbortSignal.timeout(15000)]),headers:{Accept:"application/json"}});
@@ -29,6 +57,8 @@ export async function readHotspotSource(source:Source,signal:AbortSignal):Promis
     catch{return readAggregatedHotlist("weibo",signal);}
   }
   if(source.url==="https://github.com/trending")return parseGithubTrending(await safeRead(source.url,signal),now());
+  if(source.url===BILIBILI_POPULAR_URL)return parseBilibiliPopular(await apiJsonRead(source.url,"https://www.bilibili.com/",signal),now());
+  if(source.url===WEIBO_HOTSEARCH_URL)return parseWeiboHotSearch(await apiJsonRead(source.url,"https://weibo.com/",signal),now());
   if(source.url==="https://hacker-news.firebaseio.com/v0/topstories.json")return (await collectHackerNews(signal)).items;
   throw new AppError("热榜入口尚未核验或不在允许列表中。");
 }
@@ -97,7 +127,14 @@ export function publicIp(ip: string) {
     p[0] < 224
   );
 }
-export async function safeRead(value: string, signal?: AbortSignal) {
+// 部分平台官方 JSON 接口校验客户端类型（如微博 ajax 对非浏览器 UA 返回 403），
+// 这类公开接口需要带浏览器式头；不携带 Cookie、不做验证绕过。
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  Accept: "application/json",
+};
+
+export async function safeRead(value: string, signal?: AbortSignal, headers?: Record<string, string>) {
   const u = new URL(value);
   if (u.protocol !== "https:" || u.username || u.password || u.port)
     throw new AppError("采集地址必须是无凭据、标准端口的 HTTPS。");
@@ -121,6 +158,7 @@ export async function safeRead(value: string, signal?: AbortSignal) {
           "User-Agent": "DraftDesk/2.0 evidence-workbench",
           Accept:
             "application/rss+xml, application/atom+xml, application/json, text/html;q=0.8",
+          ...headers,
         },
       },
       (res) => {
@@ -374,6 +412,8 @@ export async function collect(
           catch{items=await readAggregatedHotlist("weibo",signal);warnings.push(`${s.name}：官方入口失败，已用 DailyHotApi 聚合榜单补充；请核对原平台链接。`);}
         }
         else if(s.url === "https://github.com/trending") items=parseGithubTrending(await safeRead(s.url,signal),now());
+        else if(s.url === BILIBILI_POPULAR_URL) items=parseBilibiliPopular(await apiJsonRead(s.url,"https://www.bilibili.com/",signal),now());
+        else if(s.url === WEIBO_HOTSEARCH_URL) items=parseWeiboHotSearch(await apiJsonRead(s.url,"https://weibo.com/",signal),now());
         else if(s.url === "https://hacker-news.firebaseio.com/v0/topstories.json"){
           const result=await collectHackerNews(signal);items=result.items;
           if(result.failures)warnings.push(`${s.name}：${result.failures} 条详情读取失败；已保留成功条目。`);

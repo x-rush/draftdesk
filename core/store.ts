@@ -136,6 +136,18 @@ export class Store {
         for(const j of this.list<Job>("jobs"))if((j.plan?.kind as string)==="people")this.del("jobs",j.id);
         this.put("meta","people-removal-v1",{version:1});
       }
+      if(!this.get("meta","official-api-hotlists-v1")){
+        // B站热门/微博热搜改走官方公开 JSON 接口（HTML 入口有访客验证，聚合上游又常年失败）。
+        // 种子两个新来源；热词策略仅在未被用户改动过默认来源清单时同步加入，改过的不碰。
+        for(const id of ["weibo-hotsearch","bilibili-popular"]){
+          const source=defaultSources.find(s=>s.id===id);
+          if(source&&!this.get("sources",id))this.put("sources",id,source);
+        }
+        const trend3=this.get<Plan>("plans","trend-radar");
+        if(trend3&&JSON.stringify(trend3.sourceIds)===JSON.stringify(["suggest-cn","suggest-global","trends-us","trends-gb","baidu-hot","dailyhot-juejin","web"]))
+          this.put("plans",trend3.id,{...trend3,sourceIds:defaultPlans.find(p=>p.id==="trend-radar")!.sourceIds});
+        this.put("meta","official-api-hotlists-v1",{version:1});
+      }
     });
   }
   close() {

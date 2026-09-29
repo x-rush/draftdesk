@@ -84,6 +84,54 @@ export function parseWeiboHotlist(html:string,collectedAt:string):EvidenceInput[
  return items;
 }
 
+// B站官方公开接口 /x/web-interface/popular（综合热门视频）。匿名 JSON，
+// 与网页版同源；播放量是平台热度线索，不代表话题需求或增长。
+export function parseBilibiliPopular(raw:unknown,collectedAt:string):EvidenceInput[]{
+ const payload=raw as Record<string,unknown>;
+ if(!payload||typeof payload!=="object"||payload.code!==0||!payload.data||typeof payload.data!=="object"||!Array.isArray((payload.data as {list?:unknown}).list))
+  throw new AppError("B站热门接口返回格式异常（code≠0 或缺 list）。");
+ const list=(payload.data as {list:Record<string,unknown>[]}).list;
+ const items:EvidenceInput[]=[];
+ for(const row of list.slice(0,50)){
+  const title=typeof row.title==="string"?text(row.title):"";
+  const bvid=typeof row.bvid==="string"?row.bvid:"";
+  const short=typeof row.short_link_v2==="string"?row.short_link_v2:"";
+  const url=short&&/^https:\/\/b23\.tv\//.test(short)?short:bvid?`https://www.bilibili.com/video/${bvid}`:"";
+  if(!title||!url)continue;
+  const owner=row.owner&&typeof row.owner==="object"?(row.owner as {name?:unknown}).name:"";
+  const stat=row.stat&&typeof row.stat==="object"?(row.stat as {view?:unknown}).view:undefined;
+  const views=typeof stat==="number"&&Number.isFinite(stat)?String(stat):"";
+  items.push({title:title.slice(0,300),url,excerpt:`B站综合热门视频${typeof owner==="string"&&owner?`（UP主：${owner}）`:""}：${title}`.slice(0,8000),collectedAt,sourceType:"trend",region:"CN",language:"zh",contentLevel:"headline",
+   acquisition:{method:"platform",provider:"B站官方接口",platform:"哔哩哔哩"},
+   ...(views?{metric:{name:"B站热门播放量",value:views,unit:"播放",period:collectedAt,cadence:"instant" as const}}:{})});
+ }
+ if(!items.length)throw new AppError("B站热门接口未解析到视频条目。");
+ return items;
+}
+
+// 微博官方公开接口 /ajax/side/hotSearch（网页版侧栏实时热搜同源数据）。
+// 仅取 realtime 榜；广告位跳过。热度值是平台线索，不等于需求或增长。
+export function parseWeiboHotSearch(raw:unknown,collectedAt:string):EvidenceInput[]{
+ const payload=raw as Record<string,unknown>;
+ if(!payload||typeof payload!=="object"||payload.ok!==1||!payload.data||typeof payload.data!=="object"||!Array.isArray((payload.data as {realtime?:unknown}).realtime))
+  throw new AppError("微博热搜接口返回格式异常（ok≠1 或缺 realtime）。");
+ const realtime=(payload.data as {realtime:Record<string,unknown>[]}).realtime;
+ const items:EvidenceInput[]=[];
+ for(const row of realtime.slice(0,50)){
+  if(row.is_ad===1)continue;
+  const word=typeof row.word==="string"&&row.word.trim()?row.word.trim():typeof row.note==="string"&&row.note.trim()?row.note.trim():"";
+  if(!word)continue;
+  const title=word.slice(0,300);
+  const url=`https://s.weibo.com/weibo?q=${encodeURIComponent("#"+word+"#")}`;
+  const heat=typeof row.num==="number"&&Number.isFinite(row.num)&&row.num>0?String(row.num):"";
+  items.push({title,url,excerpt:title,collectedAt,sourceType:"trend",region:"CN",language:"zh",contentLevel:"headline",
+   acquisition:{method:"platform",provider:"微博官方接口",platform:"微博"},
+   ...(heat?{metric:{name:"微博热搜热度",value:heat,unit:"平台热度",period:collectedAt,cadence:"instant" as const}}:{})});
+ }
+ if(!items.length)throw new AppError("微博热搜接口未解析到词条。");
+ return items;
+}
+
 export function parseGithubTrending(html:string,collectedAt:string):EvidenceInput[]{
  const items:EvidenceInput[]=[];
  for(const chunk of html.split(/<article\s+class="Box-row"[^>]*>/).slice(1)){

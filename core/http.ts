@@ -509,7 +509,8 @@ export async function handle(req: Request, path: string[]) {
         error:
           e instanceof AppError
             ? e.message
-            : "服务处理失败，请查看本地运行状态后重试。",
+            // 本机自托管应用：直接透出异常类型与消息，便于排障，不再只报通用失败。
+            : `服务处理失败：${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`,
       },
       e instanceof AppError ? e.status : 500,
     );

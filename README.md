@@ -23,7 +23,7 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node 
 ## 首次使用
 
 1. 模型与设置：填写百炼 Base URL、账号已开通的模型标识和 API Key，保存后测试模型连接。`.env.example` 使用 `qwen3.8-flash`；请以自己账号的可用模型为准，不预设免费额度。这里需要百炼 API Key，不是阿里云 AccessKey ID/Secret。两把密钥的申请步骤、填写位置（页面或环境变量）与常见报错见[密钥获取与配置指南](docs/api-keys.md)。
-2. 数据源：AIHOT 精选/产品动态 RSS、百度热搜、Google Trends 地域热榜、GitHub Trending、Hacker News Top、Product Hunt 新产品 Feed、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。DailyHotApi 聚合（知乎、抖音、头条、贴吧、掘金可读；B站有过超时但复测成功，微博和快手本机仍失败，这三项默认停用）与 SearXNG 元搜索都随主 compose 一并启动，无需额外步骤。可在「数据源」逐个检测连接，按需启用并加入研究策略；原平台链接和榜单更新时间会保留，过期或无效榜单会报错。网页搜索三档后端：Tavily 先行 + SearXNG 补位（缺省，不配 Key 也能搜索）、仅 Tavily、仅本地 SearXNG；即时热榜的热度不作为跨天增长率。完整操作与排障见[数据源配置指南](docs/data-source-configuration.md)，各来源状态见[热榜来源说明](docs/hotlist-sources.md)。
+2. 数据源：AIHOT 精选/产品动态 RSS、百度热搜、Google Trends 地域热榜、GitHub Trending、Hacker News Top、Product Hunt 新产品 Feed、GitHub 仓库搜索和 Tavily；支持自定义公开 HTTPS RSS/Atom。B站热门与微博热搜走官方公开接口（内置、匿名可用）；DailyHotApi 聚合补充知乎、抖音、头条、贴吧、掘金（快手上游仍失败，默认停用）；SearXNG 元搜索随主 compose 一并启动，无需额外步骤。可在「数据源」逐个检测连接，按需启用并加入研究策略；原平台链接和榜单更新时间会保留，过期或无效榜单会报错。网页搜索三档后端：Tavily 先行 + SearXNG 补位（缺省，不配 Key 也能搜索）、仅 Tavily、仅本地 SearXNG；即时热榜的热度不作为跨天增长率。完整操作与排障见[数据源配置指南](docs/data-source-configuration.md)，各来源状态见[热榜来源说明](docs/hotlist-sources.md)。
 3. 研究策略：调整受众、目标、关键词、域名、排除词、回看天数和预算，先手动运行，确认质量后再打开「每天自动运行」。这是默认研究路径，零额外组件；已有 OpenClaw／Hermes 等个人助理的用户可以关闭内置定时，改用[外部接入](#外部智能体)让 Agent 自主搜罗回传，避免两条路径重复消耗。
 4. 创作活动：在自己的 Chrome / Edge 登录 B站、抖音、快手、小红书创作者中心，打开工作台提供的开源扩展即可进入该平台活动页并采集。扩展默认将活动包送到本机工作台，保留原始快照与历史；也支持 JSON 导出／导入。可对命中关键词的线索单独运行 AI 初筛，查看相关性、缺失证据和条件性内容方向；这不是活动有效性或参与资格证明。过期、未知截止时间和只有摘要的活动不会进入正式推荐分析。新版采集包记录扫描范围；旧包和有限页数采集不能证明已抓全平台最新活动。只有活动中心链接而无单条规则链接的结果需按标题回原平台核对。参见 [四平台活动采集说明](docs/creator-activities.md)。
 5. 运行记录：查看来源失败、任务步骤、模型调用和用量。默认关闭每日定时，可按北京时间启用。

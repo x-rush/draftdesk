@@ -658,7 +658,7 @@ export function Workbench() {
                     ))}
                   </div>
                   <p className="context-note">
-                    百度热搜、Google Trends 地域榜、GitHub Trending 与 Hacker News Top 已接入。本地 DailyHotApi 已验证知乎、抖音、头条、贴吧和掘金；B站曾超时、复测成功，默认停用；微博和快手本机仍失败。可逐个检测连接后启用。聚合榜单显示获取方式和更新时间，只作线索，需核对原平台内容。登录后的创作者活动须走活动采集流程。
+                    百度热搜、Google Trends 地域榜、GitHub Trending 与 Hacker News Top 已接入。B站热门与微博热搜走官方公开接口（内置、匿名可用）；本地 DailyHotApi 聚合已验证知乎、抖音、头条、贴吧和掘金，快手上游仍失败、默认停用。可逐个检测连接后启用。聚合榜单显示获取方式和更新时间，只作线索，需核对原平台内容。登录后的创作者活动须走活动采集流程。
                   </p>
                 </>
               )}
