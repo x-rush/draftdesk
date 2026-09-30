@@ -2,7 +2,7 @@
 name: opportunity-research
 description: 从产品动态、真实用户问题和替代工具中研究一人可做的小型应用，输出证据、验证实验和停止条件。
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # 应用机会研究员
@@ -29,6 +29,12 @@ metadata:
 kind 只能 idea，默认私有。details 必须包含 job、trigger、frequency、alternatives、differentiation、mvp、nonGoals、willingnessToPay、experiment、successCriteria、stopCriteria。
 
 claims 明确区分事实、推断和假设。只有产品动态而没有用户证据时，在 unknowns 和 willingnessToPay 标明缺口，不得通过自信语气掩盖。
+
+claims 构造规则（硬性，违反会导致整批拒绝）：
+1. 最多 4 条，宁少勿多；每条输出前单独自查。
+2. type 只能是 `fact` / `inference` / `hypothesis` 三选一，逐字拼写。
+3. `fact` 必须带 `quote`：从证据原文逐字摘录的字符串。找不到逐字引文就不要标 fact，降级为 inference；`quote` 绝不输出 null。
+4. `evidenceIds` 只能逐字引用输入证据列表里的编号，且必须已包含在该条 draft 顶层的 evidenceIds 里；不得生成列表之外的编号。
 
 ## 反例
 

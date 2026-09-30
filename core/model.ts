@@ -227,6 +227,9 @@ export async function structured<T>(
             (fields.some(issue => String(issue.message).includes("received undefined"))
               ? "\n被报 received undefined 的字段必须显式输出：字段名不能省略，数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」。"
               : "") +
+            (fields.some(issue => String(issue.path.join(".")).includes("claims"))
+              ? "\nclaims 重写规则：最多 4 条；type 只能逐字写 fact/inference/hypothesis；fact 必须带证据原文逐字摘录的 quote 字符串（绝不写 null，没有引文就降级 inference）；evidenceIds 只能逐字引用允许列表里的编号，且已含在该条顶层 evidenceIds 中。"
+              : "") +
             (fields.some(issue => issue.path.at(-1) === "details")
               ? "\n缺失 details 时，按该条 kind 的 Schema 重建必填字段，不能因为摘要已有内容就省略。仅从原始证据和已有受支持内容整理；没有依据的范围或限制明确写本轮未核实，不用空对象、null 或编造事实补齐。"
               : "") + "\n保持证据 ID 不变，重写完整 JSON，不添加事实。",
