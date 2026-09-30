@@ -54,9 +54,16 @@ export function Connections({
         </p>}
         <ol className="setup-steps">
           <li>下载 Skill 包，交给你的智能体安装。</li>
-          <li>创建只具备提交权限的令牌，通过环境变量配置地址和令牌。</li>
+          <li>创建令牌（勾选读取可让 Agent 消费搜罗数据），通过环境变量配置地址和令牌。</li>
           <li>让智能体按协议提交，检查下方收件回执。</li>
         </ol>
+        <p>
+          分步操作、各运行器 MCP 配置示例与排障见{" "}
+          <a href="https://github.com/x-rush/draftdesk/blob/main/docs/agent-integration.md" target="_blank" rel="noreferrer">
+            外部 Agent 接入指南
+          </a>
+          。
+        </p>
         <div className="toolbar">
 
           <a className="button" href="/api/v1/skill-bundle" download>
