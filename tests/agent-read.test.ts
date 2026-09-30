@@ -114,3 +114,72 @@ test("读取令牌不能写入收件，提交隔离不被读取权限稀释", as
   const intake = await request("intake-check", { probe: true }, { Authorization: "Bearer " + reader.token });
   assert.equal(intake.status, 403);
 });
+
+test("消费接口：scope 隔离、dryRun 默认、幂等与状态计数", async () => {
+  const db = store();
+  const reader = db.createConnection("消费-只读", ["read"]);
+  const consumer = db.createConnection("消费助手", ["consume"]);
+  const consumeAuth = { Authorization: "Bearer " + consumer.token, "content-type": "application/json" };
+  // scope 隔离：read 令牌不能消费；consume 令牌不能读取
+  assert.equal((await request("agent/consume", { target: "evidence", ids: ["ev-one"], reason: "no-ai-signal" }, { Authorization: "Bearer " + reader.token })).status, 403);
+  assert.equal((await get("agent/stats", { Authorization: "Bearer " + consumer.token })).status, 403);
+  assert.equal((await request("intake-check", { probe: true }, { Authorization: "Bearer " + consumer.token })).status, 403);
+  // dryRun 默认 true：只报影响面不写库
+  const dry = await request("agent/consume", { target: "evidence", ids: ["ev-one"], reason: "no-ai-signal" }, consumeAuth);
+  const dryBody = await dry.json();
+  assert.equal(dry.status, 200);
+  assert.equal(dryBody.dryRun, true);
+  assert.equal(dryBody.toConsume, 1);
+  assert.ok(!db.get("consumption", "evidence:ev-one"));
+  // 正式消费 + 幂等
+  const real = await request("agent/consume", { target: "evidence", ids: ["ev-one"], reason: "no-ai-signal", dryRun: false }, consumeAuth);
+  assert.equal((await real.json()).toConsume, 1);
+  const again = await request("agent/consume", { target: "evidence", ids: ["ev-one"], reason: "no-ai-signal" }, consumeAuth);
+  assert.equal((await again.json()).alreadyConsumed, 1);
+  assert.ok(db.get("consumption", "evidence:ev-one"));
+  // ids 与 filter 都缺 → 400
+  assert.equal((await request("agent/consume", { target: "evidence", reason: "no-ai-signal" }, consumeAuth)).status, 400);
+  // 撤销复活
+  const un = await request("agent/unconsume", { target: "evidence", ids: ["ev-one"] }, consumeAuth);
+  assert.equal((await un.json()).revived, 1);
+  assert.ok(!db.get("consumption", "evidence:ev-one"));
+});
+
+test("消费接口：热榜 filter 批量、状态计数与 UI remaining 联动", async () => {
+  const db = store();
+  const consumer = db.createConnection("消费助手2", ["consume", "read"]);
+  const consumeAuth = { Authorization: "Bearer " + consumer.token, "content-type": "application/json" };
+  const readAuth = { Authorization: "Bearer " + consumer.token };
+  const at = new Date().toISOString();
+  db.put("discovery", "hotspot-test", { jobId: "hotspot-test", at, planName: "测试策略", limit: 10, mode: "analysis",
+    candidates: [
+      { url: "https://a.example.org/1", title: "条目一", sourceId: "weibo-hotsearch", sourceName: "微博", status: "watch", reason: "原始热点", observedAt: at },
+      { url: "https://a.example.org/2", title: "条目二", sourceId: "weibo-hotsearch", sourceName: "微博", status: "filtered", reason: "关键词不符", observedAt: at },
+      { url: "https://b.example.org/3", title: "条目三", sourceId: "baidu-hot", sourceName: "百度", status: "watch", reason: "原始热点", observedAt: at },
+    ], sources: [] });
+  // filter：只消费微博来源的 watch 条目 → 1 条（条目二是 filtered 被排除）
+  const filtered = await request("agent/consume", { target: "hotspots", filter: { days: 7, status: "watch", sourceId: "weibo-hotsearch" }, reason: "off-domain" }, consumeAuth);
+  const filteredBody = await filtered.json();
+  assert.equal(filteredBody.dryRun, true);
+  assert.equal(filteredBody.matched, 1);
+  // 正式执行 + 状态端点
+  await request("agent/consume", { target: "hotspots", filter: { days: 7, status: "watch", sourceId: "weibo-hotsearch" }, reason: "off-domain", dryRun: false }, consumeAuth);
+  const status = await get("agent/consume/status?target=hotspots", readAuth);
+  const statusBody = await status.json();
+  assert.equal(statusBody.total, 3);
+  assert.equal(statusBody.consumed, 1);
+  assert.equal(statusBody.remaining, 2);
+  assert.equal(statusBody.byReason["off-domain"], 1);
+  // UI 快照 remaining 联动
+  const snapshot = db.snapshot(new URLSearchParams("page=1&view=discover")) as any;
+  assert.equal(snapshot.stats.hotspotTotal, 3);
+  assert.equal(snapshot.stats.hotspotRemaining, 2);
+  assert.equal(snapshot.stats.hotspotConsumed, 1);
+  // agent stats 一致
+  const stats = await (await get("agent/stats", readAuth)).json();
+  assert.equal(stats.hotspots.remaining, 2);
+  // 过撤销窗口 → 410
+  db.put("consumption", "hotspots:" + (await import("node:crypto")).randomUUID(), { target: "hotspots", identity: "https://old.example.org/x", reason: "outdated", consumedBy: "agent", consumedAt: "2026-08-01T00:00:00.000Z", unconsumeUntil: "2026-08-31T00:00:00.000Z" });
+  const late = await request("agent/unconsume", { target: "hotspots", ids: ["https://old.example.org/x"] }, consumeAuth);
+  assert.equal(late.status, 410);
+});

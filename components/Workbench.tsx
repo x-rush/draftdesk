@@ -108,7 +108,7 @@ const headings: Record<string, [string, string]> = {
 type Snapshot = {
   jobActivity: JobActivity[];
   pagination: {artifacts:PageInfo;jobs:PageInfo;submissions:PageInfo};
-  stats:{artifacts:number;review:number;counts:Record<string,number>;qualityCounts:{ready:number;review:number;rejected:number};hotspotTotal:number;sourceFailures:number;failedRuns:number;running:number;activePlanIds:string[]};
+  stats:{artifacts:number;review:number;counts:Record<string,number>;qualityCounts:{ready:number;review:number;rejected:number};hotspotTotal:number;hotspotRemaining:number;hotspotConsumed:number;sourceFailures:number;failedRuns:number;running:number;activePlanIds:string[]};
   config: any;
   plans: Plan[];
   sources: Source[];
@@ -383,7 +383,7 @@ export function Workbench() {
                   {view === "discover" && <section className="daily-overview" aria-label="工作台概览">
                     <div className="daily-overview-head"><div><span>{data.discovery?`最近研究 · ${data.discovery.planName} · ${date(data.discovery.at)}`:"尚无研究记录"}</span><h2>线索、判断和异常，都从这里进入</h2><p>{data.discovery?`本轮读取 ${data.discovery.sources.reduce((n,s)=>n+s.raw,0)} 条，入模 ${data.discovery.sources.reduce((n,s)=>n+s.selected,0)} 条；下方可查看本轮覆盖。`:"配置来源后开始第一次研究，原始线索会单独保留。"}</p></div><button onClick={()=>navigate(data.config.hasApiKey?"plans":"settings")}>{data.config.hasApiKey?"查看研究策略":"配置模型"} <ArrowUpRight size={15}/></button></div>
                     <div className="overview-links">
-                      <button onClick={()=>navigate("hotspots")}><span>原始热点 · 近 14 天</span><strong>{data.stats.hotspotTotal}</strong><small>含未入模和被筛除线索 ↗</small></button>
+                      <button onClick={()=>navigate("hotspots")}><span>原始热点 · 近 14 天</span><strong>{data.stats.hotspotRemaining}</strong><small>未消费 · 共 {data.stats.hotspotTotal} 条（已消费 {data.stats.hotspotConsumed}）↗</small></button>
                       <button onClick={()=>{setDiscoveryMode("results");setQuality("ready");setPage(1);}}><span>通过检查</span><strong>{data.stats.qualityCounts.ready}</strong><small>查看可考虑的推荐 ↗</small></button>
                       <button onClick={()=>{setDiscoveryMode("results");setQuality("review");setPage(1);}}><span>待验证</span><strong>{data.stats.qualityCounts.review}</strong><small>查看缺失证据 ↗</small></button>
                       <button onClick={()=>{setDiscoveryMode("results");setQuality("rejected");setPage(1);}}><span>已否决</span><strong>{data.stats.qualityCounts.rejected}</strong><small>查看排除理由 ↗</small></button>

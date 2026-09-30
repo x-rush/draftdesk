@@ -9,7 +9,7 @@ export type HotspotFeed={items:HotspotRow[];total:number;page:number;pages:numbe
   sourceOptions:{id:string;name:string}[];planOptions:string[];lastCollectedAt:string|null;
   sourceHealth:{id:string;name:string;status:"ok"|"failed";at:string;error?:string}[]};
 
-function urlKey(value:string){
+export function urlKey(value:string){
   try{const u=new URL(value);u.hash="";for(const key of [...u.searchParams.keys()])if(/^(utm_|fbclid$|gclid$)/i.test(key))u.searchParams.delete(key);return u.toString();}
   catch{return value;}
 }

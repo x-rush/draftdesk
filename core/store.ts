@@ -14,6 +14,7 @@ import { defaultConfig, defaultPlans, defaultSources } from "./defaults";
 import { recordHistory, metricComparison, type MetricSnapshot } from "./history";
 import { decisionOf } from "./research-policy";
 import { validateIntake } from "./intake-validation";
+import { consumptionSummary } from "./agent-read";
 import {
   artifactSchema,
   evidenceSchema,
@@ -259,13 +260,14 @@ export class Store {
     const qualityCounts={ready:0,review:0,rejected:0};
     snapshot.artifacts.forEach(a=>{if(a.quality in qualityCounts)qualityCounts[a.quality as keyof typeof qualityCounts]++;});
     const hotspotSummary=hotspotFeed(snapshot.discovery,new URLSearchParams(),1);
+    const hotspotConsumption=consumptionSummary(this,"hotspots");
     return {...snapshot, discovery:params.get("jobId")?researchDiscovery.find(d=>d.jobId===params.get("jobId"))||null:researchDiscovery[0]||null,
       hotspots:view==="hotspots"?hotspotFeed(snapshot.discovery,params,pageSize):null, artifacts:artifacts.items, jobs:jobs.items,
       submissions:submissions.items.map(r=>({...r,artifacts:snapshot.artifacts.filter(a=>r.artifactIds?.includes(a.id)||r.jobs.some((j:Job)=>j.id===a.jobId))})),
       evidence:snapshot.evidence.filter(e=>artifacts.items.some(a=>a.evidenceIds.includes(e.id))),
       events:[], metrics:[],
       jobActivity:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).concat(snapshot.jobs.filter(j=>!["queued","running"].includes(j.state)).slice(0,50)).map(j=>({id:j.id,state:j.state,createdAt:j.createdAt,name:j.plan?.name || "研究任务",total:snapshot.artifacts.filter(a=>a.jobId===j.id).length,review:snapshot.artifacts.filter(a=>a.jobId===j.id&&a.quality==="review").length})),
-      stats:{artifacts:snapshot.artifacts.length,review:qualityCounts.review,qualityCounts,hotspotTotal:hotspotSummary.total,sourceFailures:hotspotSummary.sourceHealth.filter(s=>s.status==="failed").length,failedRuns:snapshot.jobs.filter(j=>j.state==="failed").length,counts,
+      stats:{artifacts:snapshot.artifacts.length,review:qualityCounts.review,qualityCounts,hotspotTotal:hotspotSummary.total,hotspotRemaining:hotspotConsumption.remaining,hotspotConsumed:hotspotConsumption.consumed,sourceFailures:hotspotSummary.sourceHealth.filter(s=>s.status==="failed").length,failedRuns:snapshot.jobs.filter(j=>j.state==="failed").length,counts,
         running:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).length,
         activePlanIds:snapshot.jobs.filter(j=>["queued","running"].includes(j.state)).map(j=>j.planId)},
       pagination:{artifacts:{...artifacts,items:undefined},jobs:{...jobs,items:undefined},submissions:{...submissions,items:undefined}}
@@ -505,7 +507,7 @@ export class Store {
       id: randomUUID(),
       name,
       digest: hash(token),
-      scopes: scopes.filter((s) => ["submit", "read"].includes(s)),
+      scopes: scopes.filter((s) => ["submit", "read", "consume"].includes(s)),
       createdAt: now(),
       lastUsedAt: null,
       revoked: false,
@@ -513,7 +515,7 @@ export class Store {
     this.put("connections", c.id, c);
     return { id: c.id, name, scopes: c.scopes, token };
   }
-  authenticate(token: string, scope: "submit" | "read" = "submit") {
+  authenticate(token: string, scope: "submit" | "read" | "consume" = "submit") {
     const digest = hash(token);
     const c = this.list<any>("connections").find(
       (c) =>
@@ -525,6 +527,40 @@ export class Store {
     if (!(c.scopes || ["submit"]).includes(scope))
       throw new AppError(`令牌无 ${scope} 权限；请在工作台创建对应权限的连接令牌。`, 403);
     return c;
+  }
+  // 消费标记：不删除原始记录，只加状态层；幂等；dryRun 只统计不写入。
+  consumeIdentities(target: "hotspots" | "evidence", identities: string[], reason: string, consumedBy: string, producedRef?: string, dryRun = false) {
+    let toConsume = 0, alreadyConsumed = 0;
+    const run = (write: boolean) => {
+      const stamp = now(), unconsumeUntil = new Date(Date.parse(stamp) + 30 * 86400000).toISOString();
+      for (const identity of identities) {
+        const id = `${target}:${identity}`;
+        if (this.get("consumption", id)) { alreadyConsumed++; continue; }
+        if (!write) { toConsume++; continue; }
+        this.put("consumption", id, { target, identity, reason, producedRef: producedRef || null, consumedBy, consumedAt: stamp, unconsumeUntil });
+        toConsume++;
+      }
+    };
+    if (dryRun) run(false);
+    else this.transaction(() => run(true));
+    return { ok: true, dryRun, target, toConsume, alreadyConsumed,
+      notice: "消费仅改变可见性与计数，不删除原始记录；30 天内可 unconsume。" };
+  }
+  unconsumeIdentities(target: "hotspots" | "evidence", identities: string[], dryRun = false) {
+    let revived = 0, expired = 0;
+    const stamp = now();
+    const run = (write: boolean) => {
+      for (const identity of identities) {
+        const c = this.get<any>("consumption", `${target}:${identity}`);
+        if (!c) continue;
+        if (c.unconsumeUntil <= stamp) { expired++; continue; }
+        if (write) this.del("consumption", `${target}:${identity}`);
+        revived++;
+      }
+    };
+    if (dryRun) run(false);
+    else this.transaction(() => run(true));
+    return { ok: dryRun || revived > 0, dryRun, target, revived, expired, notice: "超过 30 天撤销窗口的条目已软化处理，不再计入未消费。" };
   }
   intake(raw: unknown, connectionId: string) {
     const check=validateIntake(raw);

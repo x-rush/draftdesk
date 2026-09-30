@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { Store } from "./store";
-import { now } from "./store";
+import { urlKey } from "./hotspots";
+
+const isoNow = () => new Date().toISOString();
 
 // 外部 Agent 只读投影：REST（/api/v1/agent/*）与 MCP（/api/v1/mcp）共用同一实现。
 // 边界（写入 docs/external-onboarding.md）：
@@ -45,7 +47,7 @@ function envelope<T>(items: T[], nextOffset: number, total: number) {
     items,
     nextCursor:
       nextOffset < total ? encodeCursor(nextOffset) : undefined,
-    generatedAt: now(),
+    generatedAt: isoNow(),
     notice: NOTICE,
   };
 }
@@ -176,7 +178,7 @@ export function agentArtifact(db: Store, id: string) {
     ...artifactSummary(a),
     details: a.details,
     evidence,
-    generatedAt: now(),
+    generatedAt: isoNow(),
     notice: NOTICE,
   };
 }
@@ -198,10 +200,10 @@ export function agentStats(db: Store) {
   return {
     artifacts: { total: artifacts.length, byKind: by("kind"), byQuality: by("quality"), byCreationStatus: by("creationStatus") },
     evidence: { total: db.list("evidence").length },
-    hotspots: { records: db.list("discovery").filter((d: any) => Date.parse(d.at) >= windowStart(14)).length, windowDays: 14 },
+    hotspots: (() => { const c = consumptionSummary(db, "hotspots"); return { total: c.total, consumed: c.consumed, remaining: c.remaining, records: db.list("discovery").filter((d: any) => Date.parse(d.at) >= windowStart(14)).length, windowDays: 14 }; })(),
     sources: { enabled: db.list<any>("sources").filter((s) => s.enabled).length, total: db.list("sources").length },
     recentJobs: jobs,
-    generatedAt: now(),
+    generatedAt: isoNow(),
     notice: NOTICE,
   };
 }
@@ -326,4 +328,37 @@ export function mcpRpc(db: Store, message: unknown): unknown {
   } catch (error) {
     return { jsonrpc: "2.0", id: msg.id, error: { code: -26302, message: error instanceof Error ? error.message : String(error) } };
   }
+}
+
+// ---- 消费状态投影（consumption ≠ 删除：只加状态层，原始记录保留）----
+
+export const CONSUME_REASONS = ["no-ai-signal", "outdated", "off-domain", "processed-into-artifact"] as const;
+
+// 热榜条目身份 = urlKey(url)（与热点列表同口径去重）；证据身份 = 证据 id。
+export function consumptionSummary(db: Store, target: "hotspots" | "evidence"): {
+  target: string; total: number; consumed: number; remaining: number; byReason: Record<string, number>;
+} {
+  const consumed = new Map<string, any>();
+  for (const c of db.list<any>("consumption")) if (c.target === target) consumed.set(c.identity, c);
+  const byReason: Record<string, number> = {};
+  let total = 0, consumedCount = 0;
+  if (target === "hotspots") {
+    const seen = new Set<string>();
+    for (const record of db.list<any>("discovery"))
+      for (const candidate of record.candidates || []) {
+        const key = urlKey(candidate.url);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        total++;
+        const entry = consumed.get(key);
+        if (entry) { consumedCount++; byReason[entry.reason] = (byReason[entry.reason] || 0) + 1; }
+      }
+  } else {
+    for (const e of db.list<any>("evidence")) {
+      total++;
+      const entry = consumed.get(e.id);
+      if (entry) { consumedCount++; byReason[entry.reason] = (byReason[entry.reason] || 0) + 1; }
+    }
+  }
+  return { target, total, consumed: consumedCount, remaining: total - consumedCount, byReason };
 }

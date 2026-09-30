@@ -22,6 +22,7 @@ export function Connections({
   const [name, setName] = useState("Hermes 研究助手"),
     [token, setToken] = useState(""),
     [readScope, setReadScope] = useState(false),
+    [consumeScope, setConsumeScope] = useState(false),
     [payload, setPayload] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -54,7 +55,7 @@ export function Connections({
         </p>}
         <ol className="setup-steps">
           <li>下载 Skill 包，交给你的智能体安装。</li>
-          <li>创建令牌（勾选读取可让 Agent 消费搜罗数据），通过环境变量配置地址和令牌。</li>
+          <li>创建令牌（勾选读取/消费可让 Agent 读取并标记搜罗数据），通过环境变量配置地址和令牌。</li>
           <li>让智能体按协议提交，检查下方收件回执。</li>
         </ol>
         <p>
@@ -111,7 +112,8 @@ export function Connections({
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
-              const r = await api("connections", { name, scopes: readScope ? ["submit", "read"] : undefined });
+              const scopes = [readScope && "read", consumeScope && "consume"].filter(Boolean);
+              const r = await api("connections", { name, scopes: scopes.length ? scopes : undefined });
               setToken(r.token);
               setNotice("令牌已创建，仅在这次显示。");
             });
@@ -131,7 +133,15 @@ export function Connections({
               checked={readScope}
               onChange={(e) => setReadScope(e.target.checked)}
             />
-            同时允许只读访问（agent API / MCP 读取搜罗数据）
+            只读访问（agent API / MCP 读取搜罗数据）
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={consumeScope}
+              onChange={(e) => setConsumeScope(e.target.checked)}
+            />
+            消费标记（批量把已处理的热榜/证据置为已消费，可撤销）
           </label>
           <button className="primary" disabled={busy}>
             创建令牌
@@ -152,7 +162,7 @@ export function Connections({
             <div>
               <strong>{c.name}</strong>
               <small>
-                {(c.scopes || ["submit"]).includes("read") ? "提交+读取" : "仅提交"} ·{" "}
+                {(c.scopes || ["submit"]).filter((s: string) => s !== "submit").map((s: string) => s === "read" ? "读取" : "消费").join("+") || "仅提交"} ·{" "}
                 {c.revoked
                   ? "已撤销"
                   : c.lastUsedAt

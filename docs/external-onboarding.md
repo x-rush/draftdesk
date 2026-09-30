@@ -8,13 +8,17 @@
 
 收件是写方向；读取是反方向——让外部 Agent 把工作台已搜罗的热榜、证据与选题产物当作素材库，先读后补，避免重复搜罗。
 
-- **令牌**：在「外部接入 → 接入令牌」创建连接时勾选「同时允许只读访问」，得到带 `submit`+`read` 双权限的令牌（旧令牌默认仅提交）。请求头 `Authorization: Bearer <令牌>`；只读令牌调收件接口返回 403，提交令牌调读取接口同样 403，权限不互通。
+- **令牌**：在「外部接入 → 接入令牌」创建连接时按需勾选「只读访问」与「消费标记」，得到对应 scope 的令牌（旧令牌默认仅提交）。请求头 `Authorization: Bearer <令牌>`；scope 双向隔离：只读令牌调回传/消费返回 403，提交令牌调读取/消费同样 403。
 - **REST**（全部 GET、游标分页、`nextCursor` 翻页）：
   - `GET /api/v1/agent/hotspots?q=&source=&days=&limit=&cursor=` —— 近 N 天原始热榜候选（含被策略筛除的，`status`/`reason` 标注去向）
   - `GET /api/v1/agent/evidence?q=&sourceType=&days=&limit=&cursor=` —— 证据库检索，摘要 ≤2000 字符并带 `provenance`
   - `GET /api/v1/agent/artifacts?kind=&quality=&days=&limit=&cursor=` —— 产物列表，**全部质量分层带标签**（ready 通过检查 / review 待验证 / rejected 已否决）
   - `GET /api/v1/agent/artifacts/{id}` —— 产物详情，含分析字段与引用证据摘要内联
-  - `GET /api/v1/agent/stats` —— 库存概览（各类型/质量/创作状态数量、最近任务）
+  - `GET /api/v1/agent/stats` —— 库存概览（各类型/质量/创作状态数量、热榜已消费/未消费、最近任务）
+- **消费标记**（consume scope，REST 专用、不进 MCP 工具面）：
+  - `POST /api/v1/agent/consume` —— 批量把已处理的热榜/证据置为已消费。`ids` 与 `filter`（days/status/sourceId）二选一，单批 ≤1000 超出返回 `nextCursor`；`reason` 四选一（no-ai-signal / outdated / off-domain / processed-into-artifact）；**`dryRun` 默认 true**，先拿影响面确认再显式传 false 落库。消费 ≠ 删除：只加状态层，30 天内可撤销。
+  - `GET /api/v1/agent/consume/status?target=hotspots|evidence` —— total/consumed/remaining 与按原因分布；工作台首页热榜计数读 `remaining`。
+  - `POST /api/v1/agent/unconsume` —— 30 天撤销窗口内复活；过期返回 410。
 - **MCP**：`POST /api/v1/mcp`（JSON-RPC over Streamable HTTP 的纯 POST 简化档，无 SSE；与 REST 同一令牌鉴权）。工具：`search_hotspots` / `search_evidence` / `list_artifacts` / `get_artifact` / `get_workspace_stats`。支持远程 MCP 的运行器（OpenClaw 等）直接配端点 URL + 令牌即可，无需安装。
 - **stdio 桥**（只支持本地 stdio MCP 的运行器）：`node scripts/mcp-bridge.mjs`，环境变量 `DRAFTDESK_URL` + `DRAFTDESK_READ_TOKEN`，工具清单与 HTTP MCP 一致。
 - **边界**：只读，不触发模型调用、不消耗预算；永不返回密钥、模型配置、讨论会话与外部原始提交包；证据只给摘要不给全文；每个响应带 `notice`——热榜标题与摘录仅为线索，引用前核对原链接。「是否公开」仍只由发布流程决定，此 API 不改变产物可见性。

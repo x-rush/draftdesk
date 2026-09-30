@@ -22,7 +22,18 @@ import { requestModel } from "./model";
 import { discussion, distill } from "./chat";
 import { skillBundle } from "./skill-bundle";
 import { collect, readAggregatedHotlist, readHotspotSource, searchProvider } from "./sources";
-import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc } from "./agent-read";
+import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc, consumptionSummary } from "./agent-read";
+import { urlKey } from "./hotspots";
+
+function decodeConsumeCursor(raw?: string): number {
+  if (!raw) return 0;
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+    return Number.isInteger(parsed?.offset) && parsed.offset >= 0 ? parsed.offset : 0;
+  } catch {
+    return 0;
+  }
+}
 import type {DiscoveryRecord} from "./discovery";
 import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
@@ -75,10 +86,71 @@ export async function handle(req: Request, path: string[]) {
     checkRequest(req);
     const db = store(),
       route = path.join("/");
-    // 只读 agent 命名空间与 MCP 端点同样允许 Bearer 令牌（要求 read scope）。
-    const readScopedRoute = route === "mcp" || path[0] === "agent";
-    if (req.headers.has("authorization") && !["intake","intake-check"].includes(route) && !readScopedRoute)
+    // agent 命名空间：GET 读取要 read scope，消费写入要 consume scope，MCP 是 read。
+    const consumeRoute = route === "agent/consume" || route === "agent/unconsume";
+    const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute);
+    const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute;
+    if (req.headers.has("authorization") && !authAllowed)
       throw new AppError("提交令牌只允许写入收件接口。", 403);
+    if (consumeRoute) {
+      if (req.method !== "POST") throw new AppError("方法不支持", 405);
+      db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "consume");
+      if (route === "agent/consume") {
+        const input = z.object({
+          target: z.enum(["hotspots", "evidence"]),
+          ids: z.array(z.string().min(1).max(500)).max(1000).optional(),
+          filter: z.object({
+            days: z.number().int().min(1).max(60).optional(),
+            status: z.string().max(30).optional(),
+            sourceId: z.string().max(100).optional(),
+          }).strict().optional(),
+          reason: z.enum(["no-ai-signal", "outdated", "off-domain", "processed-into-artifact"]),
+          producedRef: z.string().max(300).optional(),
+          dryRun: z.boolean().optional(),
+          cursor: z.string().max(200).optional(),
+        }).strict().parse(await body(req));
+        if (!input.ids?.length && !input.filter) throw new AppError("ids 与 filter 必须提供其一。", 400);
+        let identities = input.ids ?? [];
+        let total = identities.length;
+        let nextCursor: string | undefined;
+        if (!input.ids?.length && input.filter) {
+          const since = Date.now() - (input.filter.days ?? 30) * 86400000;
+          const seen = new Set<string>();
+          const pool: string[] = [];
+          if (input.target === "hotspots") {
+            for (const record of db.list<any>("discovery")) {
+              if (Date.parse(record.at) < since) continue;
+              for (const c of record.candidates || []) {
+                if (input.filter.status && c.status !== input.filter.status) continue;
+                if (input.filter.sourceId && c.sourceId !== input.filter.sourceId) continue;
+                const key = urlKey(c.url);
+                if (!seen.has(key)) { seen.add(key); pool.push(key); }
+              }
+            }
+          } else {
+            for (const e of db.list<any>("evidence")) {
+              if (input.filter.status) continue;
+              if (Date.parse(e.collectedAt) < since) continue;
+              if (!seen.has(e.id)) { seen.add(e.id); pool.push(e.id); }
+            }
+          }
+          total = pool.length;
+          const offset = decodeConsumeCursor(input.cursor);
+          identities = pool.slice(offset, offset + 1000);
+          if (offset + 1000 < pool.length) nextCursor = Buffer.from(JSON.stringify({ offset: offset + 1000 })).toString("base64");
+        }
+        const result = db.consumeIdentities(input.target, identities, input.reason, "agent", input.producedRef, input.dryRun !== false);
+        return json({ ...result, matched: total, nextCursor, alreadyConsumed: result.alreadyConsumed });
+      }
+      const unconsumeInput = z.object({
+        target: z.enum(["hotspots", "evidence"]),
+        ids: z.array(z.string().min(1).max(500)).max(1000),
+        dryRun: z.boolean().optional(),
+      }).strict().parse(await body(req));
+      const result = db.unconsumeIdentities(unconsumeInput.target, unconsumeInput.ids, unconsumeInput.dryRun === true);
+      if (!result.ok) return json(result, 410);
+      return json(result);
+    }
     if (readScopedRoute) {
       if (route === "mcp" ? req.method !== "POST" : req.method !== "GET")
         throw new AppError("方法不支持", 405);
@@ -103,6 +175,10 @@ export async function handle(req: Request, path: string[]) {
       };
       Object.keys(params).forEach((k) => params[k as keyof typeof params] === undefined && delete params[k as keyof typeof params]);
       if (route === "agent/hotspots") return json(agentHotspots(db, params));
+      if (route === "agent/consume/status") {
+        const target = (query.target === "evidence" ? "evidence" : "hotspots") as "hotspots" | "evidence";
+        return json({ ok: true, ...consumptionSummary(db, target) });
+      }
       if (route === "agent/evidence") return json(agentEvidence(db, params));
       if (route === "agent/artifacts" && path.length === 2) return json(agentArtifacts(db, params));
       if (path[0] === "agent" && path[1] === "artifacts" && path[2]) {
@@ -441,7 +517,7 @@ export async function handle(req: Request, path: string[]) {
       return json(db.put("artifacts", a.id, { ...a, saved: true }));
     }
     if (route === "connections") {
-      const parsed = z.object({ name: z.string().min(1).max(80), scopes: z.array(z.enum(["submit","read"])).min(1).max(2).optional() }).parse(input);
+      const parsed = z.object({ name: z.string().min(1).max(80), scopes: z.array(z.enum(["submit","read","consume"])).min(1).max(3).optional() }).parse(input);
       return json(db.createConnection(parsed.name, parsed.scopes));
     }
     if (route === "revoke") {
