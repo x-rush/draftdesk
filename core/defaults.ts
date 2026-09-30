@@ -176,3 +176,14 @@ export const defaultPersona = {
     notes: "数据可溯源，不编造通过率与收益；对外稿必过「去 AI 味」处理。",
   },
 };
+
+// 内置 AI 参与开关（追加需求 §4.1）：off=该环节内置 AI 完全不跑（产出字段可为空，等外部 Agent 或人补）；
+// cheap=便宜快模型（当前与 full 同模型，档位预埋）；full=按 v1 §4 分层。
+// 开关是「谁来干」的开关，不是「干不干」的开关——triage=off 时聚合/簇/大纲由外部 Agent 经
+// /api/v1/agent/clusters|outlines 写回。默认值 = 需求文档 §15.3 作者倾向（未收到用户反馳前按文档执行），UI 可改。
+export const defaultAiPolicy = {
+  triage: "off" as const,
+  outline: "off" as const,
+  draft: "off" as const,
+  aiWriter: "external" as const,
+};

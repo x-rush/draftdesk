@@ -14,3 +14,15 @@ export async function POST(
 ) {
   return handle(req, (await context.params).path);
 }
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handle(req, (await context.params).path);
+}
+export async function PUT(
+  req: Request,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handle(req, (await context.params).path);
+}

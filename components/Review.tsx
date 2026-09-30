@@ -28,6 +28,7 @@ export function Review() {
   const [publishRef, setPublishRef] = useState<Record<string, string>>({});
   const [persona, setPersona] = useState<any>(null);
   const [personaText, setPersonaText] = useState("");
+  const [aiPolicy, setAiPolicy] = useState<any>(null);
   const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "公众号", contentType: "长文", title: "" });
   const [clusters, setClusters] = useState<any[]>([]);
 
@@ -48,6 +49,7 @@ export function Review() {
         const p = await api<any>("persona");
         setPersona(p);
         setPersonaText(p ? JSON.stringify(p, null, 2) : "");
+        setAiPolicy(await api<any>("aiPolicy"));
       } catch (e) { setError((e as Error).message); }
     })();
   }, []);
@@ -98,6 +100,13 @@ export function Review() {
       setManual({ title: "", notes: "", platforms: "" });
       await reload();
       setNotice("手动选题已进入待决策队列。");
+    });
+  }
+  async function saveAiPolicy(next: any) {
+    await act(async () => {
+      const saved = await api<any>("aiPolicy", next);
+      setAiPolicy(saved);
+      setNotice("内置 AI 参与开关已保存：triage=" + saved.triage + "，outline=" + saved.outline + "，draft=" + saved.draft + "。off 的环节产出可为空，由外部 Agent 或人补。");
     });
   }
   async function savePersona() {
@@ -221,7 +230,7 @@ export function Review() {
       <section className="surface">
         <h2>内容簇与多平台大纲</h2>
         <p className="muted">多条同类资讯合并为一个簇；一个簇可产出多份不同平台的大纲，各自独立拍板。AI 自动聚合即将上线，当前支持手动登记。</p>
-        <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic).join("、") : ""}</p>
+        <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）").join("、") : ""}</p>
         <Field label="簇 ID">
           <select value={outlineForm.clusterId} onChange={(e) => setOutlineForm({ ...outlineForm, clusterId: e.target.value })}>
             <option value="">选择内容簇…</option>
@@ -238,6 +247,35 @@ export function Review() {
           <input value={outlineForm.title} onChange={(e) => setOutlineForm({ ...outlineForm, title: e.target.value })} />
         </Field>
         <button disabled={busy} onClick={() => void addOutline()}>创建大纲</button>
+      </section>
+
+      <section className="surface">
+        <h2>内置 AI 参与开关（aiPolicy）</h2>
+        <p className="muted">off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。</p>
+        {aiPolicy && (
+          <div className="toolbar">
+            <Field label="初筛 / 打标 / 聚合分类">
+              <select value={aiPolicy.triage} onChange={(e) => void saveAiPolicy({ ...aiPolicy, triage: e.target.value })}>
+                {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="多平台大纲生成">
+              <select value={aiPolicy.outline} onChange={(e) => void saveAiPolicy({ ...aiPolicy, outline: e.target.value })}>
+                {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="草稿正文">
+              <select value={aiPolicy.draft} onChange={(e) => void saveAiPolicy({ ...aiPolicy, draft: e.target.value })}>
+                {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="写作方">
+              <select value={aiPolicy.aiWriter} onChange={(e) => void saveAiPolicy({ ...aiPolicy, aiWriter: e.target.value })}>
+                {["builtin", "external", "both"].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+          </div>
+        )}
       </section>
 
       <section className="surface">

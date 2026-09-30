@@ -10,7 +10,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { defaultConfig, defaultPlans, defaultSources, defaultPersona } from "./defaults";
+import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy } from "./defaults";
 import { recordHistory, metricComparison, type MetricSnapshot } from "./history";
 import { decisionOf } from "./research-policy";
 import { validateIntake } from "./intake-validation";
@@ -154,6 +154,10 @@ export class Store {
         }
         if(!this.get("config","persona"))this.put("config","persona",defaultPersona);
         this.put("meta","decision-layer-v1",{version:1});
+      }
+      if(!this.get("meta","ai-policy-v1")){
+        if(!this.get("config","aiPolicy"))this.put("config","aiPolicy",defaultAiPolicy);
+        this.put("meta","ai-policy-v1",{version:1});
       }
             if(!this.get("meta","official-api-hotlists-v1")){
         // B站热门/微博热搜改走官方公开 JSON 接口（HTML 入口有访客验证，聚合上游又常年失败）。
@@ -544,7 +548,7 @@ export class Store {
       id: randomUUID(),
       name,
       digest: hash(token),
-      scopes: scopes.filter((s) => ["submit", "read", "consume"].includes(s)),
+      scopes: scopes.filter((s) => ["submit", "read", "consume", "suggest"].includes(s)),
       createdAt: now(),
       lastUsedAt: null,
       revoked: false,
@@ -552,7 +556,7 @@ export class Store {
     this.put("connections", c.id, c);
     return { id: c.id, name, scopes: c.scopes, token };
   }
-  authenticate(token: string, scope: "submit" | "read" | "consume" = "submit") {
+  authenticate(token: string, scope: "submit" | "read" | "consume" | "suggest" = "submit") {
     const digest = hash(token);
     const c = this.list<any>("connections").find(
       (c) =>
@@ -758,10 +762,10 @@ export class Store {
     }
     for (const o of this.list<any>("outlines"))
       rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
-        decision: o.decision, platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, createdAt: o.createdAt });
+        decision: o.decision, platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, createdAt: o.createdAt });
     for (const d of this.list<any>("decisions"))
       rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
-        platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, createdAt: d.createdAt });
+        platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", createdAt: d.createdAt });
     return rows.filter((r) => !status || r.decision === status)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }

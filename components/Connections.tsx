@@ -23,6 +23,7 @@ export function Connections({
     [token, setToken] = useState(""),
     [readScope, setReadScope] = useState(false),
     [consumeScope, setConsumeScope] = useState(false),
+    [suggestScope, setSuggestScope] = useState(false),
     [payload, setPayload] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -112,7 +113,7 @@ export function Connections({
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
-              const scopes = [readScope && "read", consumeScope && "consume"].filter(Boolean);
+              const scopes = [readScope && "read", consumeScope && "consume", suggestScope && "suggest"].filter(Boolean);
               const r = await api("connections", { name, scopes: scopes.length ? scopes : undefined });
               setToken(r.token);
               setNotice("令牌已创建，仅在这次显示。");

@@ -128,6 +128,8 @@ curl -s -X POST "$BASE/api/v1/agent/unconsume" -H "Authorization: Bearer $TOKEN"
   -d '{"target":"hotspots","ids":["https://a.example.org/1"]}'
 ```
 
+聚合写回（suggest scope）：`PUT /api/v1/agent/clusters`（topic/memberIds/kind[/window/suggestedPlatforms]）、`PUT /api/v1/agent/outlines`（clusterId/platform/contentType/title[/outline/keyPoints/evidenceRefs]，带 id 即更新）。producedBy 自动标记；decision 字段不在写入面。内置 AI 参与开关（aiPolicy）见审查台页：triage/outline/draft 三档 off|cheap|full，off 的环节产出留空由外部 Agent 补。
+
 决策读取与建议（read scope）：GET /api/v1/agent/decisions?status=（决策队列：产物+大纲+手动题）、GET /api/v1/agent/decisions/stats（通过率/平台/否决原因分布）、POST /api/v1/agent/suggestions（写入建议：targetType/targetId/verdict/score/platforms/reason；建议多源并存，不会改变人的 decision——拍板只能在审查台由人或被授权者完成）。
 
 janitor 自动回收：worker 每日把观测超过 7 天的热榜、采集超过 30 天且无产物引用的证据自动置为已消费（reason=outdated）——即使 Agent 一周不跑，remaining 也不会失控增长；被产物引用的证据永不自动回收。

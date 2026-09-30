@@ -75,7 +75,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 ## 决策层（审查台）
 
-搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目；手动添加选题、多平台大纲、人设配置（AI 个性化判断输入，可编辑）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
+搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目；手动添加选题、多平台大纲、人设配置（AI 个性化判断输入，可编辑）与内置 AI 参与开关 aiPolicy（triage/outline/draft 三档 off|cheap|full；off 的环节产出留空，由外部 Agent 经 suggest scope 令牌经 /api/v1/agent/clusters|outlines 写回，不出现「关了没人做」）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
 
 ## 数据与边界
 
