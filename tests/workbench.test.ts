@@ -264,9 +264,9 @@ test("内容更新检测冲突，待审和应用不得公开", async () =>
     assert.throws(() =>
       db.updateArtifact({ id: a.id, revision: 1, visibility: "public" }),
     );
-    db.updateArtifact({ id: a.id, revision: 1, saved: true });
+    db.updateArtifact({ id: a.id, revision: 1, decision: "approved" });
     assert.throws(
-      () => db.updateArtifact({ id: a.id, revision: 1, saved: false }),
+      () => db.updateArtifact({ id: a.id, revision: 1, decision: "rejected" }),
       /已更新/,
     );
   }));

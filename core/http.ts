@@ -25,6 +25,25 @@ import { collect, readAggregatedHotlist, readHotspotSource, searchProvider } fro
 import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc, consumptionSummary } from "./agent-read";
 import { urlKey } from "./hotspots";
 
+// 决策拍板入参：rejected 必须给否决原因；published 建议给发布链接（回填）。
+const decisionInput = z.object({
+  decision: z.enum(["approved", "rejected", "deferred", "drafting", "published"]),
+  platforms: z.array(z.string().min(1).max(30)).max(6).optional(),
+  rejectReason: z.string().min(1).max(60).optional(),
+  publishedRef: z.string().max(500).optional(),
+}).strict().refine((v) => v.decision !== "rejected" || !!v.rejectReason, "否决必须给出否决原因。");
+
+// persona 人设配置（决策个性化输入）；字段宽松校验，结构由 UI 与种子约定。
+const personaInput = z.object({
+  domains: z.object({ do: z.array(z.string().max(120)).max(30), dont: z.array(z.string().max(120)).max(30) }),
+  goals: z.array(z.string().max(120)).max(12),
+  platformRules: z.array(z.object({ contentType: z.string().max(60), scale: z.string().max(30), platforms: z.array(z.string().max(60)).max(8) })).max(20),
+  imageOnly: z.boolean(),
+  scoring: z.object({ threshold: z.number().min(0).max(5), dimensions: z.array(z.object({ name: z.string().max(60), weight: z.number().min(0).max(1) })).max(12) }),
+  redLines: z.array(z.string().max(200)).max(30),
+  style: z.object({ principles: z.array(z.string().max(120)).max(10), tone: z.string().max(200), forbidden: z.array(z.string().max(60)).max(20), notes: z.string().max(600) }),
+}).strict();
+
 function decodeConsumeCursor(raw?: string): number {
   if (!raw) return 0;
   try {
@@ -93,12 +112,12 @@ export async function handle(req: Request, path: string[]) {
     if (req.headers.has("authorization") && !authAllowed)
       throw new AppError("提交令牌只允许写入收件接口。", 403);
     if (consumeRoute) {
-      if (req.method !== "POST") throw new AppError("方法不支持", 405);
+      if (req.method !== "POST" && req.method !== "PATCH") throw new AppError("方法不支持", 405);
       db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "consume");
       if (route === "agent/consume") {
         const input = z.object({
           target: z.enum(["hotspots", "evidence"]),
-          ids: z.array(z.string().min(1).max(500)).max(1000).optional(),
+          ids: z.array(z.string().min(1).max(2048)).max(1000).optional(),
           filter: z.object({
             days: z.number().int().min(1).max(60).optional(),
             status: z.string().max(30).optional(),
@@ -152,14 +171,31 @@ export async function handle(req: Request, path: string[]) {
       return json(result);
     }
     if (readScopedRoute) {
-      if (route === "mcp" ? req.method !== "POST" : req.method !== "GET")
-        throw new AppError("方法不支持", 405);
-      db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "read");
+      const methodOk = route === "mcp" || route === "agent/suggestions" ? req.method === "POST" : req.method === "GET";
+      if (!methodOk) throw new AppError("方法不支持", 405);
+      const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "read");
       if (route === "mcp") {
         const reply = mcpRpc(db, await body(req));
         // 通知（无 id）按约定不回包；其余返回单对象或批量数组
         if (!reply) return new Response(null, { status: 202 });
         return json(reply);
+      }
+      if (route === "agent/suggestions") {
+        // 建议（suggestions）多源并存：外部 Agent 只写建议，不直接改 decision（§12.1 分权）。
+        const parsed = z.object({
+          targetType: z.enum(["artifact", "outline", "decision"]),
+          targetId: z.string().min(1),
+          verdict: z.enum(["approved", "rejected", "deferred", "drafting", "published"]),
+          score: z.number().min(0).max(5).optional(),
+          platforms: z.array(z.string().max(30)).max(6).optional(),
+          reason: z.string().max(600).optional(),
+        }).strict().parse(await body(req));
+        const updated = db.addSuggestion(parsed.targetId, { by: `agent:${connection.name}`, verdict: parsed.verdict, score: parsed.score, platforms: parsed.platforms, reason: parsed.reason });
+        return json({ ok: true, id: updated.id, suggestions: updated.suggestions });
+      }
+      if (route === "agent/decisions" || route === "agent/decisions/stats") {
+        const status = new URL(req.url).searchParams.get("status") || undefined;
+        return json(route === "agent/decisions" ? { items: db.decisionsQueue(status), generatedAt: now() } : db.decisionsStats());
       }
       const query = Object.fromEntries(new URL(req.url).searchParams.entries());
       const numeric = (key: string) => (query[key] === undefined ? undefined : Number(query[key]));
@@ -270,7 +306,13 @@ export async function handle(req: Request, path: string[]) {
           draft: db.get("job-draft", path[1]),
           verification: db.get("job-verification", path[1]) || [],
         });
-      if (route === "legacy") return json(db.list("legacy"));
+      if (route === "decisions" || route === "decisions/stats") {
+        const status = new URL(req.url).searchParams.get("status") || undefined;
+        return json(route === "decisions" ? { items: db.decisionsQueue(status), generatedAt: now() } : db.decisionsStats());
+      }
+      if (route === "persona") return json(db.get("config", "persona") || null);
+      if (route === "clusters") return json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
+      if (route === "outlines") return json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "export") {
         return json({
           schemaVersion: "2.0",
@@ -284,7 +326,9 @@ export async function handle(req: Request, path: string[]) {
           sources: db.list("sources"),
           jobs: db.list("jobs"),
           conversations: db.list("conversations"),
-          legacy: db.list("legacy"),
+          decisions: db.list("decisions"),
+          clusters: db.list("clusters"),
+          outlines: db.list("outlines"),
         });
       }
       throw new AppError("接口不存在", 404);
@@ -496,8 +540,10 @@ export async function handle(req: Request, path: string[]) {
               id: z.string(),
               revision: z.number().int(),
               draft: z.unknown().optional(),
-              saved: z.boolean().optional(),
               creationStatus: z.enum(["inbox","planned","writing","published"]).optional(),
+              decision: z.enum(["pending","approved","rejected","deferred","drafting","published"]).optional(),
+              rejectReason: z.string().max(60).optional(),
+              platforms: z.array(z.string().max(30)).max(6).optional(),
               archived: z.boolean().optional(),
               visibility: z.enum(["private", "public"]).optional(),
             })
@@ -514,7 +560,7 @@ export async function handle(req: Request, path: string[]) {
         "讨论整理草稿，保存不代表事实已核实。",
         ...qualityIssues(draft, draft.evidenceIds.map((id) => db.get<Evidence>("evidence", id)!)),
       ]);
-      return json(db.put("artifacts", a.id, { ...a, saved: true }));
+      return json(db.put("artifacts", a.id, { ...a, decision: "approved", decidedBy: "human", decidedAt: now() }));
     }
     if (route === "connections") {
       const parsed = z.object({ name: z.string().min(1).max(80), scopes: z.array(z.enum(["submit","read","consume"])).min(1).max(3).optional() }).parse(input);
@@ -558,6 +604,78 @@ export async function handle(req: Request, path: string[]) {
         .parse(input);
       return json(await distill(db, value.id, value.kind, req.signal));
     }
+    if (route === "decisions/manual") {
+      const parsed = z.object({
+        title: z.string().min(1).max(300),
+        notes: z.string().max(2000).optional(),
+        platforms: z.array(z.string().min(1).max(30)).max(6).optional(),
+      }).strict().parse(input);
+      const record = { id: "dec-" + randomUUID(), title: parsed.title, notes: parsed.notes, platforms: parsed.platforms || [], decision: "pending" as const, createdAt: now() };
+      db.put("decisions", record.id, record);
+      return json(record, 201);
+    }
+    if (route === "decisions/batch") {
+      const parsed = z.object({
+        ids: z.array(z.string().min(1)).min(1).max(100),
+        decision: z.enum(["approved", "rejected", "deferred"]),
+        rejectReason: z.string().max(60).optional(),
+        platforms: z.array(z.string().min(1).max(30)).max(6).optional(),
+      }).strict().parse(input);
+      if (parsed.decision === "rejected" && !parsed.rejectReason) throw new AppError("批量否决必须给出否决原因。");
+      const results = parsed.ids.map((id) => {
+        try { return { id, ok: true, row: db.setDecision(id, { decision: parsed.decision, rejectReason: parsed.rejectReason, platforms: parsed.platforms, decidedBy: "human" }) }; }
+        catch (error) { return { id, ok: false, error: error instanceof Error ? error.message : String(error) }; }
+      });
+      return json({ ok: true, applied: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok), results });
+    }
+    if (route === "persona") {
+      const parsed = personaInput.parse(input);
+      db.put("config", "persona", parsed);
+      return json(parsed);
+    }
+    if (route === "clusters") {
+      const parsed = z.object({
+        topic: z.string().min(1).max(200),
+        memberIds: z.array(z.string().min(1)).max(2000),
+        kind: z.string().min(1).max(30),
+        window: z.string().max(60).optional(),
+        suggestedPlatforms: z.array(z.string().max(30)).max(8).optional(),
+      }).strict().parse(input);
+      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], createdAt: now() };
+      db.put("clusters", cluster.id, cluster);
+      return json(cluster, 201);
+    }
+    if (route === "outlines") {
+      const parsed = z.object({
+        clusterId: z.string().min(1),
+        platform: z.string().min(1).max(30),
+        contentType: z.string().min(1).max(30),
+        title: z.string().min(1).max(300),
+        outline: z.array(z.string().max(300)).max(20).optional(),
+        keyPoints: z.array(z.string().max(300)).max(20).optional(),
+        evidenceRefs: z.array(z.string().max(100)).max(200).optional(),
+      }).strict().parse(input);
+      if (!db.get("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先创建内容簇。", 404);
+      const outline = { id: "out-" + randomUUID(), ...parsed, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending" as const, createdAt: now() };
+      db.put("outlines", outline.id, outline);
+      return json(outline, 201);
+    }
+      if (path[0] === "decisions" && path[2] === "publish") {
+        const { publishedRef } = z.object({ publishedRef: z.string().min(1).max(500) }).parse(input);
+        return json(db.setDecision(path[1], { decision: "published", publishedRef }));
+      }
+      if (path[0] === "decisions" && path[2] === "decision") {
+        const parsed = decisionInput.parse(input);
+        return json(db.setDecision(path[1], { ...parsed, decidedBy: "human" }));
+      }
+      if (path[0] === "artifacts" && path[2] === "decision") {
+        const parsed = decisionInput.parse(input);
+        return json(db.setDecision(path[1], { ...parsed, decidedBy: "human" }));
+      }
+      if (path[0] === "outlines" && path[2] === "decision") {
+        const parsed = decisionInput.parse(input);
+        return json(db.setDecision(path[1], { ...parsed, decidedBy: "human" }));
+      }
     if (route === "chat") {
       const controller = new AbortController();
       req.signal.addEventListener("abort", () => controller.abort(), {

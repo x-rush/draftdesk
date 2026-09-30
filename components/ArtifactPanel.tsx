@@ -394,9 +394,9 @@ export function ArtifactPanel({
         </button>
         <button
           disabled={busy}
-          onClick={() => void change({ saved: !artifact.saved })}
+          onClick={() => void change({ decision: artifact.decision === "approved" ? "pending" : "approved" })}
         >
-          {artifact.saved ? "取消收藏" : "加入选题库"}
+          {artifact.decision === "approved" ? "移出选题库" : "加入选题库"}
         </button>
         <button onClick={() => setEditing(true)}>编辑</button>
       </div>

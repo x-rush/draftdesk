@@ -22,7 +22,7 @@ test("创作进度独立于证据质量和发布权限，编辑保留进度并�
  try{
   const a=db.saveArtifact(topic,"job-one","review",["待核实"]);
   const updated=db.updateArtifact({id:a.id,revision:a.revision,creationStatus:"published"});
-  assert.equal(updated.quality,"review");assert.equal(updated.visibility,"private");assert.equal(updated.saved,true);assert.equal(updated.creationStatus,"published");
+  assert.equal(updated.quality,"review");assert.equal(updated.visibility,"private");assert.equal(updated.decision,"published");assert.equal(updated.creationStatus,"published");
   assert.throws(()=>db.updateArtifact({id:a.id,revision:a.revision,creationStatus:"writing"}));
   const edited=db.updateArtifact({id:a.id,revision:updated.revision,draft:{...topic,title:"讨论后的新标题"}});assert.equal(edited.creationStatus,"published");
   const snapshot=db.snapshot(new URLSearchParams("page=1&view=library&creation=published&jobId=job-one")) as any;assert.equal(snapshot.artifacts.length,1);

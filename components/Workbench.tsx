@@ -3,6 +3,7 @@ import { creationLabels, readWorkspaceLocation, newlyFinished, type JobActivity 
 import { ActivityCard, ActivityTools } from "./Activities";
 import {DiscoveryLens} from "./DiscoveryLens";
 import {Hotspots} from "./Hotspots";
+import {Review} from "./Review";
 import type {DiscoveryRecord} from "../core/discovery";
 import type {HotspotFeed} from "../core/hotspots";
 import { Pagination, type PageInfo } from "./Pagination";
@@ -25,6 +26,7 @@ import {
   RefreshCw,
   Leaf,
   Flame,
+  ClipboardCheck,
 } from "lucide-react";
 import type { Artifact, Plan, Source, Job } from "../core/schema";
 import { decisionLabels, decisionOf } from "../core/research-policy";
@@ -51,6 +53,7 @@ const nav = [
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
   ["activities", "创作活动", Compass],
+  ["decisions", "审查台", ClipboardCheck],
   ["plans", "研究策略", Layers],
   ["sources", "数据源", BookOpen],
   ["runs", "运行记录", Play],
@@ -60,7 +63,7 @@ const nav = [
 ] as const;
 const navGroups=[
   {label:"发现与创作",ids:["discover","hotspots","library","chat"]},
-  {label:"机会观察",ids:["trends","ideas","activities"]},
+  {label:"机会观察",ids:["trends","ideas","activities","decisions"]},
   {label:"研究与设置",ids:["plans","sources","runs","connections","skills","settings"]},
 ] as const;
 const headings: Record<string, [string, string]> = {
@@ -81,6 +84,7 @@ const headings: Record<string, [string, string]> = {
     "先验证一个具体问题",
     "产品动态提供可能性，真实用户任务决定是否值得做。",
   ],
+  decisions:["把待写队列拍成板","建议可以多源，拍板只能一个：通过、否决、暂缓，一次一批。"],
   activities:["找到值得参与的创作活动","AI、Vibe Coding 与可参与的创作激励；先核对规则，再选择内容方向。"],
   chat: ["让观点多走一步", "带着证据讨论，整理成可继续编辑的内容或应用方案。"],
   plans: [
@@ -141,8 +145,6 @@ export function Workbench() {
     [quality, setQuality] = useState("active"),
     [skills, setSkills] = useState<any[]>([]),
     [skill, setSkill] = useState<any>(),
-    [legacy, setLegacy] = useState<any[]>([]),
-    [legacyOpen, setLegacyOpen] = useState<any>(),
     [today, setToday] = useState("");
   const [page,setPage]=useState(1), [jobsPage,setJobsPage]=useState(1), [receiptsPage,setReceiptsPage]=useState(1);
   const [hotspotPage,setHotspotPage]=useState(1),[hotspotConsumed,setHotspotConsumed]=useState("hide"),[hotspotQ,setHotspotQ]=useState(""),[hotspotStatus,setHotspotStatus]=useState("all"),[hotspotSource,setHotspotSource]=useState("all"),[hotspotPlan,setHotspotPlan]=useState("all");
@@ -198,7 +200,6 @@ export function Workbench() {
           await api("migrate-local", JSON.parse(raw));
           localStorage.setItem("draftdesk.migrated.v2", "yes");
         }
-        setLegacy(await api<any[]>("legacy"));
       } catch {
         setError("旧选题自动迁移未完成，原浏览器数据仍保留；可导出后重试。");
       }
@@ -372,6 +373,7 @@ export function Workbench() {
           {finished.map(j=><section className="task-notice" role="status" key={j.id}><div><strong>{j.name} · {j.state==="completed"?"已完成":j.state==="failed"?"失败":"已取消"}</strong><p>{j.state==="completed"?`新增 ${j.total} 条结果，其中 ${j.review} 条待验证。`:"查看运行说明，处理来源或配置后可手动重试。"}</p></div><button onClick={()=>{if(j.state==="completed")showResults(j.id);else{navigate("runs");setRunId(j.id);}}}>{j.state==="completed"?"查看本次结果":"查看运行说明"}</button><button aria-label="关闭任务提示" onClick={()=>setFinished(old=>old.filter(x=>x.id!==j.id))}>关闭</button></section>)}
           {data && (
             <>
+              {view==="decisions"&&<Review/>}
               {view==="hotspots"&&<div className="toolbar"><label className="check"><input type="checkbox" checked={hotspotConsumed!=="hide"} onChange={e=>{setHotspotConsumed(e.target.checked?"include":"hide");setHotspotPage(1);}} />查看已消费</label></div>}
               {view==="hotspots"&&<Hotspots feed={data.hotspots} sources={data.sources} query={hotspotQ} status={hotspotStatus} source={hotspotSource} plan={hotspotPlan} busy={busy}
                 onQuery={value=>{setHotspotQ(value);setHotspotPage(1);}} onStatus={value=>{setHotspotStatus(value);setHotspotPage(1);}} onSource={value=>{setHotspotSource(value);setHotspotPage(1);}} onPlan={value=>{setHotspotPlan(value);setHotspotPage(1);}} onPage={setHotspotPage}
@@ -472,7 +474,7 @@ export function Workbench() {
                           </div>
                           <div className="row-content">
                             <div className="row-meta">
-                              {a.saved&&<span className="creation-badge">{creationLabels[a.creationStatus || "inbox"]}</span>}
+                              {["approved","drafting","published"].includes(a.decision||"pending")&&<span className="creation-badge">{creationLabels[a.creationStatus || "inbox"]}</span>}
                               <span>{kindLabels[a.kind]}</span>
                               <span>
                                 {a.visibility === "private" ? "私有" : "公开"}
@@ -518,27 +520,6 @@ export function Workbench() {
                   </>}
                   {view==="discover"&&discoveryMode==="coverage"&&<div className="toolbar"><Select aria-label="采集预览策略" value={previewPlan} onChange={e=>setPreviewPlan(e.target.value)}>{data.plans.filter(p=>p.kind!=="activities"&&p.sourceIds.some(id=>data.sources.some(s=>s.id===id&&s.enabled&&s.type!=="web"))).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select><button disabled={busy} onClick={()=>void act(async()=>{const result=await api<{evidenceCount:number;warnings:string[]}>("source-preview",{planId:previewPlan});setNotice(result.evidenceCount?`已采集 ${result.evidenceCount} 条证据，${result.warnings.length} 个来源提示；未调用 AI。`:`来源读取完成，但没有命中当前焦点词和关键词；请检查策略筛选。未调用 AI。`);})}>只采集预览 · 不调用 AI</button></div>}
                   {view==="discover"&&discoveryMode!=="results"&&<DiscoveryLens record={data.discovery} mode={discoveryMode}/>}
-                  {view === "library" && legacy.length > 0 && (
-                    <section className="legacy-section">
-                      <h2>
-                        已迁移的旧版选题 <span>{legacy.length}</span>
-                      </h2>
-                      <p>
-                        原始观点、标签、素材和时间完整保留。它们不被当作已经证据化的新研究产物。
-                      </p>
-                      {legacy.map((t) => (
-                        <button
-                          className="legacy-row"
-                          key={t.id}
-                          onClick={() => setLegacyOpen(t)}
-                        >
-                          <strong>{t.title}</strong>
-                          <small>{t.audience || "未设置读者"}</small>
-                          <ArrowUpRight size={16} />
-                        </button>
-                      ))}
-                    </section>
-                  )}
                 </>
               )}
               {view === "plans" && (
@@ -861,34 +842,6 @@ export function Workbench() {
           wide
         >
           <pre className="skill-content">{skill.content}</pre>
-        </Drawer>
-      )}
-      {legacyOpen && (
-        <Drawer
-          title={legacyOpen.title}
-          subtitle="旧版选题原始数据，完整保留"
-          onClose={() => setLegacyOpen(undefined)}
-        >
-          <p className="lead">{legacyOpen.audience}</p>
-          <p className="pre-wrap">{legacyOpen.viewpoint}</p>
-          {legacyOpen.links?.map((u: string) => (
-            <p key={u}>
-              <a
-                href={/^https?:\/\//.test(u) ? u : "#"}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {u}
-              </a>
-            </p>
-          ))}
-          <p>
-            素材状态：{legacyOpen.status} · 截止：
-            {legacyOpen.deadline || "未设置"}
-          </p>
-          <button onClick={() => download("legacy-topic.json", legacyOpen)}>
-            导出完整原数据
-          </button>
         </Drawer>
       )}
     </div>

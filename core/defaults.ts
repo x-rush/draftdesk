@@ -135,3 +135,44 @@ export const defaultPlans: Plan[] = [
   },
   {...base,id:"creator-activities",name:"AI 与 Vibe Coding 创作活动",kind:"activities",goal:"搜罗四平台适合个人AI工作流、Vibe Coding、独立开发、软件实测创作者参与的流量激励与征稿活动。核对投稿时间、资格、奖励和原始规则链接；每活动生成3–5个内容方向，资料不足不凑数。",audience:"个人创作者与独立开发者；粉丝数、学生身份及平台邀约资格未知",sourceIds:["web"],keywords:["B站 AI 创作大赛","抖音 AI 创作活动","快手 AI 创作大赛","小红书 AI 编程 活动"],includeDomains:["bilibili.com","douyin.com","douyinstatic.com","kuaishou.com","xiaohongshu.com"],lookbackDays:365,maxQueries:8,maxEvidence:24,maxItems:4,maxModelCalls:8,dailyTime:"02:30"},
 ];
+
+// 决策层 persona 默认种子（需求 §14 附录 A）：仅作首版初始化，UI 可改，不写死业务规则。
+export const defaultPersona = {
+  domains: {
+    do: ["AI / AIGC 工具与创作", "独立开发 / VibeCoding / 出海 SaaS", "生财搞钱方法论与案例", "自媒体运营 / 内容矩阵"],
+    dont: [] as string[],
+  },
+  goals: ["企业 AI / FDE 订单线索", "生财方法论涨粉", "个人知识沉淀", "技术 / 最新资讯分享涨粉"],
+  platformRules: [
+    { contentType: "测评类", scale: "中长", platforms: ["公众号长文", "小红书"] },
+    { contentType: "资讯", scale: "长", platforms: ["公众号", "小红书"] },
+    { contentType: "资讯", scale: "短", platforms: ["贴图号(视频号)", "Threads(英文)"] },
+    { contentType: "成果分享", scale: "中", platforms: ["公众号长文", "小红书"] },
+    { contentType: "英文短评", scale: "短", platforms: ["Threads"] },
+  ],
+  imageOnly: true,
+  scoring: {
+    threshold: 3.5,
+    dimensions: [
+      { name: "业务/人设相关度", weight: 0.25 },
+      { name: "我能写透（有实操）", weight: 0.2 },
+      { name: "流量/搜索长尾", weight: 0.2 },
+      { name: "商业转化潜力", weight: 0.15 },
+      { name: "时效性", weight: 0.1 },
+      { name: "争议/讨论度", weight: 0.1 },
+    ],
+  },
+  redLines: [
+    "纯搬运，无本人观点/无实操增量",
+    "数据与已核实事实冲突（失真）",
+    "蹭敏感/争议热点（政治、低俗等）",
+    "触碰硬禁忌：出镜直播/私域拉群/电商囤货/灰产",
+    "标题党无干货、恐吓式营销",
+  ],
+  style: {
+    principles: ["结论先行", "表格", "PHASE 分阶段"],
+    tone: "专业自信、同行口吻",
+    forbidden: ["震惊", "速速收藏", "家人们"],
+    notes: "数据可溯源，不编造通过率与收益；对外稿必过「去 AI 味」处理。",
+  },
+};

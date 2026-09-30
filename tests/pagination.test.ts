@@ -9,7 +9,7 @@ test("分页覆盖全部记录、筛选先于分页、关联结果和全局状�
  const dir=mkdtempSync(path.join(tmpdir(),"dd-pages-")); const db=new Store(dir);
  try {
   for(let i=0;i<65;i++){
-   db.put("artifacts",`a${i}`,{...topic,id:`a${i}`,title:`选题${i}`,summary:i===0?"唯一关键词":"摘要",quality:"ready",issues:[],saved:i===0,archived:false,jobId:`j${i}`});
+   db.put("artifacts",`a${i}`,{...topic,id:`a${i}`,title:`选题${i}`,summary:i===0?"唯一关键词":"摘要",quality:"ready",issues:[],decision:i===0?"approved":"pending",archived:false,jobId:`j${i}`});
    db.put("jobs",`j${i}`,{id:`j${i}`,state:i===0?"running":"completed",planId:`p${i}`,receiptId:`r${i}`,evidenceIds:[]});
    db.put("receipts",`r${i}`,{id:`r${i}`,evidenceIds:[],artifactIds:[`a${i}`]});
   }

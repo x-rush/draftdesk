@@ -158,6 +158,17 @@ export const artifactSchema = z.discriminatedUnion("kind", [
   })}).strict(),
 ]);
 export type ArtifactDraft = z.infer<typeof artifactSchema>;
+// 决策层状态机：quality 是证据可信度（AI 判），decision 是要不要写（人/被授权 Agent 判）。
+// 第一层永远不能自动推导出第二层——证据充分 ≠ 值得写。
+export type DecisionState = "pending" | "approved" | "rejected" | "deferred" | "drafting" | "published";
+export type DecisionSuggestion = {
+  by: string;
+  verdict: Exclude<DecisionState, "pending">;
+  score?: number;
+  platforms?: string[];
+  reason?: string;
+  at: string;
+};
 export type Artifact = ArtifactDraft & {
   id: string;
   jobId: string;
@@ -169,9 +180,69 @@ export type Artifact = ArtifactDraft & {
   reviewNote: string;
   skillVersion: string;
   visibility: "private" | "public";
-  saved: boolean;
+  decision?: DecisionState;
+  decidedBy?: "human" | "agent";
+  decidedAt?: string;
+  platforms?: string[];
+  draftRef?: string;
+  publishedRef?: string;
+  rejectReason?: string;
+  suggestions?: DecisionSuggestion[];
   creationStatus?: "inbox" | "planned" | "writing" | "published";
   archived: boolean;
+};
+// 决策簇（§13）：多条同类资讯合并为一个选题的素材池；拍板对象是簇 × 平台产出的大纲（篇）。
+export type ContentCluster = {
+  id: string;
+  topic: string;
+  memberIds: string[];
+  memberCount: number;
+  kind: string;
+  window: string;
+  suggestedPlatforms: string[];
+  createdAt: string;
+};
+export type ContentOutline = {
+  id: string;
+  clusterId: string;
+  platform: string;
+  contentType: string;
+  title: string;
+  outline: string[];
+  keyPoints: string[];
+  evidenceRefs: string[];
+  decision: DecisionState;
+  decidedBy?: "human" | "agent";
+  decidedAt?: string;
+  draftRef?: string;
+  publishedRef?: string;
+  rejectReason?: string;
+  suggestions?: DecisionSuggestion[];
+  createdAt: string;
+};
+// 手动添加的选题（无对应采集条目时唯一的独立决策记录形态）。
+export type ManualDecision = {
+  id: string;
+  title: string;
+  notes?: string;
+  platforms: string[];
+  decision: DecisionState;
+  decidedBy?: "human" | "agent";
+  decidedAt?: string;
+  publishedRef?: string;
+  rejectReason?: string;
+  suggestions?: DecisionSuggestion[];
+  createdAt: string;
+};
+// 人设配置（决策个性化输入，一等公民配置；种子值见迁移，UI 可改，不写死业务规则）。
+export type PersonaConfig = {
+  domains: { do: string[]; dont: string[] };
+  goals: string[];
+  platformRules: { contentType: string; scale: string; platforms: string[] }[];
+  imageOnly: boolean;
+  scoring: { threshold: number; dimensions: { name: string; weight: number }[] };
+  redLines: string[];
+  style: { principles: string[]; tone: string; forbidden: string[]; notes: string };
 };
 export const batchSchema = z
   .object({

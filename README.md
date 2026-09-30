@@ -73,6 +73,10 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 同机运行外部 Agent 时，推荐让 Agent 只返回严格 JSON 证据包，由用户在宿主机用提交令牌直接调用 `POST /api/v1/intake` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 
+## 决策层（审查台）
+
+搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目；手动添加选题、多平台大纲、人设配置（AI 个性化判断输入，可编辑）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
+
 ## 数据与边界
 
 - 应用机会、会话与外部原始证据始终私有。公开接口只返回显式公开且通过检查的资讯与选题投影。

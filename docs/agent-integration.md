@@ -128,6 +128,8 @@ curl -s -X POST "$BASE/api/v1/agent/unconsume" -H "Authorization: Bearer $TOKEN"
   -d '{"target":"hotspots","ids":["https://a.example.org/1"]}'
 ```
 
+决策读取与建议（read scope）：GET /api/v1/agent/decisions?status=（决策队列：产物+大纲+手动题）、GET /api/v1/agent/decisions/stats（通过率/平台/否决原因分布）、POST /api/v1/agent/suggestions（写入建议：targetType/targetId/verdict/score/platforms/reason；建议多源并存，不会改变人的 decision——拍板只能在审查台由人或被授权者完成）。
+
 janitor 自动回收：worker 每日把观测超过 7 天的热榜、采集超过 30 天且无产物引用的证据自动置为已消费（reason=outdated）——即使 Agent 一周不跑，remaining 也不会失控增长；被产物引用的证据永不自动回收。
 
 `reason` 四选一：`no-ai-signal`（无 AI 信号）/ `outdated`（过期）/ `off-domain`（非目标领域）/ `processed-into-artifact`（已写成草稿或大纲，建议附 `producedRef`）。消费不删除原始记录，只改变可见性与计数；重复消费幂等返回 `alreadyConsumed`。

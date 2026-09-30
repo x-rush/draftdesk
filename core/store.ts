@@ -1,8 +1,8 @@
 import { activityStatus } from "./activities";
 import type {DiscoveryRecord} from "./discovery";
-import {hotspotFeed} from "./hotspots";
+import {hotspotFeed,urlKey} from "./hotspots";
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   createHash,
@@ -10,7 +10,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { defaultConfig, defaultPlans, defaultSources } from "./defaults";
+import { defaultConfig, defaultPlans, defaultSources, defaultPersona } from "./defaults";
 import { recordHistory, metricComparison, type MetricSnapshot } from "./history";
 import { decisionOf } from "./research-policy";
 import { validateIntake } from "./intake-validation";
@@ -137,7 +137,25 @@ export class Store {
         for(const j of this.list<Job>("jobs"))if((j.plan?.kind as string)==="people")this.del("jobs",j.id);
         this.put("meta","people-removal-v1",{version:1});
       }
-      if(!this.get("meta","official-api-hotlists-v1")){
+      if(!this.get("meta","decision-layer-v1")){
+        // 决策层重构（P1）：quality=证据可信度（字段名保留，语义正名）；decision=人的拍板状态机。
+        // 存量映射：saved=true→approved（decidedBy=human），其余 pending；saved 布尔废弃；archived 保留为终态标记。
+        // legacy 集合归档导出后移出活动集合；persona 种子仅首版初始化。
+        const stamp0=now();
+        for(const a of this.list<any>("artifacts")){
+          if(a.decision)continue;
+          const {saved,...rest}=a;
+          this.put("artifacts",a.id,{...rest,decision:saved?"approved":"pending",...(saved?{decidedBy:"human",decidedAt:stamp0}:{})});
+        }
+        const legacyDocs=this.list<any>("legacy");
+        if(legacyDocs.length){
+          writeFileSync(path.join(directory,`legacy-archive-${stamp0.slice(0,10)}.json`),JSON.stringify({archivedAt:stamp0,count:legacyDocs.length,items:legacyDocs},null,2));
+          for(const l of legacyDocs)this.del("legacy",l.id);
+        }
+        if(!this.get("config","persona"))this.put("config","persona",defaultPersona);
+        this.put("meta","decision-layer-v1",{version:1});
+      }
+            if(!this.get("meta","official-api-hotlists-v1")){
         // B站热门/微博热搜改走官方公开 JSON 接口（HTML 入口有访客验证，聚合上游又常年失败）。
         // 种子两个新来源；热词策略仅在未被用户改动过默认来源清单时同步加入，改过的不碰。
         for(const id of ["weibo-hotsearch","bilibili-popular"]){
@@ -245,7 +263,7 @@ export class Store {
     const activityTime=params.get("activityTime") || (view==="activities"?"actionable":"all");
     const query=(params.get("q") || "").trim().toLocaleLowerCase();
     const artifacts=paginate(snapshot.artifacts.filter(a=>
-      (view!=="library" || a.saved) &&
+      (view!=="library" || ["approved","drafting","published"].includes(a.decision||"pending")) &&
       (!params.get("jobId") || a.jobId===params.get("jobId")) &&
       (!params.get("creation") || params.get("creation")==="all" || (a.creationStatus || "inbox")===params.get("creation")) && (view!=="trends" || a.kind==="trend") &&
       (view!=="activities" || a.kind==="activity") &&
@@ -454,7 +472,7 @@ export class Store {
       reviewNote: note,
       skillVersion: version,
       visibility: "private",
-      saved: false,
+      decision: "pending" as const,
       archived: false,
     };
     return this.put("artifacts", a.id, a);
@@ -463,10 +481,12 @@ export class Store {
     id: string;
     revision: number;
     draft?: unknown;
-    saved?: boolean;
     visibility?: string;
     archived?: boolean;
     creationStatus?: Artifact["creationStatus"];
+    decision?: Artifact["decision"];
+    rejectReason?: string;
+    platforms?: string[];
   }) {
     return this.transaction(() => {
       const a = this.get<Artifact>("artifacts", input.id);
@@ -494,8 +514,24 @@ export class Store {
         visibility: input.draft
           ? "private"
           : (input.visibility ?? a.visibility),
-        saved: input.creationStatus ? true : (input.saved ?? a.saved),
         creationStatus: input.creationStatus ?? a.creationStatus ?? "inbox",
+        // 创作进度推进决策下限：planned→approved、writing→drafting、published→published；
+        // 仅当决策仍为 pending（未显式拍板）时跟随，不覆盖人的否决/暂缓。
+        decision: input.decision
+          ? input.decision
+          : a.decision && a.decision !== "pending"
+            ? a.decision
+            : input.creationStatus === "published"
+              ? "published"
+              : input.creationStatus === "writing"
+                ? "drafting"
+                : input.creationStatus === "planned"
+                  ? "approved"
+                  : "pending",
+        decidedBy: input.decision && input.decision !== (a.decision ?? "pending") ? "human" : a.decidedBy,
+        decidedAt: input.decision && input.decision !== (a.decision ?? "pending") ? now() : a.decidedAt,
+        rejectReason: input.rejectReason ?? a.rejectReason,
+        platforms: input.platforms ?? a.platforms,
         archived: input.archived ?? a.archived,
         revision: a.revision + 1,
         updatedAt: now(),
@@ -659,6 +695,87 @@ export class Store {
   }
   renewLock(id: string) {
     this.db.prepare("UPDATE locks SET expires=? WHERE id=?").run(Date.now() + 240000, id);
+  }
+  // ---- 决策层（quality=证据可信度由 AI 判；decision=要不要写由人拍板。两层永不互相推导）----
+  decisionTarget(id: string): { collection: "artifacts" | "outlines" | "decisions"; row: any } {
+    for (const collection of ["artifacts", "outlines", "decisions"] as const) {
+      const row = this.get<any>(collection, id);
+      if (row) return { collection, row };
+    }
+    throw new AppError("决策对象不存在", 404);
+  }
+  // 拍板。联动规则（P3）：rejected/published 自动消费该产物证据对应的热榜；
+  // approved/drafting/deferred 不消费（避免把待办藏起来）。手动题（decisions）无热榜映射，不消费。
+  setDecision(id: string, input: { decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string; decidedBy?: "human" | "agent" }) {
+    const { collection, row } = this.decisionTarget(id);
+    if (collection === "artifacts" && row.archived) throw new AppError("已归档产物不可再拍板。");
+    const next: any = {
+      ...row,
+      decision: input.decision,
+      decidedBy: input.decidedBy ?? "human",
+      decidedAt: now(),
+      ...(input.platforms ? { platforms: input.platforms } : {}),
+      ...(input.rejectReason !== undefined ? { rejectReason: input.rejectReason } : {}),
+      ...(input.publishedRef !== undefined ? { publishedRef: input.publishedRef } : {}),
+    };
+    if (collection === "artifacts") { next.revision = (row.revision ?? 0) + 1; next.updatedAt = now(); }
+    this.put(collection, id, next);
+    if (collection === "artifacts" && (input.decision === "rejected" || input.decision === "published")) {
+      const idset = new Set<string>();
+      for (const eid of row.evidenceIds || []) {
+        const e = this.get<any>("evidence", eid);
+        if (!e) continue;
+        try { idset.add(urlKey(e.url)); } catch { /* 非 https 等异常跳过 */ }
+      }
+      const ids = [...idset];
+      if (ids.length) {
+        if (input.decision === "published") {
+          this.consumeIdentities("hotspots", ids, "processed-into-artifact", "decision", next.publishedRef, false);
+        } else {
+          const map: Record<string, string> = { "no-ai-signal": "no-ai-signal", "off-domain": "off-domain", "已写过": "processed-into-artifact", "写不透": "no-ai-signal", "不感兴趣": "off-domain", "其他": "no-ai-signal" };
+          this.consumeIdentities("hotspots", ids, map[next.rejectReason || "其他"] || "no-ai-signal", "decision", undefined, false);
+        }
+      }
+    }
+    return next;
+  }
+  // 建议（suggestions）多源并存、互不覆盖：内置 AI 与外部 Agent 都只能写这里，不能直接改 decision。
+  addSuggestion(id: string, suggestion: { by: string; verdict: string; score?: number; platforms?: string[]; reason?: string }) {
+    const { collection, row } = this.decisionTarget(id);
+    if (row.archived) throw new AppError("已归档产物不再接受建议。");
+    const suggestions = [...(row.suggestions || []), { ...suggestion, at: now() }];
+    this.put(collection, id, { ...row, suggestions });
+    return this.get<any>(collection, id);
+  }
+  // 决策队列：产物 + 大纲 + 手动题合并（决策挂在原条目上；手动题是唯一的独立记录形态）。
+  decisionsQueue(status?: string) {
+    const rows: any[] = [];
+    for (const a of this.list<any>("artifacts")) {
+      if (a.archived || (a.kind as string) === "person") continue;
+      rows.push({ sourceType: "artifact", id: a.id, kind: a.kind, title: a.title, summary: a.summary, quality: a.quality || "review",
+        decision: a.decision || "pending", platforms: a.platforms, suggestions: a.suggestions, rejectReason: a.rejectReason,
+        publishedRef: a.publishedRef, createdAt: a.createdAt, evidenceCount: (a.evidenceIds || []).length });
+    }
+    for (const o of this.list<any>("outlines"))
+      rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
+        decision: o.decision, platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, createdAt: o.createdAt });
+    for (const d of this.list<any>("decisions"))
+      rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
+        platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, createdAt: d.createdAt });
+    return rows.filter((r) => !status || r.decision === status)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }
+  decisionsStats() {
+    const rows = this.decisionsQueue();
+    const byDecision: Record<string, number> = {}, byRejectReason: Record<string, number> = {}, byPlatform: Record<string, number> = {};
+    for (const r of rows) {
+      byDecision[r.decision] = (byDecision[r.decision] || 0) + 1;
+      if (r.decision === "rejected" && r.rejectReason) byRejectReason[r.rejectReason] = (byRejectReason[r.rejectReason] || 0) + 1;
+      for (const p of r.platforms || []) byPlatform[p] = (byPlatform[p] || 0) + 1;
+    }
+    const decided = rows.filter((r) => r.decision !== "pending").length;
+    const positive = rows.filter((r) => ["approved", "drafting", "published"].includes(r.decision)).length;
+    return { total: rows.length, byDecision, byRejectReason, byPlatform, passRate: decided ? +(positive / decided).toFixed(3) : null };
   }
 }
 let singleton: Store | undefined;
