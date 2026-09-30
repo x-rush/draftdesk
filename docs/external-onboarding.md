@@ -19,6 +19,7 @@
   - `POST /api/v1/agent/consume` —— 批量把已处理的热榜/证据置为已消费。`ids` 与 `filter`（days/status/sourceId）二选一，单批 ≤1000 超出返回 `nextCursor`；`reason` 四选一（no-ai-signal / outdated / off-domain / processed-into-artifact）；**`dryRun` 默认 true**，先拿影响面确认再显式传 false 落库。消费 ≠ 删除：只加状态层，30 天内可撤销。
   - `GET /api/v1/agent/consume/status?target=hotspots|evidence` —— total/consumed/remaining 与按原因分布；工作台首页热榜计数读 `remaining`。
   - `POST /api/v1/agent/unconsume` —— 30 天撤销窗口内复活；过期返回 410。
+  - **自动回收（janitor）**：worker 每日把「最近观测超过 7 天」的热榜与「采集超过 30 天且无任何产物引用」的证据自动置为已消费（reason=outdated，consumedBy=janitor）。被产物引用的证据永不自动消费；消费不删除原始记录。手动消费与自动回收共用同一状态层。
 - **MCP**：`POST /api/v1/mcp`（JSON-RPC over Streamable HTTP 的纯 POST 简化档，无 SSE；与 REST 同一令牌鉴权）。工具：`search_hotspots` / `search_evidence` / `list_artifacts` / `get_artifact` / `get_workspace_stats`。支持远程 MCP 的运行器（OpenClaw 等）直接配端点 URL + 令牌即可，无需安装。
 - **stdio 桥**（只支持本地 stdio MCP 的运行器）：`node scripts/mcp-bridge.mjs`，环境变量 `DRAFTDESK_URL` + `DRAFTDESK_READ_TOKEN`，工具清单与 HTTP MCP 一致。
 - **边界**：只读，不触发模型调用、不消耗预算；永不返回密钥、模型配置、讨论会话与外部原始提交包；证据只给摘要不给全文；每个响应带 `notice`——热榜标题与摘录仅为线索，引用前核对原链接。「是否公开」仍只由发布流程决定，此 API 不改变产物可见性。

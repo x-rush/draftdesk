@@ -14,7 +14,7 @@ export function urlKey(value:string){
   catch{return value;}
 }
 
-export function hotspotFeed(records:DiscoveryRecord[],params:URLSearchParams,pageSize=20):HotspotFeed{
+export function hotspotFeed(records:DiscoveryRecord[],params:URLSearchParams,pageSize=20,consumedKeys?:Set<string>):HotspotFeed{
   const rows=new Map<string,HotspotRow>(),sources=new Map<string,string>(),plans=new Set<string>();
   const sourceHealth=new Map<string,HotspotFeed["sourceHealth"][number]>();
   for(const record of records){
@@ -38,9 +38,12 @@ export function hotspotFeed(records:DiscoveryRecord[],params:URLSearchParams,pag
     }
   }
   const q=(params.get("hotspotQ")||"").trim().toLocaleLowerCase(),source=params.get("hotspotSource")||"all",plan=params.get("hotspotPlan")||"all",status=params.get("hotspotStatus")||"all";
+  // 已消费条目默认隐藏（与首页 remaining 口径一致）；hotspotConsumed=include 全显 / only 只看已消费
+  const consumedMode=params.get("hotspotConsumed")||"hide";
   const filtered=[...rows.values()].filter(row=>(source==="all"||row.sourceIds.includes(source))&&
     (plan==="all"||row.planNames.includes(plan))&&(status==="all"||row.status===status)&&
     (!q||[row.title,...row.sourceNames,...row.planNames,row.reason].join(" ").toLocaleLowerCase().includes(q)))
+    .filter(row=>{const consumed=consumedKeys?.has(urlKey(row.url));if(consumedMode==="only")return consumed===true;if(consumedMode==="include")return true;return !consumed;})
     .sort((a,b)=>b.lastSeen.localeCompare(a.lastSeen)||a.title.localeCompare(b.title));
   const pages=Math.max(1,Math.ceil(filtered.length/pageSize)),page=Math.min(pages,Math.max(1,Math.floor(Number(params.get("hotspotPage")))||1));
   return {items:filtered.slice((page-1)*pageSize,page*pageSize),total:filtered.length,page,pages,pageSize,

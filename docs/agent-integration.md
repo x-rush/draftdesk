@@ -128,6 +128,8 @@ curl -s -X POST "$BASE/api/v1/agent/unconsume" -H "Authorization: Bearer $TOKEN"
   -d '{"target":"hotspots","ids":["https://a.example.org/1"]}'
 ```
 
+janitor 自动回收：worker 每日把观测超过 7 天的热榜、采集超过 30 天且无产物引用的证据自动置为已消费（reason=outdated）——即使 Agent 一周不跑，remaining 也不会失控增长；被产物引用的证据永不自动回收。
+
 `reason` 四选一：`no-ai-signal`（无 AI 信号）/ `outdated`（过期）/ `off-domain`（非目标领域）/ `processed-into-artifact`（已写成草稿或大纲，建议附 `producedRef`）。消费不删除原始记录，只改变可见性与计数；重复消费幂等返回 `alreadyConsumed`。
 
 ## 5. 消费建议（给 Agent 的工作流）

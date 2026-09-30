@@ -14,7 +14,7 @@ import { defaultConfig, defaultPlans, defaultSources } from "./defaults";
 import { recordHistory, metricComparison, type MetricSnapshot } from "./history";
 import { decisionOf } from "./research-policy";
 import { validateIntake } from "./intake-validation";
-import { consumptionSummary } from "./agent-read";
+import { consumptionSummary, consumptionHotspotKeys } from "./agent-read";
 import {
   artifactSchema,
   evidenceSchema,
@@ -259,10 +259,11 @@ export class Store {
     const researchDiscovery=snapshot.discovery.filter(d=>d.mode!=="hotspot");
     const qualityCounts={ready:0,review:0,rejected:0};
     snapshot.artifacts.forEach(a=>{if(a.quality in qualityCounts)qualityCounts[a.quality as keyof typeof qualityCounts]++;});
-    const hotspotSummary=hotspotFeed(snapshot.discovery,new URLSearchParams(),1);
+    const consumedHotspotKeys=new Set(consumptionHotspotKeys(this));
+    const hotspotSummary=hotspotFeed(snapshot.discovery,new URLSearchParams("hotspotConsumed=include"),1,consumedHotspotKeys);
     const hotspotConsumption=consumptionSummary(this,"hotspots");
     return {...snapshot, discovery:params.get("jobId")?researchDiscovery.find(d=>d.jobId===params.get("jobId"))||null:researchDiscovery[0]||null,
-      hotspots:view==="hotspots"?hotspotFeed(snapshot.discovery,params,pageSize):null, artifacts:artifacts.items, jobs:jobs.items,
+      hotspots:view==="hotspots"?hotspotFeed(snapshot.discovery,params,pageSize,consumedHotspotKeys):null, artifacts:artifacts.items, jobs:jobs.items,
       submissions:submissions.items.map(r=>({...r,artifacts:snapshot.artifacts.filter(a=>r.artifactIds?.includes(a.id)||r.jobs.some((j:Job)=>j.id===a.jobId))})),
       evidence:snapshot.evidence.filter(e=>artifacts.items.some(a=>a.evidenceIds.includes(e.id))),
       events:[], metrics:[],

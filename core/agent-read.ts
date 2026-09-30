@@ -362,3 +362,10 @@ export function consumptionSummary(db: Store, target: "hotspots" | "evidence"): 
   }
   return { target, total, consumed: consumedCount, remaining: total - consumedCount, byReason };
 }
+
+// 已消费热榜键集合（identity 即 urlKey(url)），供热点列表默认隐藏已消费条目。
+export function consumptionHotspotKeys(db: Store): Set<string> {
+  const keys = new Set<string>();
+  for (const c of db.list<any>("consumption")) if (c.target === "hotspots") keys.add(c.identity);
+  return keys;
+}
