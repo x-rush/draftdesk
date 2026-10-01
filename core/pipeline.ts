@@ -118,7 +118,9 @@ export async function runJob(
       { plan: job.plan, profile: db.config().profile, asOf: now(), evidence: material },
       researchClusterSchema(evidence.map(e=>e.id)),
       signal,
-      (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 6000 }),
+      // 簇数量不定、JSON 冗长（qwen 思考预算另占 4096）：6000 会把生成截断在半截，
+      // 修复轮同上限即确定性失败（2026-10-01 trend-radar 实测）。提到上限 12000。
+      (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 12000 }),
     );
     const ids = new Set(evidence.map((e) => e.id));
     if (clusters.clusters.some((c) => c.evidenceIds.some((id) => !ids.has(id))) ||

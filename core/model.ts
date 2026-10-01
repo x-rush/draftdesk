@@ -188,7 +188,7 @@ export async function structured<T>(
         (() => { const persona = typeof db.get === "function" ? db.get<any>("config", "persona") : null; return persona ? "\n## 人设配置（个性化判断依据，优先于通用目标；评分维度与权重按此校准）\n" + JSON.stringify(persona) + "\n" : ""; })() +
         "\n你只能返回一个 JSON 对象，不要代码围栏。以下 JSON Schema 是硬性输出合同：\n" +
         visibleSchema +
-        "\n所有必填字段必须逐字段输出：数组字段即使为空也写 []，字符串字段依据材料写摘要或「本轮未核实」，不得省略字段名。\n",
+        "\n所有必填字段必须逐字段输出：数组字段即使为空也写 []，字符串字段依据材料写摘要或「本轮未核实」，不得省略字段名，也不能是空字符串。\n",
     },
     { role: "user", content: JSON.stringify(remap(input,aliases)) },
   ];
@@ -226,7 +226,7 @@ export async function structured<T>(
           role: "user",
           content:
             "上次输出未满足 JSON Schema。逐项修复以下实际校验错误：\n" + issues.map(message=>[...aliases].reduce((v,[id,alias])=>v.split(id).join(alias),message)).join("\n") +
-            (fields.some(issue => String(issue.message).includes("received undefined"))
+            (fields.some(issue => String(issue.message).includes("received undefined") || String(issue.message).includes("Too small"))
               ? "\n被报 received undefined 的字段必须显式输出：字段名不能省略，数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」。"
               : "") +
             (fields.some(issue => String(issue.path.join(".")).includes("claims"))
