@@ -8,6 +8,7 @@ type Row = {
   sourceType: string; id: string; kind: string; title: string; summary?: string; quality?: string;
   decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string;
   suggestions?: { by: string; verdict: string; score?: number; reason?: string }[];
+  producedBy?: string;
   createdAt: string; evidenceCount?: number; clusterId?: string;
 };
 const STATUSES = ["pending", "approved", "drafting", "published", "rejected", "deferred"] as const;
@@ -147,8 +148,8 @@ export function Review() {
         <div className="toolbar">
           <button disabled={busy || !selected.size} onClick={() => void batch("approved")}>批量通过</button>
           <button disabled={busy || !selected.size} onClick={() => void batch("deferred")}>批量暂缓</button>
-          <button disabled={busy || !selected.size} onClick={() => void batch("rejected")}>批量否决（原因：</button>
-          <select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
+          <button disabled={busy || !selected.size} onClick={() => void batch("rejected")}>批量否决</button>
+          <select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)} title="否决原因（批量否决时应用）">
             {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <span className="muted">已选 {selected.size} 条</span>
@@ -171,15 +172,22 @@ export function Review() {
             <div className="review-body">
               <strong>{row.title}</strong>
               <small>
-                {row.sourceType} · {row.kind} · {statusLabels[row.decision]}
-                {row.quality ? ` · 证据可信度 ${row.quality}` : ""}
-                {row.evidenceCount !== undefined ? ` · 证据 ${row.evidenceCount} 条` : ""}
-                {row.rejectReason ? ` · 否决原因 ${row.rejectReason}` : ""}
+                <span className="creation-badge">{row.sourceType}</span>{" "}
+                <span className="creation-badge">{row.kind}</span>{" "}
+                <span className="creation-badge">{statusLabels[row.decision]}</span>{" "}
+                {row.quality && <span className="creation-badge">证据可信度 {row.quality}</span>}{" "}
+                {row.evidenceCount !== undefined && <span className="creation-badge">证据 {row.evidenceCount} 条</span>}{" "}
+                {row.producedBy && <span className="creation-badge">producedBy {row.producedBy}</span>}
+                {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
               </small>
               {row.summary && <p className="muted">{row.summary.slice(0, 200)}</p>}
               {row.suggestions && row.suggestions.length > 0 && (
                 <p className="muted">
-                  {row.suggestions.map((s) => `${s.by}: ${statusLabels[s.verdict] || s.verdict}${s.score ? ` ${s.score} 分` : ""}${s.reason ? `（${s.reason}）` : ""}`).join(" ｜ ")}
+                  {row.suggestions.map((s, i) => (
+                    <span className="creation-badge" key={i} title={s.reason || ""}>
+                      {s.by}: {statusLabels[s.verdict] || s.verdict}{s.score ? ` ${s.score} 分` : ""}
+                    </span>
+                  ))}
                 </p>
               )}
               {row.decision === "pending" && (

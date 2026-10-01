@@ -237,7 +237,8 @@ export async function handle(req: Request, path: string[]) {
         return json({ ok: true, id: updated.id, suggestions: updated.suggestions });
       }
       if (route === "agent/decisions" || route === "agent/decisions/stats") {
-        const status = new URL(req.url).searchParams.get("status") || undefined;
+        const rawStatus = new URL(req.url).searchParams.get("status") || undefined;
+        const status = rawStatus === "all" ? undefined : rawStatus;
         return json(route === "agent/decisions" ? { items: db.decisionsQueue(status), generatedAt: now() } : db.decisionsStats());
       }
       const query = Object.fromEntries(new URL(req.url).searchParams.entries());
@@ -350,7 +351,8 @@ export async function handle(req: Request, path: string[]) {
           verification: db.get("job-verification", path[1]) || [],
         });
       if (route === "decisions" || route === "decisions/stats") {
-        const status = new URL(req.url).searchParams.get("status") || undefined;
+        const rawStatus = new URL(req.url).searchParams.get("status") || undefined;
+        const status = rawStatus === "all" ? undefined : rawStatus;
         return json(route === "decisions" ? { items: db.decisionsQueue(status), generatedAt: now() } : db.decisionsStats());
       }
       if (route === "persona") return json(db.get("config", "persona") || null);
