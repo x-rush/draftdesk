@@ -229,6 +229,9 @@ export async function structured<T>(
             (fields.some(issue => String(issue.message).includes("received undefined") || String(issue.message).includes("Too small"))
               ? "\n被报 received undefined 的字段必须显式输出：字段名不能省略，数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」。"
               : "") +
+            (fields.some(issue => String(issue.path.join(".")).includes("clusters"))
+              ? "\nclusters 重写规则：每条必须完整包含 label、summary、evidenceIds、contradictions、missing 五字段；数组空时写 []，字符串依据材料写摘要或「本轮未核实」，绝不省略字段名或写 null；evidenceIds 只逐字引用允许列表。"
+              : "") +
             (fields.some(issue => String(issue.path.join(".")).includes("claims"))
               ? "\nclaims 重写规则：最多 4 条；type 只能逐字写 fact/inference/hypothesis；fact 必须带证据原文逐字摘录的 quote 字符串（绝不写 null，没有引文就降级 inference）；evidenceIds 只能逐字引用允许列表里的编号，且已含在该条顶层 evidenceIds 中。"
               : "") +

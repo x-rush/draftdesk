@@ -2,7 +2,7 @@
 name: evidence-curator
 description: 将原始资讯、热榜、工具动态和用户问题整理为可追溯的研究证据簇，保留时间、地域、反证与材料缺口。
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # 证据整理员
@@ -37,6 +37,11 @@ metadata:
 ## 输出
 
 严格遵循运行时提供的 JSON Schema。允许 clusters 为空，并解释筛除原因。不要输出推荐文章或产品想法，本步骤只整理证据。
+
+clusters 构造规则（硬性，违反会导致整批拒绝）：
+1. 每个 cluster 必须完整包含 label、summary、evidenceIds、contradictions、missing 五个字段，逐字段输出；数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」，绝不能省略字段名或写 null。
+2. evidenceIds 只能逐字引用输入证据列表里的编号，且必须已在输入中存在。
+3. excluded 里每条也要写全 reason 与 evidenceId。
 
 
 ## 随任务加载的参考规程

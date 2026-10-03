@@ -221,7 +221,8 @@ export async function runJob(
           evidenceChecks: batch.items.map(item=>({title:item.title,checks:evidenceReadiness(item,evidence)})) },
         reviewSchema,
         signal,
-        (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 5000 }),
+        // 审稿 reviews 含长 notes/checks，5000 曾截断（2026-10-03 daily-editorial 实测）：提到 8000。
+        (db, messages, options) => requestModel(db, messages, { ...options, maxOutputTokens: 8000 }),
       );
     } catch (error) {
       // 前三个付费阶段已完成，草稿已入库。审稿是最后一环：预算耗尽时按
