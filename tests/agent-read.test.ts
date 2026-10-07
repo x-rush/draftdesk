@@ -59,7 +59,8 @@ test("读取 API 令牌鉴权：无令牌 401、仅提交令牌 403、读取令�
 
 test("读取 API 返回带质量分层标签的产物与证据摘要投影", async () => {
   const db = store();
-  evidence.forEach((e) => db.put("evidence", e.id, e));
+  // 夹具日期是写死的（9-21），随真实时间推移会滑出 14 天回看窗口——种子时改到当前时间
+  evidence.forEach((e) => db.put("evidence", e.id, { ...e, collectedAt: new Date().toISOString() }));
   const reader = db.createConnection("读取助手2", ["read"]);
   const auth = { Authorization: "Bearer " + reader.token };
   const saved = db.saveArtifact(topic, "test-job", "review", ["测试样本"]);
@@ -83,6 +84,7 @@ test("读取 API 返回带质量分层标签的产物与证据摘要投影", asy
   assert.equal((await get("agent/artifacts/不存在", auth)).status, 404);
   const evidenceResponse = await get("agent/evidence?q=" + encodeURIComponent("会议"), auth);
   const evidenceList = await evidenceResponse.json();
+  console.log("[dbg] evidence:", evidenceResponse.status, JSON.stringify(evidenceList).slice(0,300));
   assert.ok(evidenceList.items.some((e: any) => e.id === "ev-one"));
   assert.ok(evidenceList.items.every((e: any) => e.excerpt.length <= 2000));
 });

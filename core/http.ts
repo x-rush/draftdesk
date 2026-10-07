@@ -108,13 +108,13 @@ export async function handle(req: Request, path: string[]) {
     // agent 命名空间：GET 读取要 read scope，消费写入要 consume scope，MCP 是 read。
     const consumeRoute = route === "agent/consume" || route === "agent/unconsume";
     const suggestWriteRoute = route === "agent/clusters" || route === "agent/outlines";
-    const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute && !suggestWriteRoute);
+    const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute && !(suggestWriteRoute && req.method === "PUT"));
     const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute || suggestWriteRoute;
-    if (suggestWriteRoute) {
-      if (req.method !== "PUT") throw new AppError("方法不支持", 405);
+    if (suggestWriteRoute && req.method === "PUT") {
       const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest");
       // 外部 Agent 写回聚合结果与大纲（§4.2）：producedBy 标记来源；
       // 决策字段（decision/draftRef/publishedRef/rejectReason）不在写入面，字段显式挑选保证无法携带。
+      // 同路径的 GET 读取走下方 read 块（read scope）。
       const by = `agent:${connection.name}`;
       if (route === "agent/clusters") {
         const parsed = z.object({
@@ -141,12 +141,13 @@ export async function handle(req: Request, path: string[]) {
         outline: z.array(z.string().max(300)).max(20).optional(),
         keyPoints: z.array(z.string().max(300)).max(20).optional(),
         evidenceRefs: z.array(z.string().max(100)).max(200).optional(),
+        draftBody: z.string().max(100000).optional(),
       }).parse(await body(req));
       if (!db.get("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404);
       const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
       const outline = existing
-        ? { ...existing, clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, producedBy: by }
-        : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", producedBy: by, createdAt: now() };
+        ? { ...existing, clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by }
+        : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by, createdAt: now() };
       db.put("outlines", outline.id, outline);
       return json(outline, existing ? 200 : 201);
     }
@@ -159,6 +160,8 @@ export async function handle(req: Request, path: string[]) {
         const input = z.object({
           target: z.enum(["hotspots", "evidence"]),
           ids: z.array(z.string().min(1).max(2048)).max(1000).optional(),
+          clusterIds: z.array(z.string().min(1).max(100)).max(50).optional(),
+          exceptIds: z.array(z.string().min(1).max(2048)).max(1000).optional(),
           filter: z.object({
             days: z.number().int().min(1).max(60).optional(),
             status: z.string().max(30).optional(),
@@ -169,11 +172,33 @@ export async function handle(req: Request, path: string[]) {
           dryRun: z.boolean().optional(),
           cursor: z.string().max(200).optional(),
         }).strict().parse(await body(req));
-        if (!input.ids?.length && !input.filter) throw new AppError("ids 与 filter 必须提供其一。", 400);
+        if (!input.ids?.length && !input.filter && !input.clusterIds?.length)
+          throw new AppError("ids、clusterIds 与 filter 必须提供其一。", 400);
         let identities = input.ids ?? [];
         let total = identities.length;
         let nextCursor: string | undefined;
-        if (!input.ids?.length && input.filter) {
+        if (input.clusterIds?.length) {
+          // 按簇消费：展开簇成员（memberIds 即该 target 空间的身份键），exceptIds 排除簇内部分条目；
+          // producedRef 缺省自动指向该簇第一份大纲（无大纲则指向簇本身）。
+          const seenCluster = new Set<string>();
+          for (const clusterId of input.clusterIds) {
+            const cluster = db.get<any>("clusters", clusterId);
+            if (!cluster) throw new AppError(`簇 ${clusterId} 不存在。`, 404);
+            for (const member of cluster.memberIds || []) {
+              if (seenCluster.has(member)) continue;
+              seenCluster.add(member);
+              identities.push(member);
+            }
+          }
+          for (const ex of input.exceptIds || []) identities = identities.filter((x) => x !== ex);
+          identities = [...new Set(identities)];
+          total = identities.length;
+          const producedRefFallback =
+            db.list<any>("outlines").filter((o) => input.clusterIds!.includes(o.clusterId))[0]?.id
+            || input.clusterIds.join(",");
+          if (!input.producedRef) input.producedRef = producedRefFallback;
+        }
+        if (!input.ids?.length && !input.clusterIds?.length && input.filter) {
           const since = Date.now() - (input.filter.days ?? 30) * 86400000;
           const seen = new Set<string>();
           const pool: string[] = [];
@@ -204,7 +229,7 @@ export async function handle(req: Request, path: string[]) {
       }
       const unconsumeInput = z.object({
         target: z.enum(["hotspots", "evidence"]),
-        ids: z.array(z.string().min(1).max(500)).max(1000),
+        ids: z.array(z.string().min(1).max(2048)).max(1000),
         dryRun: z.boolean().optional(),
       }).strict().parse(await body(req));
       const result = db.unconsumeIdentities(unconsumeInput.target, unconsumeInput.ids, unconsumeInput.dryRun === true);
@@ -236,6 +261,11 @@ export async function handle(req: Request, path: string[]) {
         const updated = db.addSuggestion(parsed.targetId, { by: `agent:${connection.name}`, verdict: parsed.verdict, score: parsed.score, platforms: parsed.platforms, reason: parsed.reason });
         return json({ ok: true, id: updated.id, suggestions: updated.suggestions });
       }
+      if (route === "agent/persona") return json(db.get("config", "persona") || null);
+      if (route === "agent/aiPolicy") return json(db.get("config", "aiPolicy") || null);
+      if (route === "agent/consumerMode") return json(db.get("config", "consumerMode") || null);
+      if (route === "agent/clusters") return json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
+      if (route === "agent/outlines") return json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "agent/decisions" || route === "agent/decisions/stats") {
         const rawStatus = new URL(req.url).searchParams.get("status") || undefined;
         const status = rawStatus === "all" ? undefined : rawStatus;
@@ -357,6 +387,7 @@ export async function handle(req: Request, path: string[]) {
       }
       if (route === "persona") return json(db.get("config", "persona") || null);
       if (route === "aiPolicy") return json(db.get("config", "aiPolicy") || null);
+      if (route === "consumerMode") return json(db.get("config", "consumerMode") || "external");
       if (route === "clusters") return json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "outlines") return json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "export") {
@@ -407,6 +438,9 @@ export async function handle(req: Request, path: string[]) {
       return json({ok:true,id,platform:bundle.platform,count:bundle.items.length,duplicate:!!previous,receivedAt},previous?200:201);
     }
     if(route === "activity-triage") {
+      const consumerMode = db.get<any>("config", "consumerMode") || "external";
+      if (consumerMode === "external")
+        return json({ skipped: true, reason: "消费执行方为外部 Agent（consumerMode=external）：内置初筛停用，聚合分类由外部 Agent 经 /api/v1/agent/clusters 写回。", results: [] });
       const aiPolicy = db.get<any>("config", "aiPolicy");
       if ((aiPolicy?.triage || "off") === "off")
         return json({ skipped: true, reason: "内置初筛已关闭（aiPolicy.triage=off）；聚合分类由外部 Agent 经 /api/v1/agent/clusters 写回，或人工处理。", results: [] });
@@ -653,6 +687,12 @@ export async function handle(req: Request, path: string[]) {
         .parse(input);
       return json(await distill(db, value.id, value.kind, req.signal));
     }
+    if (path[0] === "decisions" && path[2] === "draft") {
+      const { draftBody } = z.object({ draftBody: z.string().max(100000) }).strict().parse(input);
+      const { collection, row } = db.decisionTarget(path[1]);
+      db.put(collection, row.id, { ...row, draftBody });
+      return json({ ok: true, id: row.id, draftBody });
+    }
     if (route === "decisions/manual") {
       const parsed = z.object({
         title: z.string().min(1).max(300),
@@ -690,6 +730,11 @@ export async function handle(req: Request, path: string[]) {
         aiWriter: z.enum(["builtin", "external", "both"]),
       }).strict().parse(input);
       db.put("config", "aiPolicy", parsed);
+      return json(parsed);
+    }
+    if (route === "consumerMode") {
+      const parsed = z.object({ consumerMode: z.enum(["external", "builtin"]) }).strict().parse(input);
+      db.put("config", "consumerMode", parsed.consumerMode);
       return json(parsed);
     }
     if (route === "clusters") {

@@ -16,6 +16,8 @@ after(() => {
 
 test("janitor：超窗热榜与未被引用的证据自动消费，被引用证据保留，同日只跑一次", async () => {
   const db = store();
+  // consumerMode=external 时 janitor 停用；本测试验证 builtin 模式的回收行为
+  db.put("config", "consumerMode", "builtin");
   const old = new Date(Date.now() - (RETENTION.hotspots.autoConsumeOlderThanDays + 3) * 86400000).toISOString();
   const fresh = new Date().toISOString();
   const oldEvidenceAt = new Date(Date.now() - (RETENTION.evidence.autoConsumeOlderThanDays + 5) * 86400000).toISOString();
@@ -44,6 +46,10 @@ test("janitor：超窗热榜与未被引用的证据自动消费，被引用证�
 
   // 同日二跑节流
   assert.equal(runJanitor(db), null);
+  // consumerMode=external：janitor 停用
+  db.put("config", "consumerMode", "external");
+  db.del("meta", "janitor");
+  assert.equal(runJanitor(db)!.skipped, true);
 
   // 消费后：remaining 只数未消费，feed 默认隐藏已消费
   const summary = (await import("../core/agent-read")).consumptionSummary(db, "hotspots");

@@ -77,6 +77,8 @@ test("suggest scope：写回 clusters/outlines 带 producedBy，decision 字段�
 
 test("aiPolicy.triage=off：活动初筛软跳过，不调用模型不报错", async () => {
   const db = store();
+  // consumerMode=external 时优先于 aiPolicy（直接软跳过）；本测试验证 builtin 模式下的 aiPolicy.triage 路径
+  db.put("config", "consumerMode", "builtin");
   // 默认即 off
   const batches = db.list<any>("activity-batches");
   if (!batches.length) {
@@ -87,4 +89,10 @@ test("aiPolicy.triage=off：活动初筛软跳过，不调用模型不报错", a
   const body = await response.json();
   assert.equal(body.skipped, true);
   assert.match(body.reason, /triage=off/);
+  // 切回 consumerMode=external：即使 aiPolicy.triage=off 也直接软跳过（外部 Agent 负责）
+  db.put("config", "consumerMode", "external");
+  const ext = await request("activity-triage", { batchIds: ["b-off"], keywords: ["AI"] });
+  const extBody = await ext.json();
+  assert.equal(extBody.skipped, true);
+  assert.match(extBody.reason, /consumerMode=external/);
 });

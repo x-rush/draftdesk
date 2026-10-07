@@ -130,6 +130,7 @@ function artifactSummary(a: any) {
     tags: a.tags,
     evidenceIds: a.evidenceIds,
     quality: a.quality || "review",
+    evidenceQuality: a.quality || "review",
     creationStatus: a.creationStatus || "inbox",
     visibility: a.visibility,
     createdAt: a.createdAt,
@@ -176,6 +177,7 @@ export function agentArtifact(db: Store, id: string) {
     }));
   return {
     ...artifactSummary(a),
+    evidenceQuality: a.quality || "review",
     details: a.details,
     evidence,
     generatedAt: isoNow(),

@@ -19,8 +19,10 @@
   - `POST /api/v1/agent/consume` —— 批量把已处理的热榜/证据置为已消费。`ids` 与 `filter`（days/status/sourceId）二选一，单批 ≤1000 超出返回 `nextCursor`；`reason` 四选一（no-ai-signal / outdated / off-domain / processed-into-artifact）；**`dryRun` 默认 true**，先拿影响面确认再显式传 false 落库。消费 ≠ 删除：只加状态层，30 天内可撤销。
   - `GET /api/v1/agent/consume/status?target=hotspots|evidence` —— total/consumed/remaining 与按原因分布；工作台首页热榜计数读 `remaining`。
   - `POST /api/v1/agent/unconsume` —— 30 天撤销窗口内复活；过期返回 410。
+  - `GET /api/v1/agent/persona`、`GET /api/v1/agent/aiPolicy`、`GET /api/v1/agent/clusters`、`GET /api/v1/agent/outlines` —— 人设、AI 开关、簇与大纲读取（read scope），做增量聚合前先读已有簇。
   - `GET /api/v1/agent/decisions`、`GET /api/v1/agent/decisions/stats`、`POST /api/v1/agent/suggestions`（也接受 PATCH）—— 决策层读取与建议写入（建议多源并存，不改变人的拍板）。
   - `PUT /api/v1/agent/clusters`、`PUT /api/v1/agent/outlines` —— 聚合结果与多平台大纲写回（内置 AI 关闭或增量补簇时用）。producedBy 自动标记 agent:<名称>；decision/draftRef/publishedRef 不在写入面，大纲创建固定 pending。
+  - 消费执行方（consumerMode）为 **external** 时：内置初筛、聚合、大纲生成、janitor 自动回收全部停用，产出由外部 Agent 写回；切回 builtin 恢复。aiPolicy 三字段仅在 builtin 模式下生效。
   - 以上写回需 **suggest** scope（与 read/submit/consume 四向隔离）；外部 Agent 永远无法写 decision——拍板只能由人在审查台完成（「信任 Agent 自动拍板」开关未来另行提供）。
   - **自动回收（janitor）**：worker 每日把「最近观测超过 7 天」的热榜与「采集超过 30 天且无任何产物引用」的证据自动置为已消费（reason=outdated，consumedBy=janitor）。被产物引用的证据永不自动消费；消费不删除原始记录。手动消费与自动回收共用同一状态层。
 - **MCP**：`POST /api/v1/mcp`（JSON-RPC over Streamable HTTP 的纯 POST 简化档，无 SSE；与 REST 同一令牌鉴权）。工具：`search_hotspots` / `search_evidence` / `list_artifacts` / `get_artifact` / `get_workspace_stats`。支持远程 MCP 的运行器（OpenClaw 等）直接配端点 URL + 令牌即可，无需安装。

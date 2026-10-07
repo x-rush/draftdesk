@@ -187,3 +187,7 @@ export const defaultAiPolicy = {
   draft: "off" as const,
   aiWriter: "external" as const,
 };
+
+// 消费执行方（追加需求 §4.2 二选一）：external=内置初筛/聚合/大纲/janitor 全部停，由外部 Agent 经接口写回；
+// builtin=内置全跑。external 时 aiPolicy 三字段被忽略（字段保留做兼容）。二选一，无中间档。
+export const defaultConsumerMode = "external" as const;

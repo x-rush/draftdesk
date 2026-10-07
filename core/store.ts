@@ -10,7 +10,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy } from "./defaults";
+import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy, defaultConsumerMode } from "./defaults";
 import { recordHistory, metricComparison, type MetricSnapshot } from "./history";
 import { decisionOf } from "./research-policy";
 import { validateIntake } from "./intake-validation";
@@ -159,6 +159,10 @@ export class Store {
         if(!this.get("config","aiPolicy"))this.put("config","aiPolicy",defaultAiPolicy);
         this.put("meta","ai-policy-v1",{version:1});
       }
+      if(!this.get("meta","consumer-mode-v1")){
+        if(!this.get("config","consumerMode"))this.put("config","consumerMode",defaultConsumerMode);
+        this.put("meta","consumer-mode-v1",{version:1});
+      }
             if(!this.get("meta","official-api-hotlists-v1")){
         // B站热门/微博热搜改走官方公开 JSON 接口（HTML 入口有访客验证，聚合上游又常年失败）。
         // 种子两个新来源；热词策略仅在未被用户改动过默认来源清单时同步加入，改过的不碰。
@@ -227,7 +231,7 @@ export class Store {
   }
   publicConfig() {
     const { apiKey, tavilyKey, ...c } = this.config();
-    return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey };
+    return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey, consumerMode: this.get("config", "consumerMode") || "external" };
   }
   snapshot(params?: URLSearchParams) {
     const metrics = this.list<MetricSnapshot>("metrics");
@@ -756,16 +760,16 @@ export class Store {
     const rows: any[] = [];
     for (const a of this.list<any>("artifacts")) {
       if (a.archived || (a.kind as string) === "person") continue;
-      rows.push({ sourceType: "artifact", id: a.id, kind: a.kind, title: a.title, summary: a.summary, quality: a.quality || "review",
+      rows.push({ sourceType: "artifact", id: a.id, kind: a.kind, title: a.title, summary: a.summary, quality: a.quality || "review", evidenceQuality: a.quality || "review",
         decision: a.decision || "pending", platforms: a.platforms, suggestions: a.suggestions, rejectReason: a.rejectReason,
-        publishedRef: a.publishedRef, createdAt: a.createdAt, evidenceCount: (a.evidenceIds || []).length });
+        publishedRef: a.publishedRef, draftBody: a.draftBody, createdAt: a.createdAt, evidenceCount: (a.evidenceIds || []).length });
     }
     for (const o of this.list<any>("outlines"))
       rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
-        decision: o.decision, platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, createdAt: o.createdAt });
+        decision: o.decision, platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt });
     for (const d of this.list<any>("decisions"))
       rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
-        platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", createdAt: d.createdAt });
+        platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", draftBody: d.draftBody, createdAt: d.createdAt });
     return rows.filter((r) => !status || r.decision === status)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }

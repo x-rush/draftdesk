@@ -9,10 +9,15 @@ export const RETENTION = {
   evidence: { autoConsumeOlderThanDays: 30 },
 };
 
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
+  // consumerMode=external：消费与回收由外部 Agent 负责，内置 janitor 停用（§4.2 干净分解）。
+  if ((db.get<any>("config", "consumerMode") || "external") === "external") {
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, skipped: true };
+  }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
   // ① 热榜：最近一次观测早于窗口的 url。热榜没有产物反向引用（产物挂证据，不挂热榜 url），无需引用保护。

@@ -9,6 +9,7 @@ type Row = {
   decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string;
   suggestions?: { by: string; verdict: string; score?: number; reason?: string }[];
   producedBy?: string;
+  draftBody?: string;
   createdAt: string; evidenceCount?: number; clusterId?: string;
 };
 const STATUSES = ["pending", "approved", "drafting", "published", "rejected", "deferred"] as const;
@@ -27,6 +28,7 @@ export function Review() {
   const [error, setError] = useState("");
   const [manual, setManual] = useState({ title: "", notes: "", platforms: "" });
   const [publishRef, setPublishRef] = useState<Record<string, string>>({});
+  const [draftText, setDraftText] = useState<Record<string, string>>({});
   const [persona, setPersona] = useState<any>(null);
   const [personaText, setPersonaText] = useState("");
   const [aiPolicy, setAiPolicy] = useState<any>(null);
@@ -211,6 +213,24 @@ export function Review() {
                     onChange={(e) => setPublishRef({ ...publishRef, [row.id]: e.target.value })}
                   />
                   <button disabled={busy} onClick={() => void publish(row)}>回填发布</button>
+                </div>
+              )}
+              {["approved", "drafting", "published"].includes(row.decision) && (
+                <div>
+                  <Field label="草稿正文（可直接读、改、发布）">
+                    <textarea
+                      rows={6}
+                      value={draftText[row.id] ?? row.draftBody ?? ""}
+                      onChange={(e) => setDraftText({ ...draftText, [row.id]: e.target.value })}
+                    />
+                  </Field>
+                  {row.decision !== "published" && (
+                    <button disabled={busy} onClick={() => void act(async () => {
+                      await api(`decisions/${row.id}/draft`, { draftBody: draftText[row.id] ?? "" });
+                      await reload();
+                      setNotice("草稿正文已保存。");
+                    })}>保存草稿</button>
+                  )}
                 </div>
               )}
               {row.decision === "published" && row.publishedRef && (

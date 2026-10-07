@@ -900,6 +900,24 @@ function Settings({
         });
       }}
     >
+      <h2>消费执行方</h2>
+      <p className="muted">{(config.consumerMode || "external") === "external"
+        ? "当前：外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。"
+        : "当前：内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}</p>
+      <Field label="模式（保存前即时生效）">
+        <select
+          value={config.consumerMode || "external"}
+          onChange={(e) =>
+            void act(async () => {
+              await api("consumerMode", { consumerMode: e.target.value });
+            })
+          }
+        >
+          <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
+          <option value="builtin">内置管线（每晚自动采集与分析）</option>
+        </select>
+      </Field>
+      <hr />
       <h2>阿里云百炼</h2>
       <p>
         研究、审稿与讨论共用同一模型。填写百炼 API Key，而非阿里云 AccessKey ID

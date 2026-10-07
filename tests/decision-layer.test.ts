@@ -54,7 +54,7 @@ test("P2/P3：拍板 → decision 落库；rejected/published 联动消费；批
   const db = store();
   const consumer = db.createConnection("消费联动", ["consume", "read"]);
   const consumeAuth = { Authorization: "Bearer " + consumer.token, "content-type": "application/json" };
-  evidence.forEach((e) => db.put("evidence", e.id, e));
+  evidence.forEach((e) => db.put("evidence", e.id, { ...e, collectedAt: new Date().toISOString() }));
   // 热榜种子：两条 urlKey 对应证据 url（含 utm 变体）
   const at = new Date().toISOString();
   db.put("discovery", "d-link", { jobId: "d-link", at, planName: "P", limit: 5, mode: "analysis", sources: [], candidates: [
