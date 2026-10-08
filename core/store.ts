@@ -560,7 +560,7 @@ export class Store {
     this.put("connections", c.id, c);
     return { id: c.id, name, scopes: c.scopes, token };
   }
-  authenticate(token: string, scope: "submit" | "read" | "consume" | "suggest" = "submit") {
+  authenticate(token: string, scope: "submit" | "read" | "consume" | "suggest" = "submit", from?: string) {
     const digest = hash(token);
     const c = this.list<any>("connections").find(
       (c) =>
@@ -571,6 +571,13 @@ export class Store {
     // 旧连接无 scopes 字段：视为仅提交（与历史行为一致）
     if (!(c.scopes || ["submit"]).includes(scope))
       throw new AppError(`令牌无 ${scope} 权限；请在工作台创建对应权限的连接令牌。`, 403);
+    // 回写 lastUsedAt / lastUsedFrom，距上次记录 >5 分钟才写库（防每个 GET 都写一次）。
+    const stamp = now();
+    if (!c.lastUsedAt || Date.parse(stamp) - Date.parse(c.lastUsedAt) > 5 * 60000) {
+      c.lastUsedAt = stamp;
+      c.lastUsedFrom = from || scope;
+      this.put("connections", c.id, c);
+    }
     return c;
   }
   // 消费标记：不删除原始记录，只加状态层；幂等；dryRun 只统计不写入。

@@ -46,7 +46,21 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   }
   db.consumeIdentities("hotspots", hotspotIds, "outdated", "janitor", undefined, false);
   db.consumeIdentities("evidence", evidenceIds, "outdated", "janitor", undefined, false);
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length };
+  // 簇过期自动归档：window 结束日距今 > 14 天 → status=archived（不删除，审查台可筛）
+  let clustersArchived = 0;
+  const archiveCutoff = Date.now() - 14 * 86400000;
+  for (const c of db.list<any>("clusters")) {
+    if (c.status === "archived") continue;
+    if (!c.window) continue;
+    const endMatch = c.window.match(/~s*(d{4}-d{2}-d{2})/);
+    if (!endMatch) continue;
+    const endDate = Date.parse(endMatch[1]);
+    if (Number.isFinite(endDate) && endDate < archiveCutoff) {
+      db.put("clusters", c.id, { ...c, status: "archived" });
+      clustersArchived++;
+    }
+  }
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived };
   db.put("meta", "janitor", result);
   return result;
 }

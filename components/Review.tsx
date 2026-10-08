@@ -17,6 +17,7 @@ const statusLabels: Record<string, string> = {
   pending: "待决策", approved: "已通过", drafting: "写作中", published: "已发布", rejected: "已否决", deferred: "已暂缓",
 };
 const rejectReasons = ["no-ai-signal", "off-domain", "写不透", "不感兴趣", "已写过", "其他"];
+const qualityLabels: Record<string, string> = { review: "待核验", ready: "已核验", rejected: "已否" };
 
 export function Review() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -177,7 +178,7 @@ export function Review() {
                 <span className="creation-badge">{row.sourceType}</span>{" "}
                 <span className="creation-badge">{row.kind}</span>{" "}
                 <span className="creation-badge">{statusLabels[row.decision]}</span>{" "}
-                {row.quality && <span className="creation-badge">证据可信度 {row.quality}</span>}{" "}
+                {row.quality && <span className="creation-badge">证据可信度 {qualityLabels[row.quality] || row.quality}</span>}{" "}
                 {row.evidenceCount !== undefined && <span className="creation-badge">证据 {row.evidenceCount} 条</span>}{" "}
                 {row.producedBy && <span className="creation-badge">producedBy {row.producedBy}</span>}
                 {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}

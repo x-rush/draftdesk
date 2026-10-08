@@ -112,7 +112,7 @@ export async function handle(req: Request, path: string[]) {
     const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute && !suggestWriteRoute) || suggestReadRoute;
     const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute || suggestWriteRoute;
     if (suggestWriteRoute && (req.method === "PUT" || req.method === "DELETE")) {
-      const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest");
+      const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest", route);
       // 外部 Agent 写回/删除聚合结果与大纲（§4.2）：producedBy 标记来源；
       // 决策字段（decision/draftRef/publishedRef/rejectReason）不在写入面，字段显式挑选保证无法携带。
       const by = `agent:${connection.name}`;
@@ -145,7 +145,7 @@ export async function handle(req: Request, path: string[]) {
         const existing = parsed.id ? db.get<any>("clusters", parsed.id) : null;
         const cluster = existing
           ? { ...existing, topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || existing.window, suggestedPlatforms: parsed.suggestedPlatforms || existing.suggestedPlatforms, target: parsed.target || existing.target || "hotspots", producedBy: by }
-          : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", producedBy: by, createdAt: now() };
+          : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: by, createdAt: now() };
         db.put("clusters", cluster.id, cluster);
         return json(cluster, existing ? 200 : 201);
       }
@@ -157,7 +157,7 @@ export async function handle(req: Request, path: string[]) {
         title: z.string().min(1).max(300),
         outline: z.array(z.string().max(300)).max(20).optional(),
         keyPoints: z.array(z.string().max(300)).max(20).optional(),
-        evidenceRefs: z.array(z.string().max(100)).max(200).optional(),
+        evidenceRefs: z.array(z.string().max(2048)).max(200).optional(),
         draftBody: z.string().max(100000).optional(),
       }).parse(await body(req));
       if (!db.get("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404);
@@ -172,7 +172,7 @@ export async function handle(req: Request, path: string[]) {
       throw new AppError("提交令牌只允许写入收件接口。", 403);
     if (consumeRoute) {
       if (req.method !== "POST" && req.method !== "PATCH") throw new AppError("方法不支持", 405);
-      db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "consume");
+      db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "consume", route);
       if (route === "agent/consume") {
         const input = z.object({
           target: z.enum(["hotspots", "evidence"]),
@@ -223,7 +223,8 @@ export async function handle(req: Request, path: string[]) {
             || input.clusterIds.join(",");
           if (!input.producedRef) input.producedRef = producedRefFallback;
         }
-        // notFound 统计：身份在该 target 池中不存在的不消费、不计入 toConsume（防静默假成功）。
+        // notFound 统计：三条路径（ids/filter/clusterIds）统一 urlKey 归一化，
+        // 池也用 urlKey 构建，调用方传原始 url 或归一化 url 均可匹配（防静默假成功）。
         if (identities.length) {
           const pool = new Set<string>();
           if (input.target === "hotspots") {
@@ -232,8 +233,11 @@ export async function handle(req: Request, path: string[]) {
           } else {
             for (const e of db.list<any>("evidence")) pool.add(e.id);
           }
-          const inPool = identities.filter((x) => pool.has(x));
-          notFound = identities.filter((x) => !pool.has(x));
+          const normalized = [...new Set(identities.map((x) => {
+            try { return input.target === "hotspots" ? urlKey(x) : x; } catch { return x; }
+          }))];
+          const inPool = normalized.filter((x) => pool.has(x));
+          notFound = normalized.filter((x) => !pool.has(x));
           identities = inPool;
           total = inPool.length;
         }
@@ -280,7 +284,7 @@ export async function handle(req: Request, path: string[]) {
         ? req.method === "POST" || req.method === "PATCH"
         : req.method === "GET";
       if (!methodOk) throw new AppError("方法不支持", 405);
-      const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "read");
+      const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "read", route);
       if (route === "mcp") {
         const reply = mcpRpc(db, await body(req));
         // 通知（无 id）按约定不回包；其余返回单对象或批量数组
@@ -720,6 +724,8 @@ export async function handle(req: Request, path: string[]) {
     }
     if (route === "connections") {
       const parsed = z.object({ name: z.string().min(1).max(80), scopes: z.array(z.enum(["submit","read","consume","suggest"])).min(1).max(4).optional() }).parse(input);
+      if (/�/.test(parsed.name))
+        throw new AppError("连接名称包含无效字符（可能是编码错误），请以 UTF-8 重新发送。", 400);
       return json(db.createConnection(parsed.name, parsed.scopes));
     }
     if (route === "revoke") {
@@ -819,7 +825,7 @@ export async function handle(req: Request, path: string[]) {
         suggestedPlatforms: z.array(z.string().max(30)).max(8).optional(),
         target: z.enum(["hotspots", "evidence"]).optional(),
       }).strict().parse(input);
-      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", producedBy: "human", createdAt: now() };
+      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: "human", createdAt: now() };
       db.put("clusters", cluster.id, cluster);
       return json(cluster, 201);
     }
