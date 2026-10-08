@@ -51,6 +51,7 @@ test("① 按簇消费：clusterIds 展开成员、exceptIds 排除、producedRe
   db.put("discovery", "d-clu", { jobId: "d-clu", at, planName: "P", limit: 5, mode: "analysis", sources: [], candidates: [
     { url: "https://cluster.example.org/1", title: "成员一", sourceId: "s", sourceName: "源", status: "watch", reason: "原始热点", observedAt: at },
     { url: "https://cluster.example.org/2", title: "成员二", sourceId: "s", sourceName: "源", status: "watch", reason: "原始热点", observedAt: at },
+    { url: "https://example.com/" + encodeURIComponent("长".repeat(200)), title: "长URL成员", sourceId: "s", sourceName: "源", status: "watch", reason: "原始热点", observedAt: at },
   ]});
   const clusterRes = await request("agent/clusters", { topic: "测试簇", memberIds: ["https://cluster.example.org/1", "https://cluster.example.org/2"], kind: "news" }, consumeAuth, "PUT");
   console.log("[dbg] cluster PUT:", clusterRes.status, (await clusterRes.clone().text()).slice(0,120));

@@ -116,7 +116,10 @@ export function Connections({
               const scopes = [readScope && "read", consumeScope && "consume", suggestScope && "suggest"].filter(Boolean);
               const r = await api("connections", { name, scopes: scopes.length ? scopes : undefined });
               setToken(r.token);
-              setNotice("令牌已创建，仅在这次显示。");
+              {
+        const caps = ["提交回传", ...((r.scopes || []).includes("read") ? ["只读"] : []), ...((r.scopes || []).includes("consume") ? ["消费"] : []), ...((r.scopes || []).includes("suggest") ? ["建议写回"] : [])];
+        setNotice("令牌已创建（能力：" + caps.join(" + ") + "），仅在这次显示。提交回传为默认能力，无需勾选。");
+      }
             });
           }}
         >

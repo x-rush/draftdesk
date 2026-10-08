@@ -124,11 +124,12 @@ export async function handle(req: Request, path: string[]) {
           kind: z.string().min(1).max(30),
           window: z.string().max(60).optional(),
           suggestedPlatforms: z.array(z.string().max(30)).max(8).optional(),
+          target: z.enum(["hotspots", "evidence"]).optional(),
         }).parse(await body(req));
         const existing = parsed.id ? db.get<any>("clusters", parsed.id) : null;
         const cluster = existing
-          ? { ...existing, topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || existing.window, suggestedPlatforms: parsed.suggestedPlatforms || existing.suggestedPlatforms, producedBy: by }
-          : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], producedBy: by, createdAt: now() };
+          ? { ...existing, topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || existing.window, suggestedPlatforms: parsed.suggestedPlatforms || existing.suggestedPlatforms, target: parsed.target || existing.target || "hotspots", producedBy: by }
+          : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", producedBy: by, createdAt: now() };
         db.put("clusters", cluster.id, cluster);
         return json(cluster, existing ? 200 : 201);
       }
@@ -177,26 +178,48 @@ export async function handle(req: Request, path: string[]) {
         let identities = input.ids ?? [];
         let total = identities.length;
         let nextCursor: string | undefined;
+        const outlineIds: string[] = [];
+        let notFound: string[] = [];
         if (input.clusterIds?.length) {
-          // 按簇消费：展开簇成员（memberIds 即该 target 空间的身份键），exceptIds 排除簇内部分条目；
-          // producedRef 缺省自动指向该簇第一份大纲（无大纲则指向簇本身）。
+          // 按簇消费：展开簇成员（memberIds 即该簇 target 空间的身份键），exceptIds 排除簇内部分条目；
+          // producedRef 缺省自动指向该簇第一份大纲（无大纲则指向簇本身）；响应携带 outlineIds 全集。
           const seenCluster = new Set<string>();
           for (const clusterId of input.clusterIds) {
             const cluster = db.get<any>("clusters", clusterId);
             if (!cluster) throw new AppError(`簇 ${clusterId} 不存在。`, 404);
+            const clusterTarget = cluster.target || "hotspots";
+            if (clusterTarget !== input.target)
+              throw new AppError(`簇 ${clusterId} 属于 ${clusterTarget} 空间，不能按 ${input.target} 消费。`, 400);
             for (const member of cluster.memberIds || []) {
               if (seenCluster.has(member)) continue;
               seenCluster.add(member);
               identities.push(member);
             }
+            for (const o of db.list<any>("outlines")) if (o.clusterId === clusterId) outlineIds.push(o.id);
           }
           for (const ex of input.exceptIds || []) identities = identities.filter((x) => x !== ex);
           identities = [...new Set(identities)];
+          if (identities.length > 5000)
+            throw new AppError(`簇展开后共 ${identities.length} 条，超过单批上限 5000；请拆分簇后分批消费。`, 400);
           total = identities.length;
           const producedRefFallback =
             db.list<any>("outlines").filter((o) => input.clusterIds!.includes(o.clusterId))[0]?.id
             || input.clusterIds.join(",");
           if (!input.producedRef) input.producedRef = producedRefFallback;
+        }
+        // notFound 统计：身份在该 target 池中不存在的不消费、不计入 toConsume（防静默假成功）。
+        if (identities.length) {
+          const pool = new Set<string>();
+          if (input.target === "hotspots") {
+            for (const record of db.list<any>("discovery"))
+              for (const c of record.candidates || []) pool.add(urlKey(c.url));
+          } else {
+            for (const e of db.list<any>("evidence")) pool.add(e.id);
+          }
+          const inPool = identities.filter((x) => pool.has(x));
+          notFound = identities.filter((x) => !pool.has(x));
+          identities = inPool;
+          total = inPool.length;
         }
         if (!input.ids?.length && !input.clusterIds?.length && input.filter) {
           const since = Date.now() - (input.filter.days ?? 30) * 86400000;
@@ -225,7 +248,7 @@ export async function handle(req: Request, path: string[]) {
           if (offset + 1000 < pool.length) nextCursor = Buffer.from(JSON.stringify({ offset: offset + 1000 })).toString("base64");
         }
         const result = db.consumeIdentities(input.target, identities, input.reason, "agent", input.producedRef, input.dryRun !== false);
-        return json({ ...result, matched: total, nextCursor, alreadyConsumed: result.alreadyConsumed });
+        return json({ ...result, matched: total, notFound, outlineIds, nextCursor, alreadyConsumed: result.alreadyConsumed });
       }
       const unconsumeInput = z.object({
         target: z.enum(["hotspots", "evidence"]),
@@ -744,8 +767,9 @@ export async function handle(req: Request, path: string[]) {
         kind: z.string().min(1).max(30),
         window: z.string().max(60).optional(),
         suggestedPlatforms: z.array(z.string().max(30)).max(8).optional(),
+        target: z.enum(["hotspots", "evidence"]).optional(),
       }).strict().parse(input);
-      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], producedBy: "human", createdAt: now() };
+      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", producedBy: "human", createdAt: now() };
       db.put("clusters", cluster.id, cluster);
       return json(cluster, 201);
     }
