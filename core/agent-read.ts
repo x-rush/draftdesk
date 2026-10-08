@@ -13,7 +13,7 @@ const isoNow = () => new Date().toISOString();
 //   - 每个响应携带 notice：热榜标题与摘录仅为线索，引用前核对原链接
 
 const NOTICE =
-  "热榜标题与摘录仅为线索，不构成事实认证；quality=review 是待验证、rejected 是已否决，引用前核对原链接。";
+  "热榜标题与摘录仅为线索，不构成事实认证。evidenceQuality 表示证据可信度（review=待核验、ready=已核验、rejected=已否决），与要不要写（decision）无关。热榜条目含被策略筛除的（status=filtered），引用时注意区分；引用前核对原链接。";
 
 const querySchema = z.object({
   q: z.string().max(200).optional(),
@@ -249,7 +249,7 @@ export const mcpTools = [
   },
   {
     name: "list_artifacts",
-    description: "列出研究产物（news 资讯/topic 选题/trend 趋势/idea 应用机会/activity 平台活动）。返回全部质量分层并带标签：quality=ready 通过检查、review 待验证、rejected 已否决；消费 review 条目前先补证。",
+    description: "列出研究产物（news 资讯/topic 选题/trend 趋势/idea 应用机会/activity 平台活动）。返回全部质量分层并带标签：evidenceQuality=已核验 表示通过检查、待核验 表示证据待补、已否 表示已否决；消费待核验条目前先补证。decision（要不要写）由人工在审查台拍板，工具不返回该字段。",
     inputSchema: {
       type: "object",
       properties: {
@@ -308,7 +308,7 @@ export function mcpRpc(db: Store, message: unknown): unknown {
             protocolVersion: msg.params?.protocolVersion || MCP_PROTOCOL_VERSION,
             capabilities: { tools: {} },
             serverInfo: { name: "draftdesk", version: "2.0.0" },
-            instructions: "拾题工作台只读数据源。工具返回热榜、证据与选题产物；quality=review 为待验证、rejected 为已否决，引用前核对原链接。",
+            instructions: "拾题工作台只读数据源。工具返回热榜、证据与选题产物；evidenceQuality 表示证据可信度（已核验=通过检查、待核验=证据待补、已否=已否决），与要不要写（decision）无关，引用前核对原链接。",
           },
         };
       case "tools/list":
