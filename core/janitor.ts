@@ -46,20 +46,19 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   }
   db.consumeIdentities("hotspots", hotspotIds, "outdated", "janitor", undefined, false);
   db.consumeIdentities("evidence", evidenceIds, "outdated", "janitor", undefined, false);
-  // 簇过期自动归档：window 结束日已过 → status=archived（不删除，审查台可筛）。
-  // 无宽限期：window 结束即内容过时，归档后在筛选器中仍可查回，不打断写稿工作流。
+  // 簇归档：状态驱动而非日期驱动（v1 反馈 §① 修正）。
+  // 归档条件 = 该簇全部 outline 的 decision 均为 published/rejected（无待做事项）。
+  // 存在 pending/approved/drafting/deferred outline 的簇永不自动归档（安全阀）。
+  // window 是素材采集时间范围，仅展示用，不参与归档判定。
   let clustersArchived = 0;
-  const nowMs = Date.now();
   for (const c of db.list<any>("clusters")) {
     if (c.status === "archived") continue;
-    if (!c.window) continue;
-    const endMatch = c.window.match(/~\s*(\d{4}-\d{2}-\d{2})/);
-    if (!endMatch) continue;
-    const endDate = Date.parse(endMatch[1]);
-    if (Number.isFinite(endDate) && endDate < nowMs) {
-      db.put("clusters", c.id, { ...c, status: "archived" });
-      clustersArchived++;
-    }
+    const outlines = db.list<any>("outlines").filter((o: any) => o.clusterId === c.id);
+    if (!outlines.length) continue; // 无大纲的簇暂不归档（可能是新建的）
+    const allDecided = outlines.every((o: any) => ["published", "rejected"].includes(o.decision));
+    if (!allDecided) continue;
+    db.put("clusters", c.id, { ...c, status: "archived" });
+    clustersArchived++;
   }
   const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived };
   db.put("meta", "janitor", result);

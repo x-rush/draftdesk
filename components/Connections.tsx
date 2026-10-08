@@ -174,7 +174,7 @@ export function Connections({
             <div>
               <strong>{c.name}</strong>
               <small>
-                {(c.scopes || ["submit"]).filter((s: string) => s !== "submit").map((s: string) => s === "read" ? "读取" : "消费").join("+") || "仅提交"} ·{" "}
+                {(c.scopes || ["submit"]).filter((s: string) => s !== "submit").map((s: string) => ({ read: "读取", consume: "消费", suggest: "建议写回" } as Record<string, string>)[s] || s).join(" + ") || "仅提交"} ·{" "}
                 {c.revoked
                   ? "已撤销"
                   : c.lastUsedAt

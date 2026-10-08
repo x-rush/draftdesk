@@ -153,6 +153,8 @@ export class Store {
           for(const l of legacyDocs)this.del("legacy",l.id);
         }
         if(!this.get("config","persona"))this.put("config","persona",defaultPersona);
+        // 存量簇补 status 默认值
+        for(const c of this.list<any>("clusters")){if(!c.status){this.put("clusters",c.id,{...c,status:"active"});}}
         this.put("meta","decision-layer-v1",{version:1});
       }
       if(!this.get("meta","ai-policy-v1")){
