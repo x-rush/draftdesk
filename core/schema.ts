@@ -436,5 +436,5 @@ export type Job = {
   skillVersions: Record<string, string>;
   searchCount?: number;
   receiptId?: string;
-  outcome?: "produced" | "no-findings";
+  outcome?: "produced" | "no-findings" | "collect-only";
 };

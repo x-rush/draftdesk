@@ -465,6 +465,7 @@ export async function handle(req: Request, path: string[]) {
       if (route === "persona") return json(db.get("config", "persona") || null);
       if (route === "aiPolicy") return json(db.get("config", "aiPolicy") || null);
       if (route === "consumerMode") return json(db.get("config", "consumerMode") || "external");
+      if (route === "planMode") return json(db.get("config", "planMode") || "collect-and-analyze");
       if (route === "clusters") return json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "outlines") return json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "export") {
@@ -814,6 +815,11 @@ export async function handle(req: Request, path: string[]) {
     if (route === "consumerMode") {
       const parsed = z.object({ consumerMode: z.enum(["external", "builtin"]) }).strict().parse(input);
       db.put("config", "consumerMode", parsed.consumerMode);
+      return json(parsed);
+    }
+    if (route === "planMode") {
+      const parsed = z.object({ planMode: z.enum(["collect", "collect-and-analyze"]) }).strict().parse(input);
+      db.put("config", "planMode", parsed.planMode);
       return json(parsed);
     }
     if (route === "clusters") {

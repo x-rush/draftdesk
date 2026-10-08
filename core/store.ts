@@ -163,6 +163,7 @@ export class Store {
       }
       if(!this.get("meta","consumer-mode-v1")){
         if(!this.get("config","consumerMode"))this.put("config","consumerMode",defaultConsumerMode);
+        if(!this.get("config","planMode"))this.put("config","planMode","collect-and-analyze");
         this.put("meta","consumer-mode-v1",{version:1});
       }
       if(!this.get("meta","cluster-status-v1")){
@@ -237,7 +238,7 @@ export class Store {
   }
   publicConfig() {
     const { apiKey, tavilyKey, ...c } = this.config();
-    return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey, consumerMode: this.get("config", "consumerMode") || "external" };
+    return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey, consumerMode: this.get("config", "consumerMode") || "external", planMode: this.get("config", "planMode") || "collect" };
   }
   snapshot(params?: URLSearchParams) {
     const metrics = this.list<MetricSnapshot>("metrics");

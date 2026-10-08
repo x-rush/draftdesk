@@ -88,6 +88,14 @@ export async function runJob(
       db.patchJob(job.id, { warnings: collected.warnings });
     }
     db.patchJob(job.id, { evidenceIds: evidence.map((e) => e.id) });
+    // planMode=collect：仅采集，跳过全部模型阶段（零开销）；discovery 记录已写入，
+    // 外部 Agent 可经 /api/v1/agent/hotspots 等读取素材。
+    const planMode = db.get<any>("config", "planMode") || "collect";
+    if (planMode === "collect") {
+      db.step(job.id, "完成（仅采集）", "completed",
+        `planMode=collect：已采集 ${evidence.length} 条证据并写入 discovery，跳过 AI 分析。分析由外部 Agent 或人工完成；切到 collect-and-analyze 后恢复内置分析。`);
+      noFindings(`planMode=collect：已采集 ${evidence.length} 条证据并写入 discovery，跳过 AI 分析。切到 collect-and-analyze 后恢复内置分析。`); return;
+    }
     if (!evidence.length) {
       const warnings = db.get<Job>("jobs",job.id)?.warnings || [];
       if (warnings.length) throw new AppError("来源读取异常且没有有效证据，请检查来源诊断；未调用模型。");
