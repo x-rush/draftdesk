@@ -946,6 +946,7 @@ export async function handle(req: Request, path: string[]) {
               .slice(0, 3)
               .map((i) => i.path.join(".") + " " + i.message)
               .join("；"),
+          code: "INVALID_PAYLOAD",
         },
         400,
       );
