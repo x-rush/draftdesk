@@ -147,6 +147,14 @@ export function Connections({
             />
             消费标记（批量把已处理的热榜/证据置为已消费，可撤销）
           </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={suggestScope}
+              onChange={(e) => setSuggestScope(e.target.checked)}
+            />
+            建议写回（写 clusters / outlines / suggestions；不能拍板 decision）
+          </label>
           <button className="primary" disabled={busy}>
             创建令牌
           </button>

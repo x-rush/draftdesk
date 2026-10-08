@@ -26,3 +26,9 @@ export async function PUT(
 ) {
   return handle(req, (await context.params).path);
 }
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handle(req, (await context.params).path);
+}

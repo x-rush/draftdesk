@@ -107,15 +107,31 @@ export async function handle(req: Request, path: string[]) {
       route = path.join("/");
     // agent 命名空间：GET 读取要 read scope，消费写入要 consume scope，MCP 是 read。
     const consumeRoute = route === "agent/consume" || route === "agent/unconsume";
-    const suggestWriteRoute = route === "agent/clusters" || route === "agent/outlines";
-    const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute && !(suggestWriteRoute && req.method === "PUT"));
+    const suggestWriteRoute = (path[0] === "agent" && (path[1] === "clusters" || path[1] === "outlines") && req.method !== "GET");
+    const suggestReadRoute = (path[0] === "agent" && (path[1] === "clusters" || path[1] === "outlines") && req.method === "GET");
+    const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute && !suggestWriteRoute) || suggestReadRoute;
     const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute || suggestWriteRoute;
-    if (suggestWriteRoute && req.method === "PUT") {
+    if (suggestWriteRoute && (req.method === "PUT" || req.method === "DELETE")) {
       const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest");
-      // 外部 Agent 写回聚合结果与大纲（§4.2）：producedBy 标记来源；
+      // 外部 Agent 写回/删除聚合结果与大纲（§4.2）：producedBy 标记来源；
       // 决策字段（decision/draftRef/publishedRef/rejectReason）不在写入面，字段显式挑选保证无法携带。
-      // 同路径的 GET 读取走下方 read 块（read scope）。
       const by = `agent:${connection.name}`;
+      if (req.method === "DELETE" && path[2]) {
+        if (path[1] === "clusters") {
+          const cluster = db.get<any>("clusters", path[2]);
+          if (!cluster) throw new AppError("簇不存在", 404);
+          let outlinesRemoved = 0;
+          for (const o of db.list<any>("outlines")) if (o.clusterId === path[2]) { db.del("outlines", o.id); outlinesRemoved++; }
+          db.del("clusters", path[2]);
+          return json({ ok: true, deleted: { cluster: path[2], outlines: outlinesRemoved }, by });
+        }
+        if (path[1] === "outlines") {
+          if (!db.get("outlines", path[2])) throw new AppError("大纲不存在", 404);
+          db.del("outlines", path[2]);
+          return json({ ok: true, deleted: path[2], by });
+        }
+      }
+      if (req.method !== "PUT") throw new AppError("方法不支持", 405);
       if (route === "agent/clusters") {
         const parsed = z.object({
           id: z.string().min(1).max(100).optional(),
@@ -284,11 +300,45 @@ export async function handle(req: Request, path: string[]) {
         const updated = db.addSuggestion(parsed.targetId, { by: `agent:${connection.name}`, verdict: parsed.verdict, score: parsed.score, platforms: parsed.platforms, reason: parsed.reason });
         return json({ ok: true, id: updated.id, suggestions: updated.suggestions });
       }
+      if (suggestWriteRoute && req.method === "DELETE" && path[2]) {
+        const by = `agent:${connection.name}`;
+        if (path[1] === "clusters") {
+          const cluster = db.get<any>("clusters", path[2]);
+          if (!cluster) throw new AppError("簇不存在", 404);
+          let outlinesRemoved = 0;
+          for (const o of db.list<any>("outlines")) if (o.clusterId === path[2]) { db.del("outlines", o.id); outlinesRemoved++; }
+          db.del("clusters", path[2]);
+          return json({ ok: true, deleted: { cluster: path[2], outlines: outlinesRemoved }, by });
+        }
+        if (path[1] === "outlines") {
+          if (!db.get("outlines", path[2])) throw new AppError("大纲不存在", 404);
+          db.del("outlines", path[2]);
+          return json({ ok: true, deleted: path[2], by });
+        }
+      }
       if (route === "agent/persona") return json(db.get("config", "persona") || null);
       if (route === "agent/aiPolicy") return json(db.get("config", "aiPolicy") || null);
       if (route === "agent/consumerMode") return json(db.get("config", "consumerMode") || null);
       if (route === "agent/clusters") return json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
       if (route === "agent/outlines") return json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
+      if (suggestWriteRoute && req.method === "DELETE" && path[2]) {
+        const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest");
+        const by = `agent:${connection.name}`;
+        if (path[1] === "clusters") {
+          const cluster = db.get<any>("clusters", path[2]);
+          if (!cluster) throw new AppError("簇不存在", 404);
+          let outlinesRemoved = 0;
+          for (const o of db.list<any>("outlines")) if (o.clusterId === path[2]) { db.del("outlines", o.id); outlinesRemoved++; }
+          db.del("clusters", path[2]);
+          return json({ ok: true, deleted: { cluster: path[2], outlines: outlinesRemoved }, by });
+        }
+        if (path[1] === "outlines") {
+          if (!db.get("outlines", path[2])) throw new AppError("大纲不存在", 404);
+          db.del("outlines", path[2]);
+          return json({ ok: true, deleted: path[2], by });
+        }
+      }
+
       if (route === "agent/decisions" || route === "agent/decisions/stats") {
         const rawStatus = new URL(req.url).searchParams.get("status") || undefined;
         const status = rawStatus === "all" ? undefined : rawStatus;
