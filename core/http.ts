@@ -114,20 +114,28 @@ export async function handle(req: Request, path: string[]) {
     const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute || suggestWriteRoute;
     if (suggestWriteRoute && (req.method === "PUT" || req.method === "DELETE")) {
       const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest", route);
+      // participants 服务端强制：enabled=false → 写入 403 SOURCE_DISABLED；canWrite=false → 写入 403 PERMISSION_DENIED。
+      const participants = db.get<any>("config", "participants");
+      const producerKey = `agent:${connection.name}`;
+      const pCfg = participants?.[producerKey];
+      if (pCfg?.enabled === false)
+        throw new AppError(`来源已停用：${producerKey}（participants.enabled=false）`, 403, "SOURCE_DISABLED");
+      if (pCfg?.canWrite === false)
+        throw new AppError(`来源只读：${producerKey}（participants.canWrite=false）`, 403, "PERMISSION_DENIED");
       // 外部 Agent 写回/删除聚合结果与大纲（§4.2）：producedBy 标记来源；
       // 决策字段（decision/draftRef/publishedRef/rejectReason）不在写入面，字段显式挑选保证无法携带。
       const by = `agent:${connection.name}`;
       if (req.method === "DELETE" && path[2]) {
         if (path[1] === "clusters") {
           const cluster = db.get<any>("clusters", path[2]);
-          if (!cluster) throw new AppError("簇不存在", 404);
+          if (!cluster) throw new AppError("簇不存在", 404, "NOT_FOUND");
           let outlinesRemoved = 0;
           for (const o of db.list<any>("outlines")) if (o.clusterId === path[2]) { db.del("outlines", o.id); outlinesRemoved++; }
           db.del("clusters", path[2]);
           return json({ ok: true, deleted: { cluster: path[2], outlines: outlinesRemoved }, by });
         }
         if (path[1] === "outlines") {
-          if (!db.get("outlines", path[2])) throw new AppError("大纲不存在", 404);
+          if (!db.get("outlines", path[2])) throw new AppError("大纲不存在", 404, "NOT_FOUND");
           db.del("outlines", path[2]);
           return json({ ok: true, deleted: path[2], by });
         }
@@ -168,7 +176,7 @@ export async function handle(req: Request, path: string[]) {
         evidenceRefs: z.array(z.string().max(2048)).max(200).optional(),
         draftBody: z.string().max(100000).optional(),
       }).parse(await body(req));
-      if (!db.get("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404);
+      if (!db.get("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404, "NOT_FOUND");
       const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
       const outline = existing
         ? { ...existing, clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by }
@@ -198,7 +206,7 @@ export async function handle(req: Request, path: string[]) {
           cursor: z.string().max(200).optional(),
         }).strict().parse(await body(req));
         if (!input.ids?.length && !input.filter && !input.clusterIds?.length)
-          throw new AppError("ids、clusterIds 与 filter 必须提供其一。", 400);
+          throw new AppError("ids、clusterIds 与 filter 必须提供其一。", 400, "INVALID_PAYLOAD");
         let identities = input.ids ?? [];
         let total = identities.length;
         let nextCursor: string | undefined;
@@ -210,10 +218,10 @@ export async function handle(req: Request, path: string[]) {
           const seenCluster = new Set<string>();
           for (const clusterId of input.clusterIds) {
             const cluster = db.get<any>("clusters", clusterId);
-            if (!cluster) throw new AppError(`簇 ${clusterId} 不存在。`, 404);
+            if (!cluster) throw new AppError(`簇 ${clusterId} 不存在。`, 404, "NOT_FOUND");
             const clusterTarget = cluster.target || "hotspots";
             if (clusterTarget !== input.target)
-              throw new AppError(`簇 ${clusterId} 属于 ${clusterTarget} 空间，不能按 ${input.target} 消费。`, 400);
+              throw new AppError(`簇 ${clusterId} 属于 ${clusterTarget} 空间，不能按 ${input.target} 消费。`, 400, "TARGET_MISMATCH");
             for (const member of cluster.memberIds || []) {
               if (seenCluster.has(member)) continue;
               seenCluster.add(member);
@@ -224,7 +232,7 @@ export async function handle(req: Request, path: string[]) {
           for (const ex of input.exceptIds || []) identities = identities.filter((x) => x !== ex);
           identities = [...new Set(identities)];
           if (identities.length > 5000)
-            throw new AppError(`簇展开后共 ${identities.length} 条，超过单批上限 5000；请拆分簇后分批消费。`, 400);
+            throw new AppError(`簇展开后共 ${identities.length} 条，超过单批上限 5000；请拆分簇后分批消费。`, 400, "BATCH_TOO_LARGE");
           total = identities.length;
           const producedRefFallback =
             db.list<any>("outlines").filter((o) => input.clusterIds!.includes(o.clusterId))[0]?.id
@@ -316,7 +324,7 @@ export async function handle(req: Request, path: string[]) {
         const by = `agent:${connection.name}`;
         if (path[1] === "clusters") {
           const cluster = db.get<any>("clusters", path[2]);
-          if (!cluster) throw new AppError("簇不存在", 404);
+          if (!cluster) throw new AppError("簇不存在", 404, "NOT_FOUND");
           let outlinesRemoved = 0;
           for (const o of db.list<any>("outlines")) if (o.clusterId === path[2]) { db.del("outlines", o.id); outlinesRemoved++; }
           db.del("clusters", path[2]);
@@ -345,7 +353,7 @@ export async function handle(req: Request, path: string[]) {
         const by = `agent:${connection.name}`;
         if (path[1] === "clusters") {
           const cluster = db.get<any>("clusters", path[2]);
-          if (!cluster) throw new AppError("簇不存在", 404);
+          if (!cluster) throw new AppError("簇不存在", 404, "NOT_FOUND");
           let outlinesRemoved = 0;
           for (const o of db.list<any>("outlines")) if (o.clusterId === path[2]) { db.del("outlines", o.id); outlinesRemoved++; }
           db.del("clusters", path[2]);
@@ -806,7 +814,7 @@ export async function handle(req: Request, path: string[]) {
         rejectReason: z.string().max(60).optional(),
         platforms: z.array(z.string().min(1).max(30)).max(6).optional(),
       }).strict().parse(input);
-      if (parsed.decision === "rejected" && !parsed.rejectReason) throw new AppError("批量否决必须给出否决原因。");
+      if (parsed.decision === "rejected" && !parsed.rejectReason) throw new AppError("批量否决必须给出否决原因。", 400, "INVALID_PAYLOAD");
       const results = parsed.ids.map((id) => {
         try { return { id, ok: true, row: db.setDecision(id, { decision: parsed.decision, rejectReason: parsed.rejectReason, platforms: parsed.platforms, decidedBy: "human" }) }; }
         catch (error) { return { id, ok: false, error: error instanceof Error ? error.message : String(error) }; }

@@ -200,6 +200,7 @@ export function Review() {
                 {row.producedBy && <span className="creation-badge">{producedByLabel(row.producedBy)}</span>}
                 {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
                 {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
+                {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
               </small>
               {row.summary && <p className="muted">{row.summary.slice(0, 200)}</p>}
               {row.suggestions && row.suggestions.length > 0 && (
