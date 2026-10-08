@@ -948,6 +948,7 @@ export async function handle(req: Request, path: string[]) {
             ? e.message
             // 本机自托管应用：直接透出异常类型与消息，便于排障，不再只报通用失败。
             : `服务处理失败：${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`,
+        code: e instanceof AppError ? e.code || undefined : e instanceof Error && e.name === "SyntaxError" ? "INVALID_PAYLOAD" : undefined,
       },
       e instanceof AppError ? e.status : 500,
     );

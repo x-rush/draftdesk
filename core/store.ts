@@ -31,10 +31,21 @@ export class AppError extends Error {
   constructor(
     message: string,
     public status = 400,
+    public code?: string,
   ) {
     super(message);
   }
 }
+// 稳定错误码枚举：外部 Agent 靠 code 判断而非读中文字符串。
+export const ERROR_CODES = {
+  TARGET_MISMATCH: "TARGET_MISMATCH",
+  PERMISSION_DENIED: "PERMISSION_DENIED",
+  SOURCE_DISABLED: "SOURCE_DISABLED",
+  NOT_FOUND: "NOT_FOUND",
+  INVALID_PAYLOAD: "INVALID_PAYLOAD",
+  SCOPE_MISMATCH: "SCOPE_MISMATCH",
+  RATE_LIMITED: "RATE_LIMITED",
+} as const;
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export const now = () => new Date().toISOString();
 export function canonicalUrl(value: string) {
