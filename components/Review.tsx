@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { api, Field } from "./ui";
+import { creationLabels } from "../core/workspace-ui";
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
 // 语义红线：quality 是证据可信度（AI 判），decision 是要不要写（人拍板）——两层不互相推导。
@@ -10,6 +11,7 @@ type Row = {
   suggestions?: { by: string; verdict: string; score?: number; reason?: string }[];
   producedBy?: string;
   draftBody?: string;
+  creationStatus?: string;
   createdAt: string; evidenceCount?: number; clusterId?: string;
 };
 const STATUSES = ["pending", "approved", "drafting", "published", "rejected", "deferred"] as const;
@@ -18,10 +20,19 @@ const statusLabels: Record<string, string> = {
 };
 const rejectReasons = ["no-ai-signal", "off-domain", "写不透", "不感兴趣", "已写过", "其他"];
 const qualityLabels: Record<string, string> = { review: "待核验", ready: "已核验", rejected: "已否" };
+function producedByLabel(by?: string): string {
+  if (!by) return "";
+  if (by === "human") return "人工";
+  if (by === "builtin-ai" || by.startsWith("builtin")) return "内置 AI";
+  if (by.startsWith("agent:")) return by.slice(6);
+  return by;
+}
+const sourceFilterLabels: Record<string, string> = { artifact: "内置产物", outline: "大纲", manual: "手动" };
 
 export function Review() {
   const [rows, setRows] = useState<Row[]>([]);
   const [status, setStatus] = useState<string>("pending");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchReason, setBatchReason] = useState("no-ai-signal");
   const [busy, setBusy] = useState(false);
@@ -67,7 +78,7 @@ export function Review() {
     rows.forEach((r) => { byDecision[r.decision] = (byDecision[r.decision] || 0) + 1; });
     return byDecision;
   }, [rows]);
-  const visible = rows.filter((r) => (status === "all" ? true : r.decision === status));
+  const visible = rows.filter((r) => (status === "all" ? true : r.decision === status)).filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter);
 
   async function batch(decision: string) {
     if (!selected.size) return setNotice("先勾选要拍板的条目。");
@@ -149,6 +160,12 @@ export function Review() {
           ))}
         </div>
         <div className="toolbar">
+          <select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+            <option value="all">全部来源</option>
+            <option value="artifact">内置产物</option>
+            <option value="outline">大纲</option>
+            <option value="manual">手动</option>
+          </select>
           <button disabled={busy || !selected.size} onClick={() => void batch("approved")}>批量通过</button>
           <button disabled={busy || !selected.size} onClick={() => void batch("deferred")}>批量暂缓</button>
           <button disabled={busy || !selected.size} onClick={() => void batch("rejected")}>批量否决</button>
@@ -180,8 +197,9 @@ export function Review() {
                 <span className="creation-badge">{statusLabels[row.decision]}</span>{" "}
                 {row.quality && <span className="creation-badge">证据可信度 {qualityLabels[row.quality] || row.quality}</span>}{" "}
                 {row.evidenceCount !== undefined && <span className="creation-badge">证据 {row.evidenceCount} 条</span>}{" "}
-                {row.producedBy && <span className="creation-badge">producedBy {row.producedBy}</span>}
+                {row.producedBy && <span className="creation-badge">{producedByLabel(row.producedBy)}</span>}
                 {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
+                {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
               </small>
               {row.summary && <p className="muted">{row.summary.slice(0, 200)}</p>}
               {row.suggestions && row.suggestions.length > 0 && (

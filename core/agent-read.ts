@@ -202,7 +202,11 @@ export function agentStats(db: Store) {
   return {
     artifacts: { total: artifacts.length, byKind: by("kind"), byQuality: by("quality"), byCreationStatus: by("creationStatus") },
     evidence: { total: db.list("evidence").length },
-    hotspots: (() => { const c = consumptionSummary(db, "hotspots"); return { total: c.total, consumed: c.consumed, remaining: c.remaining, records: db.list("discovery").filter((d: any) => Date.parse(d.at) >= windowStart(14)).length, windowDays: 14 }; })(),
+    hotspots: (() => {
+      const c = consumptionSummary(db, "hotspots");
+      const records = db.list<any>("discovery").sort((a: any, b: any) => b.at.localeCompare(a.at));
+      return { total: c.total, consumed: c.consumed, remaining: c.remaining, records: records.filter((d: any) => Date.parse(d.at) >= windowStart(14)).length, windowDays: 14, lastCollectedAt: records[0]?.at || null };
+    })(),
     sources: { enabled: db.list<any>("sources").filter((s) => s.enabled).length, total: db.list("sources").length },
     recentJobs: jobs,
     generatedAt: isoNow(),

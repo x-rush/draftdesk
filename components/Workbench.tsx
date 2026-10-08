@@ -48,7 +48,6 @@ import {
 const nav = [
   ["discover", "每日发现", Compass],
   ["hotspots", "热点列表", Flame],
-  ["library", "我的选题库", Library],
   ["chat", "研究讨论", MessageSquare],
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
@@ -62,7 +61,7 @@ const nav = [
   ["settings", "模型与设置", Settings2],
 ] as const;
 const navGroups=[
-  {label:"发现与创作",ids:["discover","hotspots","library","chat"]},
+  {label:"发现与创作",ids:["discover","hotspots","chat"]},
   {label:"机会观察",ids:["trends","ideas","activities","decisions"]},
   {label:"研究与设置",ids:["plans","sources","runs","connections","skills","settings"]},
 ] as const;
@@ -917,6 +916,11 @@ function Settings({
           <option value="builtin">内置管线（每晚自动采集与分析）</option>
         </select>
       </Field>
+      <hr />
+      <h2>参与方</h2>
+      <p className="muted">
+        内置 AI 与外部 Agent 各自负责消费链路的不同环节，产出在审查台可按来源筛选；停用某来源后其已产出的内容仍可查，只是不再新增。
+      </p>
       <hr />
       <h2>阿里云百炼</h2>
       <p>
