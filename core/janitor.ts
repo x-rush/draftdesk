@@ -46,16 +46,17 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   }
   db.consumeIdentities("hotspots", hotspotIds, "outdated", "janitor", undefined, false);
   db.consumeIdentities("evidence", evidenceIds, "outdated", "janitor", undefined, false);
-  // 簇过期自动归档：window 结束日距今 > 14 天 → status=archived（不删除，审查台可筛）
+  // 簇过期自动归档：window 结束日已过 → status=archived（不删除，审查台可筛）。
+  // 无宽限期：window 结束即内容过时，归档后在筛选器中仍可查回，不打断写稿工作流。
   let clustersArchived = 0;
-  const archiveCutoff = Date.now() - 14 * 86400000;
+  const nowMs = Date.now();
   for (const c of db.list<any>("clusters")) {
     if (c.status === "archived") continue;
     if (!c.window) continue;
-    const endMatch = c.window.match(/~s*(d{4}-d{2}-d{2})/);
+    const endMatch = c.window.match(/~\s*(\d{4}-\d{2}-\d{2})/);
     if (!endMatch) continue;
     const endDate = Date.parse(endMatch[1]);
-    if (Number.isFinite(endDate) && endDate < archiveCutoff) {
+    if (Number.isFinite(endDate) && endDate < nowMs) {
       db.put("clusters", c.id, { ...c, status: "archived" });
       clustersArchived++;
     }
