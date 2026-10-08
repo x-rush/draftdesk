@@ -107,7 +107,8 @@ export async function handle(req: Request, path: string[]) {
       route = path.join("/");
     // agent 命名空间：GET 读取要 read scope，消费写入要 consume scope，MCP 是 read。
     const consumeRoute = route === "agent/consume" || route === "agent/unconsume";
-    const suggestWriteRoute = (path[0] === "agent" && (path[1] === "clusters" || path[1] === "outlines") && req.method !== "GET");
+    const suggestWriteRoute = (path[0] === "agent" && (path[1] === "clusters" || path[1] === "outlines") && req.method !== "GET")
+      || (path[0] === "agent" && path[1] === "decisions" && path[3] === "draft" && req.method === "PUT");
     const suggestReadRoute = (path[0] === "agent" && (path[1] === "clusters" || path[1] === "outlines") && req.method === "GET");
     const readScopedRoute = route === "mcp" || (path[0] === "agent" && !consumeRoute && !suggestWriteRoute) || suggestReadRoute;
     const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute || suggestWriteRoute;
@@ -132,6 +133,13 @@ export async function handle(req: Request, path: string[]) {
         }
       }
       if (req.method !== "PUT") throw new AppError("方法不支持", 405);
+      if (path[1] === "decisions" && path[3] === "draft") {
+        // PUT /agent/decisions/:id/draft — 外部 Agent 写草稿正文（不能改 decision）
+        const { draftBody } = z.object({ draftBody: z.string().max(100000) }).strict().parse(await body(req));
+        const { collection, row } = db.decisionTarget(path[2]);
+        db.put(collection, row.id, { ...row, draftBody });
+        return json({ ok: true, id: row.id, draftBody });
+      }
       if (route === "agent/clusters") {
         const parsed = z.object({
           id: z.string().min(1).max(100).optional(),
@@ -319,6 +327,13 @@ export async function handle(req: Request, path: string[]) {
           db.del("outlines", path[2]);
           return json({ ok: true, deleted: path[2], by });
         }
+      }
+      if (suggestWriteRoute && req.method === "PUT" && path[2] === "draft") {
+        // PUT /agent/decisions/:id/draft 或 /agent/outlines/:id/draft — 外部 Agent 写草稿正文
+        const { draftBody } = z.object({ draftBody: z.string().max(100000) }).strict().parse(await body(req));
+        const { collection, row } = db.decisionTarget(path[1]);
+        db.put(collection, row.id, { ...row, draftBody });
+        return json({ ok: true, id: row.id, draftBody });
       }
       if (route === "agent/persona") return json(db.get("config", "persona") || null);
       if (route === "agent/aiPolicy") return json(db.get("config", "aiPolicy") || null);
@@ -844,7 +859,7 @@ export async function handle(req: Request, path: string[]) {
         title: z.string().min(1).max(300),
         outline: z.array(z.string().max(300)).max(20).optional(),
         keyPoints: z.array(z.string().max(300)).max(20).optional(),
-        evidenceRefs: z.array(z.string().max(100)).max(200).optional(),
+        evidenceRefs: z.array(z.string().max(2048)).max(200).optional(),
       }).strict().parse(input);
       if (!db.get("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先创建内容簇。", 404);
       const outline = { id: "out-" + randomUUID(), ...parsed, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending" as const, producedBy: "human", createdAt: now() };
