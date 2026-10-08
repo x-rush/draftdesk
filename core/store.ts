@@ -742,9 +742,11 @@ export class Store {
     };
     if (collection === "artifacts") { next.revision = (row.revision ?? 0) + 1; next.updatedAt = now(); }
     this.put(collection, id, next);
-    if (collection === "artifacts" && (input.decision === "rejected" || input.decision === "published")) {
+    // 联动消费：rejected/published 时消费对应条目（P0-2：覆盖 outlines，不仅 artifacts）。
+    if (input.decision === "rejected" || input.decision === "published") {
+      // 证据 url → urlKey 归一化为热榜池身份
       const idset = new Set<string>();
-      for (const eid of row.evidenceIds || []) {
+      for (const eid of row.evidenceIds || row.evidenceRefs || []) {
         const e = this.get<any>("evidence", eid);
         if (!e) continue;
         try { idset.add(urlKey(e.url)); } catch { /* 非 https 等异常跳过 */ }
