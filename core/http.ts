@@ -364,7 +364,8 @@ export async function handle(req: Request, path: string[]) {
       if (route === "agent/hotspots") return json(agentHotspots(db, params));
       if (route === "agent/consume/status") {
         const target = (query.target === "evidence" ? "evidence" : "hotspots") as "hotspots" | "evidence";
-        return json({ ok: true, ...consumptionSummary(db, target) });
+        const lastDiscovery = db.list<any>("discovery").sort((a: any, b: any) => b.at.localeCompare(a.at))[0];
+        return json({ ok: true, ...consumptionSummary(db, target), lastCollectedAt: lastDiscovery?.at || null });
       }
       if (route === "agent/evidence") return json(agentEvidence(db, params));
       if (route === "agent/artifacts" && path.length === 2) return json(agentArtifacts(db, params));

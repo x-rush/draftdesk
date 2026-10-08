@@ -742,24 +742,32 @@ export class Store {
     };
     if (collection === "artifacts") { next.revision = (row.revision ?? 0) + 1; next.updatedAt = now(); }
     this.put(collection, id, next);
-    // 联动消费：rejected/published 时消费对应条目（P0-2：覆盖 outlines，不仅 artifacts）。
+    // 联动消费：rejected/published 时消费对应条目（P0-2 返工：按形态分支）。
+    // artifacts 的 evidenceIds 是 ev-xxx 证据 ID（去 evidence 集合拿 url）；
+    // outlines 的 evidenceRefs 直接就是热点 url（urlKey 归一化后即消费身份）。
     if (input.decision === "rejected" || input.decision === "published") {
-      // 证据 url → urlKey 归一化为热榜池身份
       const idset = new Set<string>();
-      for (const eid of row.evidenceIds || row.evidenceRefs || []) {
-        const e = this.get<any>("evidence", eid);
-        if (!e) continue;
-        try { idset.add(urlKey(e.url)); } catch { /* 非 https 等异常跳过 */ }
-      }
-      const ids = [...idset];
-      if (ids.length) {
-        if (input.decision === "published") {
-          this.consumeIdentities("hotspots", ids, "processed-into-artifact", "decision", next.publishedRef, false);
+      for (const ref of row.evidenceIds || row.evidenceRefs || []) {
+        if (/^https?:\/\//i.test(ref)) {
+          try { idset.add(urlKey(ref)); } catch { /* 非 https 跳过 */ }
         } else {
-          const map: Record<string, string> = { "no-ai-signal": "no-ai-signal", "off-domain": "off-domain", "已写过": "processed-into-artifact", "写不透": "no-ai-signal", "不感兴趣": "off-domain", "其他": "no-ai-signal" };
-          this.consumeIdentities("hotspots", ids, map[next.rejectReason || "其他"] || "no-ai-signal", "decision", undefined, false);
+          const e = this.get<any>("evidence", ref);
+          if (e?.url) { try { idset.add(urlKey(e.url)); } catch { /* 跳过 */ } }
         }
       }
+      const ids = [...idset];
+      let consumedCount = 0;
+      if (ids.length) {
+        if (input.decision === "published") {
+          const r = this.consumeIdentities("hotspots", ids, "processed-into-artifact", "decision", next.publishedRef, false);
+          consumedCount = r.toConsume;
+        } else {
+          const map: Record<string, string> = { "no-ai-signal": "no-ai-signal", "off-domain": "off-domain", "已写过": "processed-into-artifact", "写不透": "no-ai-signal", "不感兴趣": "off-domain", "其他": "no-ai-signal" };
+          const r = this.consumeIdentities("hotspots", ids, map[next.rejectReason || "其他"] || "no-ai-signal", "decision", undefined, false);
+          consumedCount = r.toConsume;
+        }
+      }
+      next.consumedCount = consumedCount;
     }
     return next;
   }
