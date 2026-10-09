@@ -11,6 +11,31 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+export function formatApiError(e: unknown): string {
+  if (e instanceof ApiError) {
+    switch (e.code) {
+      case "SCOPE_MISMATCH":
+      case "SOURCE_DISABLED":
+        return "当前连接没有该权限，去「外部接入」页补勾对应权限后重试。";
+      case "PERMISSION_DENIED":
+        return "该来源已设为只读，写入被拒绝。请在设置中调整来源权限。";
+      case "NOT_FOUND":
+        return "该条目可能已被删除，刷新后重试。";
+      case "UNAUTHENTICATED":
+        return "令牌无效或已撤销，请重新创建连接令牌。";
+      case "INVALID_PAYLOAD":
+        return `参数格式有误，请检查高亮字段：${e.message}`;
+      case "TARGET_MISMATCH":
+        return "簇的类型与请求不一致，请检查后重试。";
+      case "BATCH_TOO_LARGE":
+        return "批量操作超出上限，请拆分为更小的批次。";
+      default:
+        return e.message;
+    }
+  }
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
 export async function api<T = any>(path: string, value?: unknown): Promise<T> {
   const r = await fetch(
     "/api/v1/" + path,
