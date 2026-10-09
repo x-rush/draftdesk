@@ -39,9 +39,29 @@ export async function body(req: Request, maxLength = 1000000) {
     chunks.push(part.value);
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assertNoReplacementChar(parsed);
+    return parsed;
+  } catch (e) {
+    if (e instanceof AppError) throw e;
     throw new AppError("JSON 格式无效。");
+  }
+}
+
+// U+FFFD 是编码损坏的确定性标志（GBK→UTF-8 转换残段）：任何写入口的请求文本
+// 携带它一律 400，防止乱码入库。读路径不受影响（存量乱码由迁移修复）。
+function assertNoReplacementChar(value: unknown) {
+  if (typeof value === "string") {
+    if (value.includes("\uFFFD"))
+      throw new AppError("请求文本包含无效字符（U+FFFD，疑似编码错误）；请以 UTF-8 重新提交。", 400);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) assertNoReplacementChar(v);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const v of Object.values(value)) assertNoReplacementChar(v);
   }
 }
 

@@ -183,6 +183,37 @@ export const migrations: Migration[] = [
         kv.put("plans", trend4.id, { ...trend4, sourceIds: defaultPlans.find((p) => p.id === "trend-radar")!.sourceIds });
     },
   },
+  {
+    id: "plan-mojibake-v1",
+    // GBK→UTF-8 损坏修复（2026-10-10 清单）：三个内置策略的文案字段含 U+FFFD，从种子恢复；
+    // 操作字段（dailyTime/scheduleEnabled/maxQueries 等）保留现值。顺带清理 outlines 的
+    // 乱码 producedBy 与 connections 的乱码名死令牌（已撤销，直接删除）。
+    run: ({ kv }) => {
+      const textFields = ["name", "goal", "audience", "keywords", "focusTerms", "excludeKeywords"];
+      for (const plan of kv.list<any>("plans")) {
+        const def = defaultPlans.find((p) => p.id === plan.id);
+        if (!def) continue;
+        const corrupted = textFields.some((f) => JSON.stringify(plan[f] ?? "").includes("\uFFFD"));
+        if (!corrupted) continue;
+        const next = { ...plan };
+        for (const f of textFields) if ((def as any)[f] !== undefined) next[f] = (def as any)[f];
+        kv.put("plans", plan.id, next);
+      }
+      for (const o of kv.list<any>("outlines"))
+        if (typeof o.producedBy === "string" && o.producedBy.includes("\uFFFD"))
+          kv.put("outlines", o.id, { ...o, producedBy: "agent:未知来源(乱码已清理)" });
+      for (const c of kv.list<any>("connections"))
+        if (typeof c.name === "string" && c.name.includes("\uFFFD")) kv.del("connections", c.id);
+    },
+  },
+  {
+    id: "inbox-cluster-v1",
+    // 选题收集箱：无簇来源（热点推进/讨论生成大纲）的大纲统一挂这里（信息架构 v2-A 批复）。
+    run: ({ kv }) => {
+      if (!kv.get("clusters", "clu-inbox"))
+        kv.put("clusters", "clu-inbox", { id: "clu-inbox", topic: "选题收集箱", memberIds: [], memberCount: 0, kind: "inbox", window: "", suggestedPlatforms: [], target: "hotspots", status: "active", producedBy: "human", createdAt: now() });
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {

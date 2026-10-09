@@ -104,15 +104,15 @@ test("listPaged：分页下沉后与内存排序切片逐项一致、翻页闭�
       const page: { items: Array<{ id: string }>; total: number } = db.kv.listPaged("clusters", { limit: 7, offset, orderBy: "createdAt", direction: "DESC" });
       for (const [j, item] of page.items.entries()) assert.equal(item.id, reference[seen + j]?.id, `第 ${seen + j} 项顺序不一致`);
       seen += page.items.length;
-      assert.equal(page.total, 30);
+      assert.equal(page.total, reference.length);
       if (seen >= 30) break;
       offset += 7;
     }
-    assert.equal(seen, 30);
+    assert.equal(seen, reference.length);
     // 越界 offset 返回空页、total 仍在
     const beyond = db.kv.listPaged<any>("clusters", { limit: 7, offset: 999, orderBy: "createdAt", direction: "DESC" });
     assert.deepEqual(beyond.items, []);
-    assert.equal(beyond.total, 30);
+    assert.equal(beyond.total, reference.length);
   } finally {
     db?.close();
     cleanup(dir);
