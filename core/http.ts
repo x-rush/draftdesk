@@ -159,11 +159,18 @@ export async function handle(req: Request, path: string[]) {
           target: z.enum(["hotspots", "evidence"]).optional(),
         }).parse(await body(req));
         const existing = parsed.id ? db.get<any>("clusters", parsed.id) : null;
+        // 簇幂等合并：同名 topic 已存在时合并 memberIds（去重）、window 取并集、大纲保留各自独立。
+        const dup = !existing
+          ? db.list<any>("clusters").find((c) => c.topic === parsed.topic && c.target === (parsed.target || "hotspots"))
+          : null;
         const cluster = existing
           ? { ...existing, topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || existing.window, suggestedPlatforms: parsed.suggestedPlatforms || existing.suggestedPlatforms, target: parsed.target || existing.target || "hotspots", status: existing.status || "active", producedBy: by }
-          : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: by, createdAt: now() };
+          : dup
+            ? { ...dup, memberIds: [...new Set([...(dup.memberIds || []), ...parsed.memberIds])], memberCount: 0, window: [dup.window, parsed.window].filter(Boolean).join(" ~ "), suggestedPlatforms: parsed.suggestedPlatforms || dup.suggestedPlatforms, producedBy: by }
+            : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: by, createdAt: now() };
+        if (dup) { cluster.memberCount = cluster.memberIds.length; }
         db.put("clusters", cluster.id, cluster);
-        return json(cluster, existing ? 200 : 201);
+        return json({ ...cluster, merged: !!dup, replaced: !!existing }, existing ? 200 : 201);
       }
       const parsed = z.object({
         id: z.string().min(1).max(100).optional(),
