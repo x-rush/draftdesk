@@ -29,13 +29,13 @@ test("digest 索引：100 连接鉴权全对、错令牌 401、撤销后立即�
       assert.throws(() => db!.authenticate(c.token, "consume"), /权限/);
     }
     // 错令牌 401（不因连接变多而误命中）
-    assert.throws(() => db.authenticate("dd_" + "0".repeat(64), "submit"), /无效或已撤销/);
-    assert.throws(() => db.authenticate("", "submit"), /无效或已撤销/);
+    assert.throws(() => db!.authenticate("dd_" + "0".repeat(64), "submit"), /无效或已撤销/);
+    assert.throws(() => db!.authenticate("", "submit"), /无效或已撤销/);
     // 撤销：模拟路由侧直接 put revoked（不经过 createConnection），索引必须立即失效
     const victim = created[42];
     const row = db.get<any>("connections", victim.id)!;
     db.put("connections", victim.id, { ...row, revoked: true });
-    assert.throws(() => db.authenticate(victim.token, "submit"), /无效或已撤销/);
+    assert.throws(() => db!.authenticate(victim.token, "submit"), /无效或已撤销/);
     // 其余令牌不受影响
     assert.equal(db.authenticate(created[0].token, "read").name, "压测-0");
     // createConnection 后新令牌立即可鉴权（增量维护）
