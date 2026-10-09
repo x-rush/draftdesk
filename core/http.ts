@@ -3,7 +3,11 @@ import {activityBatchSchema} from "./activity-batch";
 import {triageActivityBatches,type ActivityTriageRecord} from "./activity-triage";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { store, AppError, now, hash } from "./store";
+import { store, now, hash } from "./store";
+import { AppError } from "./errors";
+import { json, checkRequest, body, enforceParticipants } from "./http/middleware";
+import { paginated, decodeConsumeCursor } from "./http/pagination";
+export { checkRequest } from "./http/middleware";
 import {
   artifactSchema,
   configSchema,
@@ -44,62 +48,11 @@ const personaInput = z.object({
   style: z.object({ principles: z.array(z.string().max(120)).max(10), tone: z.string().max(200), forbidden: z.array(z.string().max(60)).max(20), notes: z.string().max(600) }),
 }).strict();
 
-function decodeConsumeCursor(raw?: string): number {
-  if (!raw) return 0;
-  try {
-    const parsed = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
-    return Number.isInteger(parsed?.offset) && parsed.offset >= 0 ? parsed.offset : 0;
-  } catch {
-    return 0;
-  }
-}
 import type {DiscoveryRecord} from "./discovery";
 import { isAggregatePlatform } from "./hotlists";
 import { qualityIssues } from "./quality";
 import { validateIntake } from "./intake-validation";
 import { type ResearchEvent, type MetricSnapshot, metricComparison } from "./history";
-const json = (value: unknown, status = 200) =>
-  Response.json(value, { status, headers: { "cache-control": "no-store" } });
-export function checkRequest(req: Request) {
-  const host = (req.headers.get("host") || new URL(req.url).host).toLowerCase();
-  const name = host.split(":")[0];
-  if (
-    ![
-      "localhost",
-      "127.0.0.1",
-      ...(process.env.DRAFTDESK_ALLOWED_HOSTS || "").split(","),
-    ].includes(name)
-  )
-    throw new AppError("此实例仅接受配置的工作台域名。", 403);
-  const origin = req.headers.get("origin");
-  if (origin && !["http://" + host, "https://" + host].includes(origin))
-    throw new AppError("拒绝跨站请求。", 403);
-  if (req.headers.get("sec-fetch-site") === "cross-site")
-    throw new AppError("拒绝跨站请求。", 403);
-}
-async function body(req: Request, maxLength = 1000000) {
-  if (!req.headers.get("content-type")?.includes("application/json"))
-    throw new AppError("请求需使用 application/json。", 415);
-  const reader = req.body?.getReader();
-  if (!reader) throw new AppError("缺少请求正文");
-  let length = 0;
-  const chunks: Uint8Array[] = [];
-  while (true) {
-    const part = await reader.read();
-    if (part.done) break;
-    length += part.value.length;
-    if (length > maxLength) {
-      await reader.cancel();
-      throw new AppError("请求超过 1 MB。", 413);
-    }
-    chunks.push(part.value);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw new AppError("JSON 格式无效。");
-  }
-}
 export async function handle(req: Request, path: string[]) {
   try {
     checkRequest(req);
@@ -114,14 +67,7 @@ export async function handle(req: Request, path: string[]) {
     const authAllowed = ["intake", "intake-check"].includes(route) || readScopedRoute || consumeRoute || suggestWriteRoute;
     if (suggestWriteRoute && (req.method === "PUT" || req.method === "DELETE")) {
       const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest", route);
-      // participants 服务端强制：enabled=false → 写入 403 SOURCE_DISABLED；canWrite=false → 写入 403 PERMISSION_DENIED。
-      const participants = db.get<any>("config", "participants");
-      const producerKey = `agent:${connection.name}`;
-      const pCfg = participants?.[producerKey];
-      if (pCfg?.enabled === false)
-        throw new AppError(`来源已停用：${producerKey}（participants.enabled=false）`, 403, "SOURCE_DISABLED");
-      if (pCfg?.canWrite === false)
-        throw new AppError(`来源只读：${producerKey}（participants.canWrite=false）`, 403, "PERMISSION_DENIED");
+      enforceParticipants(db, connection);
       // 外部 Agent 写回/删除聚合结果与大纲（§4.2）：producedBy 标记来源；
       // 决策字段（decision/draftRef/publishedRef/rejectReason）不在写入面，字段显式挑选保证无法携带。
       const by = `agent:${connection.name}`;
@@ -355,13 +301,6 @@ export async function handle(req: Request, path: string[]) {
       if (route === "agent/persona") return json(db.get("config", "persona") || null);
       if (route === "agent/aiPolicy") return json(db.get("config", "aiPolicy") || null);
       if (route === "agent/consumerMode") return json(db.get("config", "consumerMode") || null);
-      const paginated = (rows: any[], searchParams: URLSearchParams) => {
-        const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 20));
-        const offset = Number(searchParams.get("cursor")) || 0;
-        const page = rows.slice(offset, offset + limit);
-        const next = offset + limit < rows.length ? String(offset + limit) : undefined;
-        return { items: page, nextCursor: next, total: rows.length };
-      };
       const sp = new URL(req.url).searchParams;
       if (route === "agent/clusters") return json(paginated(db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)), sp));
       if (route === "agent/outlines") return json(paginated(db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)), sp));
