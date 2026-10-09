@@ -8,7 +8,7 @@
     "build": "next build --webpack",
     "start": "next start -H 0.0.0.0 -p 3000",
     "worker": "tsx worker/index.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "node scripts/run-tests.mjs",
     "eval:skills": "tsx scripts/evaluate-skills.ts",
     "check": "tsc --noEmit"
   },
