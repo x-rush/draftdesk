@@ -201,6 +201,18 @@ export class Store {
           this.put("plans",trend3.id,{...trend3,sourceIds:defaultPlans.find(p=>p.id==="trend-radar")!.sourceIds});
         this.put("meta","official-api-hotlists-v1",{version:1});
       }
+      if(!this.get("meta","enrichment-sources-v1")){
+        // 种子 enrichment 来源（Hugging Face 博客、Reddit r/LocalLLaMA）；
+        // 热词策略仅在未被用户改动过默认来源清单时同步加入。
+        for(const id of ["huggingface-blog","reddit-localllama"]){
+          const source=defaultSources.find(s=>s.id===id);
+          if(source&&!this.get("sources",id))this.put("sources",id,source);
+        }
+        const trend4=this.get<Plan>("plans","trend-radar");
+        if(trend4&&JSON.stringify(trend4.sourceIds)===JSON.stringify(["suggest-cn","suggest-global","trends-us","trends-gb","baidu-hot","weibo-hotsearch","bilibili-popular","dailyhot-juejin","web"]))
+          this.put("plans",trend4.id,{...trend4,sourceIds:defaultPlans.find(p=>p.id==="trend-radar")!.sourceIds});
+        this.put("meta","enrichment-sources-v1",{version:1});
+      }
     });
   }
   close() {
