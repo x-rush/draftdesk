@@ -1,6 +1,16 @@
 "use client";
 import { useEffect, useRef, useId, cloneElement, isValidElement } from "react";
 import { X } from "lucide-react";
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 export async function api<T = any>(path: string, value?: unknown): Promise<T> {
   const r = await fetch(
     "/api/v1/" + path,
@@ -13,7 +23,7 @@ export async function api<T = any>(path: string, value?: unknown): Promise<T> {
         },
   );
   const result = await r.json();
-  if (!r.ok) throw new Error(result.error || "请求未完成");
+  if (!r.ok) throw new ApiError(result.error || "请求未完成", r.status, result.code);
   return result;
 }
 export function download(name: string, value: unknown) {
