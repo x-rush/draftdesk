@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { paginated } from "../http/pagination";
+import { paginatedSql } from "../http/pagination";
 import { AppError, now } from "../store";
 import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc } from "../agent-read";
 
@@ -62,8 +62,8 @@ export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "agent/persona", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "persona") || null) },
   { methods: ["GET"], pattern: "agent/aiPolicy", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "aiPolicy") || null) },
   { methods: ["GET"], pattern: "agent/consumerMode", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "consumerMode") || null) },
-  { methods: ["GET"], pattern: "agent/clusters", scope: "read", methodGuardFirst: true, handler: ({ db, query }) => json(paginated(db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)), query)) },
-  { methods: ["GET"], pattern: "agent/outlines", scope: "read", methodGuardFirst: true, handler: ({ db, query }) => json(paginated(db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)), query)) },
+  { methods: ["GET"], pattern: "agent/clusters", scope: "read", methodGuardFirst: true, handler: ({ db, query }) => json(paginatedSql(db.kv, "clusters", query)) },
+  { methods: ["GET"], pattern: "agent/outlines", scope: "read", methodGuardFirst: true, handler: ({ db, query }) => json(paginatedSql(db.kv, "outlines", query)) },
   {
     methods: ["GET"],
     pattern: "agent/decisions",

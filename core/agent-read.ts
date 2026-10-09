@@ -340,9 +340,24 @@ export function mcpRpc(db: Store, message: unknown): unknown {
 
 export const CONSUME_REASONS = ["no-ai-signal", "outdated", "off-domain", "processed-into-artifact"] as const;
 
-// 热榜条目身份 = urlKey(url)（与热点列表同口径去重）；证据身份 = 证据 id。
-export function consumptionSummary(db: Store, target: "hotspots" | "evidence"): {
-  target: string; total: number; consumed: number; remaining: number; byReason: Record<string, number>;
+// 汇总缓存（PHASE 4）：total 要对全部 discovery 候选跑 urlKey 归一（数千次正则），
+// consumed/byReason 要吃进全部消费标记——曾占 consume/status 每次调用的 ~95% 时延。
+// 池与标记的任何插入/删除都会改变「计数+最大 rowid」水印，接口先比水印、过期才重算；
+// 缓存失效不依赖写入方自觉（守护测试钉死：新 discovery 落库后下一次调用必须反映）。
+const SUMMARY_CACHE_KEY = "consumption-summary-cache-v1";
+
+function summaryWatermark(db: Store): string {
+  const part = (collection: string) => {
+    const row = db.kv.db
+      .prepare("SELECT COUNT(*) c, COALESCE(MAX(rowid),0) m FROM documents WHERE collection=?")
+      .get(collection) as { c: number; m: number };
+    return `${row.c}:${row.m}`;
+  };
+  return `${part("discovery")}|${part("evidence")}|${part("consumption")}`;
+}
+
+function computeSummary(db: Store, target: "hotspots" | "evidence"): {
+  total: number; consumed: number; remaining: number; byReason: Record<string, number>;
 } {
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) if (c.target === target) consumed.set(c.identity, c);
@@ -366,12 +381,29 @@ export function consumptionSummary(db: Store, target: "hotspots" | "evidence"): 
       if (entry) { consumedCount++; byReason[entry.reason] = (byReason[entry.reason] || 0) + 1; }
     }
   }
-  return { target, total, consumed: consumedCount, remaining: total - consumedCount, byReason };
+  return { total, consumed: consumedCount, remaining: total - consumedCount, byReason };
+}
+
+// 热榜条目身份 = urlKey(url)（与热点列表同口径去重）；证据身份 = 证据 id。
+export function consumptionSummary(db: Store, target: "hotspots" | "evidence"): {
+  target: string; total: number; consumed: number; remaining: number; byReason: Record<string, number>;
+} {
+  const cache = db.get<any>("meta", SUMMARY_CACHE_KEY);
+  const watermark = summaryWatermark(db);
+  const cached = cache?.watermark === watermark ? cache.results?.[target] : undefined;
+  if (cached) return { target, ...cached };
+  const results = { hotspots: computeSummary(db, "hotspots"), evidence: computeSummary(db, "evidence") };
+  db.put("meta", SUMMARY_CACHE_KEY, { watermark, results, computedAt: isoNow() });
+  return { target, ...results[target] };
 }
 
 // 已消费热榜键集合（identity 即 urlKey(url)），供热点列表默认隐藏已消费条目。
 export function consumptionHotspotKeys(db: Store): Set<string> {
   const keys = new Set<string>();
-  for (const c of db.list<any>("consumption")) if (c.target === "hotspots") keys.add(c.identity);
+  // SQL 投影：2743 行标记不再整表 parse，identity/reason 过滤在 SQLite 层完成
+  const rows = db.kv.sqlRows(
+    "SELECT json_extract(body,'$.identity') AS identity FROM documents WHERE collection='consumption' AND json_extract(body,'$.target')='hotspots'",
+  );
+  for (const row of rows) keys.add(row.identity as string);
   return keys;
 }

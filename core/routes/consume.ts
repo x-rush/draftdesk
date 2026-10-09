@@ -19,7 +19,8 @@ export const routes: RouteDef[] = [
     methodGuardFirst: true,
     handler: ({ db, query }) => {
       const target = (query.get("target") === "evidence" ? "evidence" : "hotspots") as "hotspots" | "evidence";
-      const lastDiscovery = db.list<any>("discovery").sort((a: any, b: any) => b.at.localeCompare(a.at))[0];
+      // SQL 直取最新采集记录（PHASE 4-A）：rowid 定位（discovery 追加写入，at=写入时刻）
+      const lastDiscovery = db.kv.latestInserted<any>("discovery");
       return json({ ok: true, ...consumptionSummary(db, target), lastCollectedAt: lastDiscovery?.at || null });
     },
   },

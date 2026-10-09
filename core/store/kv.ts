@@ -69,4 +69,27 @@ export class KV {
       .prepare("DELETE FROM documents WHERE collection=? AND id=?")
       .run(collection, id);
   }
+  // ---- SQL 助手（PHASE 4）：排序/聚合/截取在 SQLite C 层完成，只把目标行交给 JS，
+  // 避免整表 JSON.parse。field/direction 只接受内部常量，不拼外部输入。 ----
+  listPaged<T>(collection: string, opts: { limit: number; offset: number; orderBy?: string; direction?: "ASC" | "DESC" }): { items: T[]; total: number } {
+    const field = opts.orderBy || "createdAt";
+    const dir = opts.direction === "ASC" ? "ASC" : "DESC";
+    const total = (this.db.prepare("SELECT COUNT(*) c FROM documents WHERE collection=?").get(collection) as { c: number }).c;
+    const rows = this.db
+      .prepare(`SELECT body FROM documents WHERE collection=? ORDER BY json_extract(body,'$.${field}') ${dir} LIMIT ? OFFSET ?`)
+      .all(collection, opts.limit, opts.offset) as Array<{ body: string }>;
+    return { items: rows.map((r) => JSON.parse(r.body)), total };
+  }
+  // 追加式集合的最新一条（rowid 定位）。注意：不能用 ORDER BY json_extract(field)——
+  // 那要把整集合的大 JSON 全部解析一遍再排序（discovery 上实测 207ms/次）；
+  // rowid DESC 一次定位。仅适用于「写入即最新」的集合（discovery：at=写入时刻、新 uuid）。
+  latestInserted<T>(collection: string): T | undefined {
+    const row = this.db
+      .prepare("SELECT body FROM documents WHERE collection=? ORDER BY rowid DESC LIMIT 1")
+      .get(collection) as { body: string } | undefined;
+    return row ? JSON.parse(row.body) : undefined;
+  }
+  sqlRows(sql: string, ...params: any[]): Array<Record<string, unknown>> {
+    return this.db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+  }
 }
