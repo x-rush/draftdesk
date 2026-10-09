@@ -355,8 +355,16 @@ export async function handle(req: Request, path: string[]) {
       if (route === "agent/persona") return json(db.get("config", "persona") || null);
       if (route === "agent/aiPolicy") return json(db.get("config", "aiPolicy") || null);
       if (route === "agent/consumerMode") return json(db.get("config", "consumerMode") || null);
-      if (route === "agent/clusters") return json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
-      if (route === "agent/outlines") return json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) });
+      const paginated = (rows: any[], searchParams: URLSearchParams) => {
+        const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 20));
+        const offset = Number(searchParams.get("cursor")) || 0;
+        const page = rows.slice(offset, offset + limit);
+        const next = offset + limit < rows.length ? String(offset + limit) : undefined;
+        return { items: page, nextCursor: next, total: rows.length };
+      };
+      const sp = new URL(req.url).searchParams;
+      if (route === "agent/clusters") return json(paginated(db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)), sp));
+      if (route === "agent/outlines") return json(paginated(db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)), sp));
       if (suggestWriteRoute && req.method === "DELETE" && path[2]) {
         const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), "suggest");
         const by = `agent:${connection.name}`;

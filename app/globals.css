@@ -691,6 +691,7 @@ main {
   font-size: 13px;
   color: #6d7a64;
   max-width: 730px;
+  overflow-wrap: anywhere;
 }
 .plan-actions {
   display: flex;

@@ -189,7 +189,7 @@ export class Store {
         for(const c of this.list<any>("clusters")){if(!c.status)this.put("clusters",c.id,{...c,status:"active"});}
         this.put("meta","cluster-status-v1",{version:1});
       }
-            if(!this.get("meta","official-api-hotlists-v1")){
+      if(!this.get("meta","official-api-hotlists-v1")){
         // B站热门/微博热搜改走官方公开 JSON 接口（HTML 入口有访客验证，聚合上游又常年失败）。
         // 种子两个新来源；热词策略仅在未被用户改动过默认来源清单时同步加入，改过的不碰。
         for(const id of ["weibo-hotsearch","bilibili-popular"]){

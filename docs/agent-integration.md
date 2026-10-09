@@ -80,6 +80,7 @@ curl -s -X POST "$BASE/api/v1/agent/consume" \
 | 能力 | scope | 说明 |
 |---|---|---|
 | 读热榜/证据/产物 | read | GET /agent/hotspots、evidence、artifacts、stats |
+| 读簇/大纲 | read | GET /agent/clusters、outlines（支持 `limit`≤100 与 `cursor` 偏移分页，响应带 `nextCursor`/`total`） |
 | 消费标记 | consume | POST /agent/consume、/agent/unconsume |
 | 建簇 | suggest | PUT /agent/clusters |
 | 写大纲 | suggest | PUT /agent/outlines |
