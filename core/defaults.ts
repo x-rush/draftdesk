@@ -44,7 +44,7 @@ export const defaultSources: Source[] = [
   {id:"weibo-hotsearch",name:"微博热搜 · 官方接口",type:"hotlist",url:"https://weibo.com/ajax/side/hotSearch",sourceType:"trend",enabled:true,note:"网页版侧栏同源的官方公开 JSON 接口，匿名可用，含实时热度值。仅是平台热度线索，不等于需求或增长。"},
   {id:"bilibili-popular",name:"B站热门 · 官方接口",type:"hotlist",url:"https://api.bilibili.com/x/web-interface/popular",sourceType:"trend",enabled:true,note:"B站综合热门视频官方公开接口，匿名可用，含播放量。本机到其 CDN 链路有波动，已内置重试；失败会在运行记录留痕。热门视频是内容热度线索，不代表话题搜索需求。"},
   {id:"huggingface-blog",name:"Hugging Face 博客",type:"rss",url:"https://huggingface.co/blog/feed.xml",sourceType:"trend",enabled:true,note:"Hugging Face 官方博客 RSS；覆盖开源模型、工具和社区动态。图像/视频生成类内容的重要来源。"},
-  {id:"reddit-localllama",name:"Reddit r/LocalLLaMA",type:"rss",url:"https://www.reddit.com/r/LocalLLaMA/.rss",sourceType:"trend",enabled:true,note:"本地部署和大模型社区；开源模型发布、跑分和实际使用反馈的一手来源。",
+  {id:"reddit-localllama",name:"Reddit r/LocalLLaMA",type:"rss",url:"https://www.reddit.com/r/LocalLLaMA/.rss",sourceType:"trend",enabled:true,note:"本地部署和大模型社区；开源模型发布、跑分和实际使用反馈的一手来源。"},
   {id:"dailyhot-bilibili",name:"B站热门 · 聚合补充",type:"aggregated",query:"bilibili",sourceType:"trend",enabled:false,note:"本机试跑曾超时、复测成功，存在波动；默认停用，可检测连接后手动启用。"},
   {id:"dailyhot-weibo",name:"微博热搜 · 聚合补充",type:"aggregated",query:"weibo",sourceType:"trend",enabled:false,note:"本机试跑上游返回异常，默认停用；可在网络可达时手动启用并验证。"},
   {id:"dailyhot-zhihu",name:"知乎热榜 · 聚合补充",type:"aggregated",query:"zhihu",sourceType:"trend",enabled:true,note:"经本地 DailyHotApi 获取榜单标题和原平台链接；不代表问题内容已核实。"},
