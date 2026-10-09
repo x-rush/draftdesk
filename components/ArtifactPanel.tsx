@@ -1,6 +1,7 @@
 "use client";
-import { creationLabels, draftChanges } from "../core/workspace-ui";
-import { ActivityCard } from "./Activities";
+// 产物详情面板（PHASE 5 拆分后）：编辑器与详情渲染移至 ./artifact/，
+// 此处 re-export ArtifactEditor 保持既有 import 面（Discussion.tsx 等）不变。
+import { creationLabels } from "../core/workspace-ui";
 import { Select } from "./Select";
 import { ResearchHistory } from "./ResearchHistory";
 import { EvidenceReadiness } from "./EvidenceReadiness";
@@ -8,309 +9,10 @@ import { decisionLabels, decisionOf } from "../core/research-policy";
 import { useEffect, useState } from "react";
 import type { Artifact, ArtifactDraft, Evidence } from "../core/schema";
 import { Drawer, Field, api, kindLabels, date } from "./ui";
-const detailLabels: Record<string, string> = {
-  whatChanged: "发生了什么变化",
-  availability: "可用性与门槛",
-  limitations: "限制",
-  angle: "原创角度",
-  readerPromise: "读者能获得什么",
-  outline: "创作提纲",
-  materialChecklist: "素材准备",
-  keyword: "关键词",
-  region: "适用地域",
-  window: "观察窗口",
-  intent: "搜索意图",
-  comparison: "同口径对比",
-  opportunity: "可行动机会",
-  cautions: "口径与偏差",
-  job: "用户要完成的任务",
-  trigger: "触发场景",
-  frequency: "发生频率",
-  alternatives: "现有替代",
-  differentiation: "与替代方案的差异",
-  mvp: "最小产品流程",
-  nonGoals: "暂不做什么",
-  willingnessToPay: "付费证据或假设",
-  experiment: "验证实验",
-  successCriteria: "成功条件",
-  stopCriteria: "停止条件",
-  name: "公开姓名／账号",
-  identity: "身份与归属",
-  publicChannels: "公开渠道",
-  recentWork: "近期作品",
-  angles: "值得研究的角度",
-  identityCaveat: "身份核对限制",
-};
-export function Details({ draft }: { draft: ArtifactDraft }) {
-  if(draft.kind==="activity")return <ActivityCard activity={draft}/>;
-  return (
-    <div className="detail-sections">
-      {Object.entries(draft.details)
-        .filter(([k]) => !["platforms", "signalEvidenceIds"].includes(k))
-        .map(([key, value]) => (
-          <section key={key}>
-            <h3>{detailLabels[key] || key}</h3>
-            {Array.isArray(value) ? (
-              <ol>
-                {value.map((s, i) => (
-                  <li key={i}>{String(s)}</li>
-                ))}
-              </ol>
-            ) : (
-              <p>{String(value)}</p>
-            )}
-          </section>
-        ))}
-      {draft.kind === "topic" &&
-        draft.details.platforms.map((p) => (
-          <section className="platform-variant" key={p.name}>
-            <h3>{p.name}版本</h3>
-            <ul>
-              {p.titles.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
-            <p>{p.hook}</p>
-            <ol>
-              {p.structure.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ol>
-          </section>
-        ))}
-    </div>
-  );
-}
-export function ArtifactEditor({
-  initial,
-  onSave,
-  onClose,
-  target, updateOnly=false,
-}: {
-  initial: ArtifactDraft;
-  onSave: (d: ArtifactDraft, updateOriginal?: boolean) => Promise<void>;
-  onClose: () => void;
-  target?: Artifact;
-  updateOnly?: boolean;
-}) {
-  const cacheKey =
-    "draftdesk.edit.v2." + (initial.id || initial.kind + ":" + initial.title);
-  const [draft, setDraft] = useState<ArtifactDraft>(() => {
-      try {
-        const value = JSON.parse(localStorage.getItem(cacheKey) || "null");
-        if (
-          value?.kind === initial.kind &&
-          value?.details &&
-          Array.isArray(value.claims) &&
-          Array.isArray(value.evidenceIds)
-        )
-          return value;
-      } catch {}
-      return initial;
-    }),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [replace, setReplace] = useState(updateOnly);
-  useEffect(() => {
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify(draft));
-    } catch {
-      setError("编辑草稿未能保存在浏览器，请复制重要内容。");
-    }
-  }, [draft, cacheKey]);
-  const update = (key: string, value: unknown) =>
-    setDraft({ ...draft, [key]: value } as ArtifactDraft);
-  return (
-    <Drawer
-      title="编辑研究产物"
-      subtitle="编辑草稿保存在此浏览器。保存为私有待审内容，不代表事实已核实。"
-      onClose={() => {
-        if (!busy) onClose();
-      }}
-      wide
-    >
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setError("");
-          try {
-            await onSave(draft, replace);
-            localStorage.removeItem(cacheKey);
-            onClose();
-          } catch (e) {
-            setError((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {!updateOnly && target?.kind === draft.kind && (
-          <Field label="保存方式">
-            <Select
-              value={replace ? "update" : "new"}
-              onChange={(e) => setReplace(e.target.value === "update")}
-            >
-              <option value="new">保存为新内容</option>
-              <option value="update">更新原内容：{target.title}</option>
-            </Select>
-          </Field>
-        )}
-        <Field label="标题">
-          <input
-            required
-            maxLength={120}
-            value={draft.title}
-            onChange={(e) => update("title", e.target.value)}
-          />
-        </Field>
-        {(
-          [
-            ["summary", "核心摘要"],
-            ["audience", "目标读者"],
-            ["whyNow", "为什么是现在"],
-            ["personalImpact", "与个人任务的关系"],
-          ] as const
-        ).map(([key, label]) => (
-          <Field key={key} label={label}>
-            <textarea
-              required
-              value={draft[key]}
-              onChange={(e) => update(key, e.target.value)}
-              rows={key === "summary" ? 4 : 2}
-            />
-          </Field>
-        ))}
-        <Field label="多个标签（逗号分隔）">
-          <input
-            defaultValue={draft.tags.join("，")}
-            onChange={(e) =>
-              update(
-                "tags",
-                e.target.value
-                  .split(/[,，]/)
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              )
-            }
-          />
-        </Field>
-        {Object.entries(draft.details)
-          .filter(([k]) => draft.kind!=="activity")
-          .filter(([k]) => !["platforms", "signalEvidenceIds"].includes(k))
-          .map(([key, value]) => (
-            <Field label={detailLabels[key] || key} key={key}>
-              <textarea
-                rows={3}
-                value={Array.isArray(value) ? value.join("\n") : String(value)}
-                onChange={(e) =>
-                  update("details", {
-                    ...draft.details,
-                    [key]: Array.isArray(value)
-                      ? e.target.value.split("\n").filter(Boolean)
-                      : e.target.value,
-                  })
-                }
-              />
-            </Field>
-          ))}
-        {draft.kind === "topic" &&
-          draft.details.platforms.map((p, index) => (
-            <fieldset key={index}>
-              <legend>{p.name}版本</legend>
-              <Field label="标题备选（每行一个）">
-                <textarea
-                  value={p.titles.join("\n")}
-                  onChange={(e) =>
-                    update("details", {
-                      ...draft.details,
-                      platforms: draft.details.platforms.map((x, i) =>
-                        i === index
-                          ? {
-                              ...x,
-                              titles: e.target.value
-                                .split("\n")
-                                .filter(Boolean),
-                            }
-                          : x,
-                      ),
-                    })
-                  }
-                />
-              </Field>
-              <Field label="开头切入">
-                <textarea
-                  value={p.hook}
-                  onChange={(e) =>
-                    update("details", {
-                      ...draft.details,
-                      platforms: draft.details.platforms.map((x, i) =>
-                        i === index ? { ...x, hook: e.target.value } : x,
-                      ),
-                    })
-                  }
-                />
-              </Field>
-              <Field label="结构／逐页内容（每行一项）">
-                <textarea
-                  value={p.structure.join("\n")}
-                  onChange={(e) =>
-                    update("details", {
-                      ...draft.details,
-                      platforms: draft.details.platforms.map((x, i) =>
-                        i === index
-                          ? {
-                              ...x,
-                              structure: e.target.value
-                                .split("\n")
-                                .filter(Boolean),
-                            }
-                          : x,
-                      ),
-                    })
-                  }
-                />
-              </Field>
-            </fieldset>
-          ))}
-        {(["unknowns", "nextActions"] as const).map((key) => (
-          <Field
-            label={
-              key === "unknowns" ? "仍待核实（每行一项）" : "下一步（每行一项）"
-            }
-            key={key}
-          >
-            <textarea
-              value={draft[key].join("\n")}
-              onChange={(e) =>
-                update(key, e.target.value.split("\n").filter(Boolean))
-              }
-            />
-          </Field>
-        ))}
-        <p className="muted">
-          证据引用和平台版本随草稿保留；涉及事实改变时请重新研究。
-        </p>
-        <details className="draft-preview" open><summary>保存前预览{replace?"与更新差异":""}</summary><h3>{draft.title}</h3><p>{draft.summary}</p><Details draft={draft}/>
-          {replace&&target&&<section><h3>以下字段将更新</h3>{draftChanges(target,draft).length===0?<p>内容没有变化。</p>:draftChanges(target,draft).map(k=><details key={k}><summary>{({title:"标题",summary:"摘要",audience:"读者",details:"内容结构",tags:"标签",claims:"事实结论",evidenceIds:"引用证据",unknowns:"待核实",nextActions:"下一步",whyNow:"时效",personalImpact:"个人影响"} as Record<string,string>)[k] || k}</summary><strong>原内容</strong><pre>{JSON.stringify((target as any)[k],null,2)}</pre><strong>更新后</strong><pre>{JSON.stringify((draft as any)[k],null,2)}</pre></details>)}</section>}
-        </details>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        <footer className="form-actions">
-          <button type="button" onClick={onClose}>
-            取消
-          </button>
-          <button className="primary" disabled={busy}>
-            {busy ? "保存中…" : "保存草稿"}
-          </button>
-        </footer>
-      </form>
-    </Drawer>
-  );
-}
+import { Details } from "./artifact/Details";
+import { ArtifactEditor } from "./artifact/ArtifactEditor";
+export { ArtifactEditor } from "./artifact/ArtifactEditor";
+export { Details } from "./artifact/Details";
 export function ArtifactPanel({
   artifact,
   onClose,
@@ -335,8 +37,8 @@ export function ArtifactPanel({
     )
       .then((v) => {
         if (alive) {
-          setEvidence(v.flatMap(r=>r.status==='fulfilled'?[r.value]:[]));
-          if(v.some(r=>r.status==='rejected'))setError('部分证据不存在或读取失败，请查看质量提示并重新研究。');
+          setEvidence(v.flatMap(r => r.status === 'fulfilled' ? [r.value] : []));
+          if (v.some(r => r.status === 'rejected')) setError('部分证据不存在或读取失败，请查看质量提示并重新研究。');
         }
       })
       .catch((e) => {
@@ -400,7 +102,7 @@ export function ArtifactPanel({
         </button>
         <button onClick={() => setEditing(true)}>编辑</button>
       </div>
-      <Field label="创作状态" hint="只记录你的创作进度；标记已发布不会发布文章或改变公开权限。选择状态后自动加入选题库。"><Select value={artifact.creationStatus || "inbox"} disabled={busy} onChange={e=>void change({creationStatus:e.target.value})}>{Object.entries(creationLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</Select></Field>
+      <Field label="创作状态" hint="只记录你的创作进度；标记已发布不会发布文章或改变公开权限。选择状态后自动加入选题库。"><Select value={artifact.creationStatus || "inbox"} disabled={busy} onChange={e => void change({ creationStatus: e.target.value })}>{Object.entries(creationLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
       <p className="lead">{artifact.summary}</p>
       <div className="tags">
         {artifact.tags.map((t) => (
@@ -470,7 +172,7 @@ export function ArtifactPanel({
               </p>
             )}
             <small>
-              采集于 {date(e.collectedAt)} · {e.acquisition ? `${e.acquisition.platform} · ${e.acquisition.method==="aggregator"?"聚合补充":"平台入口"}（${e.acquisition.provider}）${e.acquisition.observedAt?" · 榜单更新 "+date(e.acquisition.observedAt):""}` : e.provenance}
+              采集于 {date(e.collectedAt)} · {e.acquisition ? `${e.acquisition.platform} · ${e.acquisition.method === "aggregator" ? "聚合补充" : "平台入口"}（${e.acquisition.provider}）${e.acquisition.observedAt ? " · 榜单更新 " + date(e.acquisition.observedAt) : ""}` : e.provenance}
             </small>
           </article>
         ))}

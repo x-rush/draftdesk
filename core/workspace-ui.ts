@@ -1,5 +1,5 @@
 export const creationLabels = {inbox:"待挑选",planned:"准备写",writing:"写作中",published:"已发布"};
-export const workspaceViews=["discover","hotspots","library","trends","ideas","activities","chat","plans","sources","runs","skills","connections","settings"];
+export const workspaceViews=["discover","hotspots","library","trends","ideas","activities","decisions","chat","plans","sources","runs","skills","connections","settings"];
 export function readWorkspaceLocation(search:string){
  const p=new URLSearchParams(search);
  const page=(key:string)=>Math.max(1,Math.min(1000000,Math.floor(Number(p.get(key)))||1));

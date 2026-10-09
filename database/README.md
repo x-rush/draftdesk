@@ -30,6 +30,20 @@ SELECT count(*) FROM documents WHERE collection='connections';
 
 `Store` 的兜底数据目录是 `cwd/data` = 活库。历史上 16 个测试文件未设 `DRAFTDESK_DATA_DIR` 就实例化 store——宿主机直跑 `tsx --test` 时它们会打开活库。运行器为整个测试进程树注入临时目录；`tests/zz-isolation-guard.test.ts` 在绕过运行器时会直接红掉。
 
+## 🔴 容器重建规范：先 stop 再 build
+
+`docker compose up -d --build app` 会**强杀**旧容器（SIGKILL，无机会做 WAL 收尾），新挂载实例可能对 `draftdesk.sqlite-wal` / `-shm` 文件名持有脏目录缓存——创建报 ENOENT，health 500 `unable to open database file`。2026-10-10 一天内复发两次。
+
+**触发规律**：强杀持有 WAL 连接的容器 + 同名文件句柄未释放 → grpc-fuse 目录缓存残留旧条目 → 新容器对该确切文件名创建失败（同目录建其他名字正常，宿主机侧文件完好）。
+
+**预防（标准流程）**：
+```
+docker compose stop app      # SIGTERM，进程干净退出，WAL 正常 checkpoint 收尾
+docker compose up -d --build app
+```
+
+**已中招的恢复**：`docker compose stop` → `wsl --terminate docker-desktop`（清文件共享层缓存，数据无损）→ `docker compose up -d` → health + `pragma quick_check` + 计数核对。
+
 ## 事故记录
 
 ### 2026-10-01 · 宿主机写活库 → 页级损坏
