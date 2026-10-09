@@ -42,6 +42,9 @@ export const evidenceSchema = z
       .enum(["fulltext", "excerpt", "headline"])
       .default("excerpt"),
     acquisition: z.object({method:z.enum(["platform","aggregator"]),provider:z.string().max(80),platform:z.string().max(80),observedAt:z.string().datetime().optional()}).strict().optional(),
+    mediaType: z.enum(["text","image","video","mixed"]).optional(),
+    coverUrl: z.string().max(2048).optional(),
+    author: z.string().max(200).optional(),
   })
   .strict();
 export type EvidenceInput = z.input<typeof evidenceSchema>;

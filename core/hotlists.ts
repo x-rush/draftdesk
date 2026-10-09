@@ -101,8 +101,11 @@ export function parseBilibiliPopular(raw:unknown,collectedAt:string):EvidenceInp
   const owner=row.owner&&typeof row.owner==="object"?(row.owner as {name?:unknown}).name:"";
   const stat=row.stat&&typeof row.stat==="object"?(row.stat as {view?:unknown}).view:undefined;
   const views=typeof stat==="number"&&Number.isFinite(stat)?String(stat):"";
-  items.push({title:title.slice(0,300),url,excerpt:`B站综合热门视频${typeof owner==="string"&&owner?`（UP主：${owner}）`:""}：${title}`.slice(0,8000),collectedAt,sourceType:"trend",region:"CN",language:"zh",contentLevel:"headline",
+   items.push({title:title.slice(0,300),url,excerpt:`B站综合热门视频${typeof owner==="string"&&owner?`（UP主：${owner}）`:""}：${title}`.slice(0,8000),collectedAt,sourceType:"trend",region:"CN",language:"zh",contentLevel:"headline",
    acquisition:{method:"platform",provider:"B站官方接口",platform:"哔哩哔哩"},
+   mediaType:"video",
+   ...(typeof row.pic==="string"&&row.pic?{coverUrl:row.pic}:{}),
+   ...(typeof owner==="string"&&owner?{author:owner}:{}),
    ...(views?{metric:{name:"B站热门播放量",value:views,unit:"播放",period:collectedAt,cadence:"instant" as const}}:{})});
  }
  if(!items.length)throw new AppError("B站热门接口未解析到视频条目。");
@@ -124,8 +127,9 @@ export function parseWeiboHotSearch(raw:unknown,collectedAt:string):EvidenceInpu
   const title=word.slice(0,300);
   const url=`https://s.weibo.com/weibo?q=${encodeURIComponent("#"+word+"#")}`;
   const heat=typeof row.num==="number"&&Number.isFinite(row.num)&&row.num>0?String(row.num):"";
-  items.push({title,url,excerpt:title,collectedAt,sourceType:"trend",region:"CN",language:"zh",contentLevel:"headline",
+   items.push({title,url,excerpt:title,collectedAt,sourceType:"trend",region:"CN",language:"zh",contentLevel:"headline",
    acquisition:{method:"platform",provider:"微博官方接口",platform:"微博"},
+   mediaType:"text",
    ...(heat?{metric:{name:"微博热搜热度",value:heat,unit:"平台热度",period:collectedAt,cadence:"instant" as const}}:{})});
  }
  if(!items.length)throw new AppError("微博热搜接口未解析到词条。");
