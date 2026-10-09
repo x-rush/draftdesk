@@ -8,7 +8,7 @@ import { AppError, now } from "../store";
 
 // 决策拍板入参：rejected 必须给否决原因；published 建议给发布链接（回填）。
 const decisionInput = z.object({
-  decision: z.enum(["approved", "rejected", "deferred", "drafting", "published"]),
+  decision: z.enum(["approved", "rejected", "deferred", "drafting", "published", "pending"]),
   platforms: z.array(z.string().min(1).max(30)).max(6).optional(),
   rejectReason: z.string().min(1).max(60).optional(),
   publishedRef: z.string().max(500).optional(),

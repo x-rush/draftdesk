@@ -9,6 +9,19 @@ import { consumptionSummary } from "../agent-read";
 import { urlKey } from "../hotspots";
 
 export const routes: RouteDef[] = [
+  {
+    // UI 归档（信息架构 v2-B）：本机无令牌路由，human 来源直调消费；agent 令牌路由见 /agent/consume
+    methods: ["POST"],
+    pattern: "consume",
+    handler: async ({ db, readBody }) => {
+      const input = z.object({
+        target: z.enum(["hotspots", "evidence"]),
+        ids: z.array(z.string().min(1).max(2048)).min(1).max(1000),
+        reason: z.enum(["no-ai-signal", "outdated", "off-domain", "processed-into-artifact"]),
+      }).strict().parse(await readBody());
+      return json(db.consumeIdentities(input.target, input.ids, input.reason, "human", undefined, false));
+    },
+  },
   // 方法截获器：consume/unconsume 只认 POST/PATCH，其余方法（含 GET 带令牌）先 405，不进鉴权
   { methods: ["GET", "PUT", "DELETE"], pattern: "agent/consume", preAuth405: true, handler: () => { throw new Error("unreachable"); } },
   { methods: ["GET", "PUT", "DELETE"], pattern: "agent/unconsume", preAuth405: true, handler: () => { throw new Error("unreachable"); } },

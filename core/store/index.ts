@@ -54,7 +54,7 @@ export class Store {
     runMigrations({ kv: this.kv, directory });
     this._auth = createAuth(this.kv);
     this._consumption = createConsumption(this.kv);
-    this._decisions = createDecisions(this.kv, this._consumption.consumeIdentities);
+    this._decisions = createDecisions(this.kv, this._consumption.consumeIdentities, this._consumption.unconsumeIdentities);
     this._jobs = createJobs(this.kv, () => this.config());
     this._budget = createBudget(this.kv, () => this.config());
   }

@@ -5,7 +5,20 @@ import { AppError } from "../errors";
 import { urlKey } from "../hotspots";
 import type { KV } from "./kv";
 
-export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeIdentities"]) {
+export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeIdentities"], unconsumeIdentities: Consumption["unconsumeIdentities"]) {
+  // 关联热点身份键：artifacts 的 evidenceIds 是 ev-xxx（查证据拿 url）；outlines 的 evidenceRefs 直接是 url。
+  function linkedHotspotIds(row: any): string[] {
+    const idset = new Set<string>();
+    for (const ref of row.evidenceIds || row.evidenceRefs || []) {
+      if (/^https?:\/\//i.test(ref)) {
+        try { idset.add(urlKey(ref)); } catch { /* 非 https 跳过 */ }
+      } else {
+        const e = kv.get<any>("evidence", ref);
+        if (e?.url) { try { idset.add(urlKey(e.url)); } catch { /* 跳过 */ } }
+      }
+    }
+    return [...idset];
+  }
   function decisionTarget(id: string): { collection: "artifacts" | "outlines" | "decisions"; row: any } {
     for (const collection of ["artifacts", "outlines", "decisions"] as const) {
       const row = kv.get<any>(collection, id);
@@ -20,6 +33,18 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
     setDecision(id: string, input: { decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string; decidedBy?: "human" | "agent" }) {
       const { collection, row } = decisionTarget(id);
       if (collection === "artifacts" && row.archived) throw new AppError("已归档产物不可再拍板。");
+      // rejected→pending 翻转（信息架构 v2-C）：拍错可反悔。自动撤销 rejected 时的联动消费
+      //（unconsume 30 天窗口，超窗抛 410 即「归档已成事实」）；再次 rejected 时消费幂等重放。
+      if (input.decision === "pending") {
+        if (row.decision !== "rejected") throw new AppError("只有已否决的条目可以翻回待定。", 400, "INVALID_PAYLOAD");
+        if (collection === "outlines" || collection === "decisions" || collection === "artifacts") {
+          const ids = linkedHotspotIds(row);
+          if (ids.length) unconsumeIdentities("hotspots", ids, false);
+        }
+        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined };
+        kv.put(collection, id, reverted);
+        return reverted;
+      }
       const next: any = {
         ...row,
         decision: input.decision,
@@ -35,16 +60,7 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       // artifacts 的 evidenceIds 是 ev-xxx 证据 ID（去 evidence 集合拿 url）；
       // outlines 的 evidenceRefs 直接就是热点 url（urlKey 归一化后即消费身份）。
       if (input.decision === "rejected" || input.decision === "published") {
-        const idset = new Set<string>();
-        for (const ref of row.evidenceIds || row.evidenceRefs || []) {
-          if (/^https?:\/\//i.test(ref)) {
-            try { idset.add(urlKey(ref)); } catch { /* 非 https 跳过 */ }
-          } else {
-            const e = kv.get<any>("evidence", ref);
-            if (e?.url) { try { idset.add(urlKey(e.url)); } catch { /* 跳过 */ } }
-          }
-        }
-        const ids = [...idset];
+        const ids = linkedHotspotIds(row);
         let consumedCount = 0;
         if (ids.length) {
           if (input.decision === "published") {
@@ -101,6 +117,6 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
   };
 }
 
-type Consumption = { consumeIdentities: (target: "hotspots" | "evidence", identities: string[], reason: string, consumedBy: string, producedRef?: string, dryRun?: boolean) => { ok: boolean; toConsume: number; alreadyConsumed: number } };
+type Consumption = { unconsumeIdentities: (target: "hotspots" | "evidence", identities: string[], dryRun?: boolean) => { ok: boolean; revived: number; expired: number }; consumeIdentities: (target: "hotspots" | "evidence", identities: string[], reason: string, consumedBy: string, producedRef?: string, dryRun?: boolean) => { ok: boolean; toConsume: number; alreadyConsumed: number } };
 
 export type Decisions = ReturnType<typeof createDecisions>;

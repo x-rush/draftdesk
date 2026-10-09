@@ -14,10 +14,13 @@ export function Discussion({
   artifact,
   history,
   onChange,
+  hotspotContext, onOutlineCreated,
 }: {
   artifact?: Artifact;
   history: Summary[];
   onChange: () => Promise<void>;
+  hotspotContext?: { title: string; url: string; source: string };
+  onOutlineCreated?: () => void;
 }) {
   const [conversation, setConversation] = useState<Conversation>({
       id: "",
@@ -37,7 +40,8 @@ export function Discussion({
     } | null>(null),
     [ready, setReady] = useState(false),
     [context,setContext]=useState<Artifact>(),
-    [savedNotice,setSavedNotice]=useState("");
+    [savedNotice,setSavedNotice]=useState(""),
+    [outlineBusy, setOutlineBusy] = useState(false);
   useEffect(()=>{
     let alive=true;setContext(undefined);
     if(conversation.artifactId)void api<Artifact>("artifacts/"+conversation.artifactId).then(a=>{if(alive)setContext(a)}).catch(()=>{if(alive)setError("关联内容读取失败，暂不能整理或更新原内容。")});
@@ -168,6 +172,15 @@ export function Discussion({
   }
   return (
     <div className="discussion-layout">
+      {hotspotContext && <div className="discussion-context"><strong>讨论上下文</strong><span>{hotspotContext.source} · {hotspotContext.title}</span><a href={hotspotContext.url} target="_blank" rel="noopener noreferrer">查看原文 ↗</a>
+        <button disabled={outlineBusy} onClick={() => {
+          setOutlineBusy(true);
+          void api("outlines", { clusterId: "clu-inbox", platform: "公众号", contentType: "资讯解读", title: hotspotContext.title, keyPoints: [], evidenceRefs: [hotspotContext.url] })
+            .then(() => { setSavedNotice("已生成大纲（选题收集箱），进入每日发现待拍队列。"); onOutlineCreated?.(); })
+            .catch((e) => setError((e as Error).message))
+            .finally(() => setOutlineBusy(false));
+        }}>{outlineBusy ? "生成中…" : "生成大纲（进每日发现）"}</button>
+      </div>}
       <aside className="history">
         <button
           disabled={busy || working}

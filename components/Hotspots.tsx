@@ -1,15 +1,24 @@
 "use client";
+import { useState } from "react";
 import type {HotspotFeed} from "../core/hotspots";
 import type {Source} from "../core/schema";
 import {Pagination} from "./Pagination";
 import {Select} from "./Select";
+import {ArchiveButton} from "./ActionButtons";
 import {date} from "./ui";
 
-export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onStatus,onSource,onPlan,onPage,onRefresh}:{
+export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId}:{
   feed:HotspotFeed|null;sources:Source[];query:string;status:string;source:string;plan:string;busy:boolean;
   onQuery:(value:string)=>void;onStatus:(value:string)=>void;onSource:(value:string)=>void;onPlan:(value:string)=>void;
   onPage:(page:number)=>void;onRefresh:()=>void;
+  onDiscuss:(row:any)=>void;onArchive:(row:any)=>void;
+  onPromote:(row:any,payload:{clusterId:string;platform:string;angle:string})=>void;
+  clusters:any[];clusterId?:string;
 }){
+  const [promoting,setPromoting]=useState<string|null>(null);
+  const [promotePlatform,setPromotePlatform]=useState("公众号");
+  const [promoteCluster,setPromoteCluster]=useState(clusterId||"clu-inbox");
+  const [promoteAngle,setPromoteAngle]=useState("");
   const available=sources.filter(s=>s.enabled&&["hotlist","aggregated","trends"].includes(s.type));
   return <section className="hotspot-view" aria-label="热点列表">
     <div className="hotspot-intro"><div><h2>所有搜到的热点，先在这里看</h2><p>合并最近 14 天内置研究、采集预览和独立快照的原始标题。被关键词筛掉、未入模的条目也保留；榜单热度只表示该平台当时的信号。</p></div><span>{feed?.total??0} 条匹配</span></div>
@@ -27,6 +36,17 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onS
       <h3><a href={row.url} target="_blank" rel="noopener noreferrer">{row.title} ↗</a></h3>
       <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.mediaType==="video"&&<span className="pill">🎬 视频</span>}{row.mediaType==="image"&&<span className="pill">🖼 图片</span>}{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
       <p>{row.reason}</p><small>关联采集：{row.planNames.join("、")}</small>
+      <div className="hotspot-card-actions" style={{display:"flex",gap:6,marginTop:6}}>
+        <button onClick={()=>onDiscuss(row)}>讨论</button>
+        <button onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
+        <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
+      </div>
+      {promoting===row.url&&<div style={{display:"grid",gap:6,marginTop:6,padding:9,border:"1px solid var(--line)",borderRadius:9}}>
+        <Select aria-label="适配平台" value={promotePlatform} onChange={e=>setPromotePlatform(e.target.value)}>{["公众号","小红书","哔哩哔哩","抖音","知乎"].map(p=><option key={p} value={p}>{p}</option>)}</Select>
+        <Select aria-label="目标簇" value={promoteCluster} onChange={e=>setPromoteCluster(e.target.value)}><option value="clu-inbox">选题收集箱</option>{clusters.filter(c=>c.id!=="clu-inbox").map(c=><option key={c.id} value={c.id}>{c.topic}</option>)}</Select>
+        <input aria-label="一句话写作角度" placeholder="一句话写作角度（可选）" value={promoteAngle} onChange={e=>setPromoteAngle(e.target.value)}/>
+        <button className="primary" disabled={busy} onClick={()=>{onPromote(row,{clusterId:promoteCluster,platform:promotePlatform,angle:promoteAngle});setPromoting(null);}}>生成为选题（进每日发现）</button>
+      </div>}
     </article>)}</div>}
     {feed&&<Pagination info={{page:feed.page,pages:feed.pages,pageSize:feed.pageSize,total:feed.total}} onChange={onPage} disabled={busy}/>}
   </section>;

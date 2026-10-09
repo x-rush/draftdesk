@@ -232,7 +232,11 @@ export function Workbench() {
               {view === "hotspots" && <div className="toolbar"><label className="check"><input type="checkbox" checked={ws.hotspotConsumed !== "hide"} onChange={e => { ws.setHotspotConsumed(e.target.checked ? "include" : "hide"); ws.setHotspotPage(1); }} />查看已消费</label></div>}
               {view === "hotspots" && <Hotspots feed={data.hotspots} sources={data.sources} query={ws.hotspotQ} status={ws.hotspotStatus} source={ws.hotspotSource} plan={ws.hotspotPlan} busy={busy}
                 onQuery={value => { ws.setHotspotQ(value); ws.setHotspotPage(1); }} onStatus={value => { ws.setHotspotStatus(value); ws.setHotspotPage(1); }} onSource={value => { ws.setHotspotSource(value); ws.setHotspotPage(1); }} onPlan={value => { ws.setHotspotPlan(value); ws.setHotspotPage(1); }} onPage={ws.setHotspotPage}
-                onRefresh={() => void act(async () => { const result = await api<{ count: number; source: string }>("hotspot-refresh", { sourceId: ws.hotspotSource }); setNotice(`${result.source} 已刷新 ${result.count} 条热点线索，未调用 AI。`); })} />}
+                onRefresh={() => void act(async () => { const result = await api<{ count: number; source: string }>("hotspot-refresh", { sourceId: ws.hotspotSource }); setNotice(`${result.source} 已刷新 ${result.count} 条热点线索，未调用 AI。`); })}
+                onDiscuss={(row) => { ws.setDiscussionContext({ title: row.title, url: row.url, source: row.sourceNames[0] || "" }); navigate("chat"); }}
+                onArchive={(row) => void act(async () => { await api("consume", { target: "hotspots", ids: [row.url], reason: "off-domain" }); setNotice("已归档：该热点不再出现在默认列表（可切换「查看已消费」找回）。"); })}
+                onPromote={(row, payload) => void act(async () => { await api("outlines", { clusterId: payload.clusterId, platform: payload.platform, contentType: "资讯解读", title: row.title, keyPoints: [payload.angle].filter(Boolean), evidenceRefs: [row.url] }); setNotice("已生成为选题（进入每日发现待拍队列）。"); })}
+                clusters={ws.clusters} />}
               {["discover", "library", "trends", "ideas", "activities"].includes(
                 view,
               ) && <DiscoverView ws={ws} data={data} />}
@@ -252,10 +256,12 @@ export function Workbench() {
               )}
               {view === "chat" && (
                 <Discussion
-                  key={discussionArtifact?.id || "free"}
+                  key={discussionArtifact?.id || ws.discussionContext?.url || "free"}
                   artifact={discussionArtifact}
                   history={data.conversations}
                   onChange={refresh}
+                  hotspotContext={ws.discussionContext ?? undefined}
+                  onOutlineCreated={refresh}
                 />
               )}
               {view === "settings" && (
