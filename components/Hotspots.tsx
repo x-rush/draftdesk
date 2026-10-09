@@ -25,7 +25,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onS
     {!feed?.items.length?<div className="lens-empty"><h2>当前筛选下没有热点</h2><p>选择已启用来源刷新榜单，或清除搜索与状态筛选。来源读取失败可在「运行记录」和采集覆盖中核对。</p></div>:<div className="hotspot-list">{feed.items.map(row=><article className="hotspot-card" key={row.url}>
       <div className="hotspot-card-top"><span>{row.sourceNames.join(" · ")}</span><small>{date(row.lastSeen)} · {row.observations>1?`观察 ${row.observations} 次`:`榜单位置 ${row.rank??"未知"}`}</small></div>
       <h3><a href={row.url} target="_blank" rel="noopener noreferrer">{row.title} ↗</a></h3>
-      <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
+      <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.mediaType==="video"&&<span className="pill">🎬 视频</span>}{row.mediaType==="image"&&<span className="pill">🖼 图片</span>}{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
       <p>{row.reason}</p><small>关联采集：{row.planNames.join("、")}</small>
     </article>)}</div>}
     {feed&&<Pagination info={{page:feed.page,pages:feed.pages,pageSize:feed.pageSize,total:feed.total}} onChange={onPage} disabled={busy}/>}

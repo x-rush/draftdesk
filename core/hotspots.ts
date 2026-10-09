@@ -4,6 +4,7 @@ export type HotspotRow={
   url:string;title:string;sourceId:string;sourceName:string;sourceIds:string[];sourceNames:string[];
   planNames:string[];status:CandidateStatus;reason:string;firstSeen:string;lastSeen:string;
   observations:number;rank?:number;region?:string;metric?:{name:string;value:string;unit:string;period:string};
+  publishedAt?:string;mediaType?:string;coverUrl?:string;author?:string;
 };
 export type HotspotFeed={items:HotspotRow[];total:number;page:number;pages:number;pageSize:number;
   sourceOptions:{id:string;name:string}[];planOptions:string[];lastCollectedAt:string|null;
@@ -32,9 +33,9 @@ export function hotspotFeed(records:DiscoveryRecord[],params:URLSearchParams,pag
         if(!old.sourceIds.includes(candidate.sourceId))old.sourceIds.push(candidate.sourceId);
         if(!old.sourceNames.includes(candidate.sourceName))old.sourceNames.push(candidate.sourceName);
         if(!old.planNames.includes(record.planName))old.planNames.push(record.planName);
-        if(candidate.observedAt>old.lastSeen){Object.assign(old,{title:candidate.title,sourceId:candidate.sourceId,sourceName:candidate.sourceName,lastSeen:candidate.observedAt,rank:candidate.rank,region:candidate.region,metric:candidate.metric});}
+        if(candidate.observedAt>old.lastSeen){Object.assign(old,{title:candidate.title,sourceId:candidate.sourceId,sourceName:candidate.sourceName,lastSeen:candidate.observedAt,rank:candidate.rank,region:candidate.region,metric:candidate.metric,publishedAt:candidate.publishedAt,mediaType:candidate.mediaType,coverUrl:candidate.coverUrl,author:candidate.author});}
         if(candidate.status==="selected"||old.status!=="selected"&&candidate.status==="filtered"){old.status=candidate.status;old.reason=candidate.reason;}
-      }else rows.set(key,{url:candidate.url,title:candidate.title,sourceId:candidate.sourceId,sourceName:candidate.sourceName,sourceIds:[candidate.sourceId],sourceNames:[candidate.sourceName],planNames:[record.planName],status:candidate.status,reason:candidate.reason,firstSeen:candidate.observedAt,lastSeen:candidate.observedAt,observations:1,rank:candidate.rank,region:candidate.region,metric:candidate.metric});
+      }else rows.set(key,{url:candidate.url,title:candidate.title,sourceId:candidate.sourceId,sourceName:candidate.sourceName,sourceIds:[candidate.sourceId],sourceNames:[candidate.sourceName],planNames:[record.planName],status:candidate.status,reason:candidate.reason,firstSeen:candidate.observedAt,lastSeen:candidate.observedAt,observations:1,rank:candidate.rank,region:candidate.region,metric:candidate.metric,publishedAt:candidate.publishedAt,mediaType:candidate.mediaType,coverUrl:candidate.coverUrl,author:candidate.author});
     }
   }
   const q=(params.get("hotspotQ")||"").trim().toLocaleLowerCase(),source=params.get("hotspotSource")||"all",plan=params.get("hotspotPlan")||"all",status=params.get("hotspotStatus")||"all";

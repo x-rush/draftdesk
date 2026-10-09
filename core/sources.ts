@@ -4,7 +4,7 @@ import { XMLParser } from "fast-xml-parser";
 import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
-import {relevanceReason,type DiscoveryCandidate,type SourceCoverage,type DiscoveryRecord} from "./discovery";
+import {relevanceReason,type DiscoveryCandidate,type CandidateStatus,type SourceCoverage,type DiscoveryRecord} from "./discovery";
 import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform} from "./hotlists";
 // 官方公开 JSON 接口（允许列表以精确 URL 匹配，配置来源时不可自填）：
 const BILIBILI_POPULAR_URL="https://api.bilibili.com/x/web-interface/popular";
@@ -374,6 +374,12 @@ export async function searchWeb(db: Store, plan: Plan, query: string, signal: Ab
   if (tavily.length) return tavily;
   throw tavilyError ?? searxngError ?? new AppError("网页搜索失败：Tavily 与 SearXNG 均不可用。");
 }
+// evidence→candidate 的唯一构造点（元数据断链修复）：parser 产出的媒体元数据
+// （mediaType/coverUrl/author/publishedAt）必须一路透传进 candidate，不再在字段挑选时丢弃；
+// originUrl 类型上保留但暂无产出方，不透传。collect 与 hotspot-refresh 共用。
+export function candidateFromItem(item:EvidenceInput,sourceId:string,sourceName:string,index:number,status:CandidateStatus,reason:string){
+  return {url:item.url,title:item.title,sourceId,sourceName,status,reason,observedAt:item.collectedAt,rank:index+1,region:item.region,metric:item.metric,publishedAt:item.publishedAt,mediaType:item.mediaType,coverUrl:item.coverUrl,author:item.author};
+}
 export async function collect(
   db: Store,
   plan: Plan,
@@ -477,7 +483,7 @@ export async function collect(
         const reason=relevanceReason(item,plan);
         if(!reason)filtered.push(item);
         if(jobId&&index<100)
-          candidates.push({url:item.url,title:item.title,sourceId:s.id,sourceName:s.name,status:reason?"filtered":"watch",reason:reason||"符合策略，等待证据名额",observedAt:item.collectedAt,rank:index+1,region:item.region,metric:item.metric});
+          candidates.push(candidateFromItem(item,s.id,s.name,index,reason?"filtered":"watch",reason||"符合策略，等待证据名额"));
       }
       groups.push(rankEvidence(filtered, plan));
       coverage.push({sourceId:s.id,sourceName:s.name,status:"ok",raw:items.length,matched:filtered.length,selected:0});

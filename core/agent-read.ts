@@ -79,6 +79,10 @@ export function agentHotspots(db: Store, raw: unknown) {
         rank: c.rank,
         region: c.region,
         metric: c.metric,
+        publishedAt: c.publishedAt,
+        mediaType: c.mediaType,
+        coverUrl: c.coverUrl,
+        author: c.author,
       });
     }
   }

@@ -6,7 +6,7 @@ import { json } from "../http/middleware";
 import { AppError, now } from "../store";
 import { sourceSchema } from "../schema";
 import type { Plan, Source } from "../schema";
-import { collect, readAggregatedHotlist, readHotspotSource } from "../sources";
+import { candidateFromItem, collect, readAggregatedHotlist, readHotspotSource } from "../sources";
 import { isAggregatePlatform } from "../hotlists";
 import type { DiscoveryRecord } from "../discovery";
 
@@ -69,7 +69,7 @@ export const routes: RouteDef[] = [
       try {
         const items = (await readHotspotSource(source, AbortSignal.any([req.signal, AbortSignal.timeout(45000)]))).slice(0, 100);
         const record: DiscoveryRecord = { jobId: id, at, planName: "独立热点快照", mode: "hotspot", limit: 100,
-          candidates: items.map((item, index) => ({ url: item.url, title: item.title, sourceId: source.id, sourceName: source.name, status: "watch", reason: "原始热点；未按研究策略筛选或经 AI 核实", observedAt: at, rank: index + 1, region: item.region, metric: item.metric, mediaType: item.mediaType, coverUrl: item.coverUrl, author: item.author })),
+          candidates: items.map((item, index) => candidateFromItem(item, source.id, source.name, index, "watch", "原始热点；未按研究策略筛选或经 AI 核实")),
           sources: [{ sourceId: source.id, sourceName: source.name, status: "ok", raw: items.length, matched: 0, selected: 0 }] };
         db.put("discovery", id, record);
         return json({ count: items.length, source: source.name, at });
