@@ -54,7 +54,7 @@ export function useWorkspaceData() {
   const [activityPlatform, setActivityPlatform] = useState("all"), [activityTime, setActivityTime] = useState("all");
   const [locationReady, setLocationReady] = useState(false), [creation, setCreation] = useState("all"), [jobId, setJobId] = useState(""), [runId, setRunId] = useState("");
   const [finished, setFinished] = useState<Snapshot["jobActivity"]>([]);
-  const [discoveryMode, setDiscoveryMode] = useState<"results" | "watch" | "coverage">("results");
+  const [discoveryMode, setDiscoveryMode] = useState<"queue" | "results" | "watch" | "coverage">("queue");
   const [sourceChecks, setSourceChecks] = useState<Record<string, string>>({});
   const [outlines, setOutlines] = useState<any[]>([]);
   const [clusters, setClusters] = useState<any[]>([]);

@@ -16,6 +16,7 @@ import { PlansView } from "./views/PlansView";
 import { SourcesView } from "./views/SourcesView";
 import { RunsView } from "./views/RunsView";
 import { SkillsView } from "./views/SkillsView";
+import { OutlineQueueView } from "./views/OutlineQueueView";
 import { Settings } from "./Settings";
 import {
   BookOpen,
@@ -237,9 +238,18 @@ export function Workbench() {
                 onArchive={(row) => void act(async () => { await api("consume", { target: "hotspots", ids: [row.url], reason: "off-domain" }); setNotice("已归档：该热点不再出现在默认列表（可切换「查看已消费」找回）。"); })}
                 onPromote={(row, payload) => void act(async () => { await api("outlines", { clusterId: payload.clusterId, platform: payload.platform, contentType: "资讯解读", title: row.title, keyPoints: [payload.angle].filter(Boolean), evidenceRefs: [row.url] }); setNotice("已生成为选题（进入每日发现待拍队列）。"); })}
                 clusters={ws.clusters} />}
-              {["discover", "library", "trends", "ideas", "activities"].includes(
-                view,
-              ) && <DiscoverView ws={ws} data={data} />}
+              {view === "discover" && data && (
+                <nav className="discovery-modes" aria-label="每日发现视图">
+                  <button className={ws.discoveryMode === "queue" ? "active" : ""} aria-current={ws.discoveryMode === "queue" ? "page" : undefined} onClick={() => ws.setDiscoveryMode("queue")}>选题待拍</button>
+                  {(data.config.consumerMode || "external") === "builtin" && <>
+                    <button className={ws.discoveryMode === "results" ? "active" : ""} onClick={() => ws.setDiscoveryMode("results")}>分析结果</button>
+                    <button className={ws.discoveryMode === "watch" ? "active" : ""} onClick={() => ws.setDiscoveryMode("watch")}>本轮待观察{data.discovery ? ` ${data.discovery.candidates.filter((c) => c.status === "watch").length}` : ""}</button>
+                  </>}
+                  <button className={ws.discoveryMode === "coverage" ? "active" : ""} onClick={() => ws.setDiscoveryMode("coverage")}>来源覆盖</button>
+                </nav>
+              )}
+              {view === "discover" && ws.discoveryMode === "queue" && <OutlineQueueView ws={ws} data={data} />}
+              {(["library", "trends", "ideas", "activities"].includes(view) || (view === "discover" && ws.discoveryMode !== "queue")) && <DiscoverView ws={ws} data={data} />}
               {view === "plans" && <PlansView ws={ws} data={data} />}
               {view === "sources" && <SourcesView ws={ws} data={data} />}
               {view === "runs" && <RunsView ws={ws} data={data} />}
