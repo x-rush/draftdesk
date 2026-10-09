@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { api, Field } from "./ui";
+import { api, Field, formatApiError } from "./ui";
 import { creationLabels } from "../core/workspace-ui";
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
@@ -65,13 +65,13 @@ export function Review() {
         setPersona(p);
         setPersonaText(p ? JSON.stringify(p, null, 2) : "");
         setAiPolicy(await api<any>("aiPolicy"));
-      } catch (e) { setError((e as Error).message); }
+      } catch (e) { setError(formatApiError(e)); }
     })();
   }, []);
 
   async function act(fn: () => Promise<void>) {
     setBusy(true); setError(""); setNotice("");
-    try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { await fn(); } catch (e) { setError(formatApiError(e)); } finally { setBusy(false); }
   }
   const stats = useMemo(() => {
     const byDecision: Record<string, number> = {};

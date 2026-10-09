@@ -1,5 +1,6 @@
 "use client";
 import { Select } from "./Select";
+import { formatApiError } from "./ui";
 import { useState } from "react";
 import type { Plan, Source, Job, Artifact } from "../core/schema";
 import { AgentSetup } from "./AgentSetup";
@@ -36,7 +37,7 @@ export function Connections({
       await fn();
       await onChange();
     } catch (e) {
-      setError((e as Error).message);
+      setError(formatApiError(e));
     } finally {
       setBusy(false);
     }
