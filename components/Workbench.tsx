@@ -1,6 +1,7 @@
 "use client";
 // 工作台外壳（PHASE 5 拆分后）：侧边导航 / 顶栏 / 视图路由 / 抽屉挂载。
 // 状态与交互在 useWorkspaceData；六个视图各自成文件——本文件不再含视图内联 JSX。
+import { useState } from "react";
 import { newlyFinished, type JobActivity } from "../core/workspace-ui";
 import { Hotspots } from "./Hotspots";
 import { formatApiError, api, download, Drawer, Empty } from "./ui";
@@ -37,7 +38,7 @@ import {
 } from "lucide-react";
 const nav = [
   ["discover", "每日发现", Compass],
-  ["hotspots", "热点列表", Flame],
+  ["hotspots", "热点资讯", Flame],
   ["chat", "研究讨论", MessageSquare],
   ["trends", "热词趋势", TrendingUp],
   ["ideas", "应用机会", FlaskConical],
@@ -54,6 +55,12 @@ const navGroups = [
   { label: "发现与创作", ids: ["discover", "hotspots", "chat"] },
   { label: "机会观察", ids: ["trends", "ideas", "activities", "decisions"] },
   { label: "研究与设置", ids: ["plans", "sources", "runs", "connections", "skills", "settings"] },
+] as const;
+const externalNavGroups = [
+  { label: "选题", ids: ["discover", "decisions"] },
+  { label: "素材", ids: ["hotspots", "trends", "ideas", "chat"] },
+  { label: "设置", ids: ["plans", "sources", "connections", "settings"] },
+  { label: "内置功能", ids: ["activities", "skills", "runs"], collapsed: true },
 ] as const;
 const headings: Record<string, [string, string]> = {
   discover: [
@@ -104,6 +111,10 @@ export function Workbench() {
     plan, setPlan, source, setSource, discussionArtifact, setDiscussionArtifact,
     skill, setSkill, today, finished, setFinished, refresh, act, navigate, showResults, moveSelected, setRunId, setNotice } = ws;
   const titles = headings[view], running = data?.stats.running || 0;
+  const external = (data?.config.consumerMode || "external") === "external";
+  const [builtinGroupOpen, setBuiltinGroupOpen] = useState(false);
+  const pendingOutlines = ws.outlines.filter((o) => o.decision === "pending").length;
+  const navGroupsInUse = external ? externalNavGroups : navGroups;
   return (
     <div className="app-shell">
       <aside className={"sidebar " + (mobile ? "open" : "")}>
@@ -131,10 +142,14 @@ export function Workbench() {
           </div>
         </div>
         <nav aria-label="工作台导航">
-          {navGroups.map(group => <div className="nav-group" key={group.label}>
-            <small className="nav-divider">{group.label}</small>
-            {group.ids.map(id => { const item = nav.find(n => n[0] === id)!; const [, label, Icon] = item; return <button key={id} className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => navigate(id)}><Icon size={18} />{label}{id === "runs" && running > 0 && <em>{running}</em>}</button> })}
-          </div>)}
+          {navGroupsInUse.map(group => {
+            const collapsed = external && (group as { collapsed?: boolean }).collapsed === true;
+            const open = !collapsed || builtinGroupOpen;
+            return <div className="nav-group" key={group.label}>
+              <small className="nav-divider">{collapsed ? "▸ " : ""}{group.label}{collapsed && <button className="text-button" style={{ marginLeft: 6 }} onClick={() => setBuiltinGroupOpen(!builtinGroupOpen)}>{builtinGroupOpen ? "收起" : "展开"}</button>}</small>
+              {open && group.ids.map(id => { const item = nav.find(n => n[0] === id)!; const [, label, Icon] = item; return <button key={id} className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => navigate(id)}><Icon size={18} />{label}{id === "runs" && running > 0 && <em>{running}</em>}{id === "discover" && external && pendingOutlines > 0 && <em>{pendingOutlines}</em>}</button> })}
+            </div>;
+          })}
         </nav>
         <footer>
           <span className="dot" />
@@ -314,6 +329,12 @@ export function Workbench() {
           onSaved={refresh}
         />
       )}{" "}
+      <div className="bottom-tabs">
+        <button className={view === "discover" ? "active" : ""} onClick={() => navigate("discover")}>选题</button>
+        <button className={["hotspots","trends","ideas","chat"].includes(view) ? "active" : ""} onClick={() => navigate("hotspots")}>素材</button>
+        <button className={["plans","sources","connections","settings"].includes(view) ? "active" : ""} onClick={() => navigate("settings")}>设置</button>
+        <button onClick={() => setMobile(!mobile)}>更多</button>
+      </div>
       {skill && (
         <Drawer
           title={skill.name}
