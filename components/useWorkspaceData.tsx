@@ -68,13 +68,14 @@ export function useWorkspaceData() {
     const key = currentKey.current, version = ++requestVersion.current;
     const [next, outlineList, clusterList] = await Promise.all([
       api<Snapshot>("workspace?" + key),
-      api<any[]>("outlines"),
-      api<any[]>("clusters"),
+      api<{ items: any[] }>("outlines"),
+      api<{ items: any[] }>("clusters"),
     ]);
     if (currentKey.current === key && requestVersion.current === version) {
       setData(next);
-      setOutlines(outlineList);
-      setClusters(clusterList);
+      // UI GET /outlines、/clusters 返回 {items:[...]} 包裹形状
+      setOutlines(outlineList?.items ?? []);
+      setClusters(clusterList?.items ?? []);
       const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
       if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
       next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
