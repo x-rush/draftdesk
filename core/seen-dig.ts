@@ -151,6 +151,129 @@ export async function runSuggestExpansion(db: Store, doFetch: DoFetch = fetch, o
 
 function doneKey(date: string) { return "seen-dig-done:" + date; }
 
+// ── 引擎 B · People Also Ask ──
+// 对 rising 词直抓 Google SERP，解析「大家还在问」区块的问题词；
+// 被墙/限流抛错由调用方静默跳过（不做硬依赖）。
+const PAA_MARKERS = ["大家还在问", "People also ask"];
+const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
+
+export function parsePaa(html: string): string[] {
+  const marker = PAA_MARKERS.map((m) => html.indexOf(m)).filter((i) => i >= 0).sort((a, b) => a - b)[0];
+  if (marker === undefined) return [];
+  const window = html.slice(marker, marker + 40000);
+  const out: string[] = [];
+  for (const match of window.matchAll(/<h3[^>]*>([\s\S]*?)<\/h3>/g)) {
+    const text = match[1].replace(/<[^>]+>/g, "").replace(/&amp;|&lt;|&gt;|&quot;|&#39;|&nbsp;/g, (e) => ENTITIES[e] ?? e).trim();
+    if (text.length >= 8 && text.length <= 120 && !out.includes(text)) out.push(text);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+export async function fetchPaa(q: string, doFetch: DoFetch, outer?: AbortSignal): Promise<string[]> {
+  const response = await doFetch(`https://www.google.com/search?q=${encodeURIComponent(q)}&hl=zh-CN&num=10`, {
+    signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(12000)]),
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    },
+  });
+  if (!response.ok) throw new Error(`serp HTTP ${response.status}`);
+  const html = await response.text();
+  if (/unusual traffic|captcha/i.test(html.slice(0, 4000))) throw new Error("serp blocked");
+  return parsePaa(html);
+}
+
+// 引擎 B 主流程：rising 词（上限 8，观测降序）逐个查 PAA，问题词入 seen-terms
+// （intent=question，seed=rising 词）。单词失败跳过，300ms 间隔防限流。
+export async function runPaa(db: Store, doFetch: DoFetch = fetch): Promise<{ rising: number; questions: number; skipped: number }> {
+  const stats = { rising: 0, questions: 0, skipped: 0 };
+  const rising = db.list<any>("seen-terms")
+    .filter((t) => t.status === "rising" && !t.offTopic)
+    .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
+    .slice(0, 8);
+  const outer = AbortSignal.timeout(8 * 60000);
+  for (const term of rising) {
+    stats.rising++;
+    try {
+      const questions = await fetchPaa(term.term, doFetch, outer);
+      for (const q of questions) {
+        const prev = db.get<any>("seen-terms", termId(q));
+        observeSuggestion(db, q, term.term, { source: "paa", intent: "question" });
+        if (!prev) stats.questions++;
+      }
+    } catch { stats.skipped++; }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return stats;
+}
+
+// ── 引擎 C · Trends Rising（相关查询·上升）──
+// Trends 关键词页底部 Rising 标签：Breakout=增长>5000% 竞争低，蓝海信号。
+// 走 trends/api/relatedqueries（响应带 )]}', 前缀）；失败不阻塞主流程。
+export function parseRelatedRising(raw: string): { query: string; value: string }[] {
+  const start = raw.indexOf("{");
+  if (start < 0) return [];
+  try {
+    const data = JSON.parse(raw.slice(start));
+    const lists = data?.default?.rankedList;
+    if (!Array.isArray(lists)) return [];
+    const rising = lists.length > 1 ? lists[1] : lists[0];
+    const out: { query: string; value: string }[] = [];
+    for (const item of rising?.rankedKeyword || []) {
+      const query = item?.query?.query;
+      if (typeof query === "string" && query.trim()) out.push({ query: query.trim().slice(0, 80), value: String(item.formattedValue ?? item.value ?? "") });
+    }
+    return out;
+  } catch { return []; }
+}
+
+export async function fetchRelatedRising(keyword: string, geo: string, doFetch: DoFetch, outer?: AbortSignal): Promise<{ query: string; value: string }[]> {
+  const req = encodeURIComponent(JSON.stringify({ keyword, geo }));
+  const response = await doFetch(`https://trends.google.com/trends/api/relatedqueries?hl=zh-CN&tz=-480&req=${req}`, {
+    signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(12000)]),
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    },
+  });
+  if (!response.ok) throw new Error(`relatedqueries HTTP ${response.status}`);
+  return parseRelatedRising(await response.text());
+}
+
+// 引擎 C 主流程：取启用的 trends 源地区 → RSS Top 关键词（前 5）→ Rising 查询入库
+//（seed=关键词，source=trends-rising）。RSS 或接口失败静默跳过。
+export async function runTrendsRising(db: Store, doFetch: DoFetch = fetch): Promise<{ keywords: number; rising: number; skipped: number }> {
+  const stats = { keywords: 0, rising: 0, skipped: 0 };
+  const sources = db.list<any>("sources").filter((s) => s.type === "trends" && s.enabled);
+  if (!sources.length) return stats;
+  const outer = AbortSignal.timeout(8 * 60000);
+  const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" };
+  for (const source of sources) {
+    const geo = source.region || "US";
+    try {
+      const rss = await doFetch(`https://trends.google.com/trending/rss?geo=${geo}`, {
+        signal: AbortSignal.any([outer, AbortSignal.timeout(12000)]), headers: UA,
+      });
+      if (!rss.ok) throw new Error(`rss HTTP ${rss.status}`);
+      const titles = [...(await rss.text()).matchAll(/<title>([^<]{1,160})<\/title>/g)]
+        .map((m) => m[1].replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim())
+        .filter(Boolean).slice(1, 6);
+      for (const keyword of titles) {
+        stats.keywords++;
+        try {
+          await new Promise((r) => setTimeout(r, 300));
+          for (const { query } of await fetchRelatedRising(keyword, geo, doFetch, outer)) {
+            const prev = db.get<any>("seen-terms", termId(query));
+            observeSuggestion(db, query, keyword, { source: "trends-rising" });
+            if (!prev) stats.rising++;
+          }
+        } catch { stats.skipped++; }
+      }
+    } catch { stats.skipped++; }
+  }
+  return stats;
+}
+
 // 每分钟 tick：手动请求（UI「立即整理」）优先，其次随整理闸门每日一次。
 // 全程 fire-and-forget：挖掘耗时数分钟，不得阻塞研究任务循环。
 export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number } = {}) {
@@ -165,12 +288,17 @@ export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { int
   if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
   db.put("meta", "seen-dig-running", { at: new Date().toISOString() });
   void (async () => {
-    console.log("[seen-dig] 热词挖掘开始（联想展开引擎）");
+    console.log("[seen-dig] 热词挖掘开始（联想展开 → PAA → Trends Rising）");
     try {
-      const stats = await runSuggestExpansion(db, doFetch, opts);
-      console.log(`[seen-dig] 完成：种子 ${stats.seeds} / 请求 ${stats.requests}（失败 ${stats.failed}）/ 新词 ${stats.newTerms} / 更新 ${stats.updated}`);
-      db.put("meta", doneKey(today), { at: new Date().toISOString(), ...stats });
-      db.put("meta", "seen-dig-last", { date: today, at: new Date().toISOString(), ...stats });
+      const a = await runSuggestExpansion(db, doFetch, opts);
+      console.log(`[seen-dig] 引擎A 联想展开：种子 ${a.seeds} / 请求 ${a.requests}（失败 ${a.failed}）/ 新词 ${a.newTerms} / 更新 ${a.updated}`);
+      const b = await runPaa(db, doFetch).catch((e) => ({ rising: 0, questions: 0, skipped: 0, error: String(e) }));
+      console.log(`[seen-dig] 引擎B PAA：rising ${b.rising} / 问题词 ${b.questions}（跳过 ${(b as any).skipped ?? 0}）`);
+      const c = await runTrendsRising(db, doFetch).catch((e) => ({ keywords: 0, rising: 0, skipped: 0, error: String(e) }));
+      console.log(`[seen-dig] 引擎C TrendsRising：关键词 ${c.keywords} / 上升词 ${c.rising}（跳过 ${(c as any).skipped ?? 0}）`);
+      const summary = { at: new Date().toISOString(), suggest: a, paa: b, trends: c };
+      db.put("meta", doneKey(today), summary);
+      db.put("meta", "seen-dig-last", { date: today, ...summary });
     } catch (e) {
       console.error("[seen-dig] 挖掘失败:", e instanceof Error ? e.message : e);
     } finally {

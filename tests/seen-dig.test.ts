@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
-import { collectSeeds, expansionQueries, parseSuggestPayload, Limiter, runSuggestExpansion, seenDiggingTick } from "../core/seen-dig";
+import { collectSeeds, expansionQueries, parseSuggestPayload, parsePaa, parseRelatedRising, Limiter, runPaa, runSuggestExpansion, runTrendsRising, seenDiggingTick } from "../core/seen-dig";
 
 function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
@@ -113,7 +113,7 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     assert.equal(db.get("seen-terms", "notion tools"), undefined, "无手动标记且无闸门不应触发");
     db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
     seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 3500));
     assert.ok(db.get("seen-terms", "notion tools"), "手动标记应触发挖掘");
     const done = db.get<any>("meta", "seen-dig-done:" + new Date().toISOString().slice(0, 10));
     assert.ok(done, "完成键应写入");
@@ -123,5 +123,66 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(db.get("seen-terms", "another tools"), undefined, "完成键当日应幂等跳过");
+  } finally { cleanup(dir); }
+});
+
+const PAA_HTML = `<html><body><div><h3>搜索结果标题不应出现</h3></div>
+<h3>People also ask</h3><div><h3><span>notion 怎么导出 pdf 文件</span></h3></div>
+<div><h3>notion 是免费的吗还是收费</h3></div><h3><b>notion 和语雀哪个更好用些</b></h3></body></html>`;
+
+test("PAA 解析：只取标记后的 h3 问题，去标签、去重、8-120 字", () => {
+  assert.deepEqual(parsePaa(PAA_HTML), ["notion 怎么导出 pdf 文件", "notion 是免费的吗还是收费", "notion 和语雀哪个更好用些"]);
+  assert.deepEqual(parsePaa("<html>没有标记</html>"), []);
+});
+
+test("引擎 B：rising 词查 PAA，问题词入库 intent=question；被封静默跳过", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-paa-"));
+  try {
+    const db = new Store(dir);
+    seedTerm(db, "notion", "rising");
+    seedTerm(db, "obsidian", "rising");
+    let call = 0;
+    const fakeFetch = (async (url: any) => {
+      call++;
+      if (String(url).includes("q=obsidian")) return new Response("unusual traffic detected", { status: 429 });
+      return new Response(PAA_HTML, { status: 200 });
+    }) as unknown as typeof fetch;
+    const stats = await runPaa(db, fakeFetch);
+    assert.equal(stats.rising, 2);
+    assert.equal(stats.questions, 3);
+    assert.equal(stats.skipped, 1);
+    const q = db.get<any>("seen-terms", "notion 怎么导出 pdf 文件");
+    assert.equal(q.seed, "notion");
+    assert.equal(q.intent, "question");
+    assert.deepEqual(q.sources, ["paa"]);
+  } finally { cleanup(dir); }
+});
+
+test("引擎 C：relatedqueries 解析 )]}', 前缀与 Rising 列表；入库带 seed", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-trends-"));
+  try {
+    const db = new Store(dir);
+    for (const s of db.list<any>("sources").filter((x) => x.type === "trends" && x.id !== "trends-us"))
+      db.put("sources", s.id, { ...s, enabled: false });
+    db.put("sources", "trends-us", { id: "trends-us", name: "Trends US", type: "trends", region: "US", enabled: true, sourceType: "trend", note: "" });
+    const RSS = "<rss><channel><title>Daily Search Trends</title><item><title>AI Notebook</title></item><item><title>Local LLM</title></item></channel></rss>";
+    const API = ")]}',\n" + JSON.stringify({ default: { rankedList: [
+      { rankedKeyword: [{ query: { query: "top 关键词不应出现" } }] },
+      { rankedKeyword: [{ query: { query: "ai notebook free" }, value: 5000, formattedValue: "Breakout" }, { query: { query: "local llm 工具" }, value: 250, formattedValue: "+250%" }] },
+    ] } });
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("relatedqueries")) return new Response(API, { status: 200 });
+      if (u.includes("trending/rss")) return new Response(RSS, { status: 200 });
+      throw new Error("unexpected " + u);
+    }) as unknown as typeof fetch;
+    const stats = await runTrendsRising(db, fakeFetch);
+    assert.equal(stats.keywords, 2);
+    assert.equal(stats.rising, 2);
+    const doc = db.get<any>("seen-terms", "ai notebook free");
+    assert.equal(doc.seed, "AI Notebook");
+    assert.equal(doc.status, "new");
+    assert.deepEqual(doc.sources, ["trends-rising"]);
+    assert.equal(db.get("seen-terms", "top 关键词不应出现"), undefined, "Top 列表不入库");
   } finally { cleanup(dir); }
 });
