@@ -3,7 +3,7 @@
 // （PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
 import { ActivityCard, ActivityTools } from "../Activities";
 import { DiscoveryLens } from "../DiscoveryLens";
-import { api, date, Empty, kindLabels } from "../ui";
+import { api, date, Empty, kindLabels, Skeleton } from "../ui";
 import { Search, ArrowUpRight } from "lucide-react";
 import { creationLabels } from "../../core/workspace-ui";
 import { decisionLabels, decisionOf } from "../../core/research-policy";
@@ -81,7 +81,7 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           </div>
         )}
         {view === "activities" && <p className="context-note">默认展示全部活动结果；使用「活动时间」和「质量状态」筛选当前可参与、待验证、已结束或已否决的记录。原始快照请在上方「创作活动」资料视图中查看。</p>}
-        {!filtered.length ? (
+        {loading && !filtered.length ? <Skeleton rows={3} label="研究内容加载中" /> : !filtered.length ? (
           <Empty
             title={
               jobId ? "本次研究没有符合条件的结果" : query ? "没有匹配的研究内容" : view === "activities" && activityTime === "actionable" ? "暂无通过核验且仍可参与的活动" : quality === "ready" && data.stats.review > 0 ? "暂无通过检查的推荐" : "这里还没有研究结果"

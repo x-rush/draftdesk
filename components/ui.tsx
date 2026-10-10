@@ -129,6 +129,20 @@ export function Empty({
     </div>
   );
 }
+// 骨架屏（P2①）：数据视图首屏加载占位，替代空白/空态闪烁。
+export function Skeleton({ rows = 3, label = "加载中" }: { rows?: number; label?: string }) {
+  return (
+    <div className="skeleton" role="status" aria-label={label}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="skeleton-row" key={i} aria-hidden="true">
+          <div className="skeleton-line skeleton-meta" />
+          <div className="skeleton-line skeleton-title" />
+          <div className="skeleton-line skeleton-text" />
+        </div>
+      ))}
+    </div>
+  );
+}
 export function Field({
   label,
   children,

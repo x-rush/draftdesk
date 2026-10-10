@@ -5,7 +5,7 @@
 // 板块：🔥 热词雷达（顶部）→ 全量词表 → 选题×搜索词 → 意图分层。
 import { useMemo, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
-import { Empty, api, date } from "../ui";
+import { Empty, api, date, Skeleton } from "../ui";
 import { Pagination } from "../Pagination";
 import { Select } from "../Select";
 import { isLongTail } from "../../core/seen-terms";
@@ -100,7 +100,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
             <button key={key} className={digIntent === key ? "active" : ""} aria-current={digIntent === key ? "page" : undefined} onClick={() => setDigIntent(key)}>{label} {intentCounts[key]}</button>
           ))}
         </nav>
-        {zoneView(zoneLists[radarTab]).length === 0 ? (
+        {ws.loading && !ws.seenTerms.length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneView(zoneLists[radarTab]).length === 0 ? (
           <p className="muted">{digIntent !== "all" ? "该意图下暂无热词。" : radarTab === "new" ? "今日无爆发级新词，常规词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥2 次即晋级）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
         ) : (
           <div className="discovery-list" role="list" aria-label={`热词词表（${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区）`}>
@@ -134,6 +134,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
           <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id as typeof tab)}>{label}</button>
         ))}
       </nav>
+      {ws.loading && !ws.seenTerms.length && !terms.length && tab !== "radar" && <Skeleton rows={3} label="热词趋势加载中" />}
       {terms.length === 0 && tab !== "radar" && <Empty title="还没有搜索词数据。">
         外部 Agent 每日写入 seo-terms（词频/意图/源链接）后，这里会出现全量词表、选题匹配与意图分层。
       </Empty>}

@@ -127,18 +127,29 @@ export function useWorkspaceData() {
       }
     })();
   }, []);
-  async function act(fn: () => Promise<void>) {
+  // P2③ 乐观更新：apply 先改本地态（拍板类操作 <50ms 反馈），fn 失败 undo 回滚 + 错误提示；
+  // 成功后仍 refresh 与服务端对账。
+  async function act(fn: () => Promise<void>, optimistic?: { apply: () => void; undo: () => void }) {
     setBusy(true);
     setError("");
     setNotice("");
+    let applied = false;
     try {
+      if (optimistic) {
+        optimistic.apply();
+        applied = true;
+      }
       await fn();
       await refresh();
     } catch (e) {
+      if (applied) optimistic?.undo();
       setError(formatApiError(e));
     } finally {
       setBusy(false);
     }
+  }
+  function mutateOutlines(update: (list: any[]) => any[]) {
+    setOutlines((list) => update(list));
   }
   function navigate(v: string) {
     window.history.pushState(null, "", "?view=" + v);
@@ -170,7 +181,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, seenTerms, discussionContext, setDiscussionContext,
+    outlines, clusters, seoTerms, siteProjects, seenTerms, discussionContext, setDiscussionContext, mutateOutlines,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,

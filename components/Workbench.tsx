@@ -249,7 +249,7 @@ export function Workbench() {
             <>
               {view === "decisions" && <Review />}
               {view === "hotspots" && <div className="toolbar"><label className="check"><input type="checkbox" checked={ws.hotspotConsumed !== "hide"} onChange={e => { ws.setHotspotConsumed(e.target.checked ? "include" : "hide"); ws.setHotspotPage(1); }} />查看已消费</label></div>}
-              {view === "hotspots" && <Hotspots feed={data.hotspots} sources={data.sources} query={ws.hotspotQ} status={ws.hotspotStatus} source={ws.hotspotSource} plan={ws.hotspotPlan} busy={busy}
+              {view === "hotspots" && <Hotspots loading={ws.loading} feed={data.hotspots} sources={data.sources} query={ws.hotspotQ} status={ws.hotspotStatus} source={ws.hotspotSource} plan={ws.hotspotPlan} busy={busy}
                 onQuery={value => { ws.setHotspotQ(value); ws.setHotspotPage(1); }} onStatus={value => { ws.setHotspotStatus(value); ws.setHotspotPage(1); }} onSource={value => { ws.setHotspotSource(value); ws.setHotspotPage(1); }} onPlan={value => { ws.setHotspotPlan(value); ws.setHotspotPage(1); }} onPage={ws.setHotspotPage}
                 onRefresh={() => void act(async () => { const result = await api<{ count: number; source: string }>("hotspot-refresh", { sourceId: ws.hotspotSource }); setNotice(`${result.source} 已刷新 ${result.count} 条热点线索，未调用 AI。`); })}
                 onDiscuss={(row) => { ws.setDiscussionContext({ title: row.title, url: row.url, source: row.sourceNames[0] || "" }); navigate("chat"); }}

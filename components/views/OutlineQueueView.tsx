@@ -24,9 +24,15 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
   const clusterOf = (o: any) => clusters.find((c) => c.id === o.clusterId);
   useListKeyboardShortcuts(".discovery-row", { approve: () => pending[0] && decide(pending[0], "approved"), archive: () => pending[0] && decide(pending[0], "rejected", "其他"), discuss: () => pending[0] && setDetail(pending[0]) }, pending.length > 0);
 
-  async function decide(o: any, decision: string, rejectReason?: string) {
-    await api("outlines/" + o.id + "/decision", { decision, ...(rejectReason ? { rejectReason } : {}) });
-    await ws.refresh();
+  // P2③ 乐观拍板：本地先移出待拍队列（<50ms），失败回滚并提示，成功后台 refresh 对账。
+  function decide(o: any, decision: string, rejectReason?: string) {
+    return ws.act(
+      async () => { await api("outlines/" + o.id + "/decision", { decision, ...(rejectReason ? { rejectReason } : {}) }); },
+      {
+        apply: () => ws.mutateOutlines((list) => list.map((x) => (x.id === o.id ? { ...x, decision } : x))),
+        undo: () => ws.mutateOutlines((list) => list.map((x) => (x.id === o.id ? { ...x, decision: "pending" } : x))),
+      },
+    );
   }
 
   const totalToday = outlines.filter((o) => o.decision !== "pending").length + pending.length;
