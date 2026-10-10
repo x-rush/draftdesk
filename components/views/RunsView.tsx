@@ -52,14 +52,14 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                     })}>使用保留证据重试</button>}
               </span>
             </div>
-            {j.error && <p className="error">{j.error}</p>}
+            {j.error && <p className="error" style={{ maxWidth: 720 }}>{j.error}</p>}
             {j.warnings.map((w, i) => (
               <p className="warning" key={i}>
                 {w}
               </p>
             ))}
             <ResearchBrief job={j} />
-            <details>
+            <details className="row-fold">
               <summary>步骤、预算与技能版本{["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 ? " · 重试说明" : ""}</summary>
               {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
               <ol className="timeline">

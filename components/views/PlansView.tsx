@@ -40,7 +40,6 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
         >
           ＋ 新建策略
         </button>
-        <span>自动运行默认关闭 · 可随时调整</span>
       </div>
       <div className="plan-list">
         {data.plans.map((p) => (

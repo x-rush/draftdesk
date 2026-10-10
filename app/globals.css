@@ -593,7 +593,6 @@ main {
 }
 .row-side button {
   font-size: 12px;
-  background: transparent;
 }
 .quality-badge {
   font-size: 10px;
@@ -1122,9 +1121,13 @@ main {
   background: #e6edde;
 }
 .history strong {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.5;
 }
 .history small {
   display: block;
@@ -1172,8 +1175,20 @@ main {
   margin-left: 30px;
 }
 .message > strong {
+  display: inline-block;
   font-size: 11px;
   color: #658454;
+  background: #eaf0e3;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.message { margin: var(--s4) 0; }
+.history > button:not(:first-child) {
+  display: block;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: var(--s4);
 }
 .message > div {
   white-space: pre-wrap;
@@ -1241,10 +1256,16 @@ main {
 @keyframes skeleton-shimmer { to { background-position: -200% 0; } }
 .hotspot-controls-wide { grid-template-columns: minmax(200px,2fr) repeat(4,minmax(118px,1fr)); }
 @media(max-width:850px){.hotspot-controls-wide{grid-template-columns:1fr 1fr}}
-.hotspot-health { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px var(--s4); margin-bottom: var(--s3); font-size: 13px; }
-.hotspot-health > summary { cursor: pointer; color: var(--muted); }
-/* 热词雷达紧凑行（审查：默认 discovery-row 26px 上下距对词表过松） */
-.radar-list .discovery-row { padding: 13px 4px; }
+.hotspot-health { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 8px var(--s4); margin-bottom: var(--s3); font-size: 13px; }
+.hotspot-health > summary { cursor: pointer; color: var(--muted); padding: 4px 0; gap: 10px; }
+.hotspot-health > summary::before { margin-right: 2px; }
+.hotspot-health > :not(summary) { padding-left: 16px; }
+.hotspot-health .hotspot-actions { margin: var(--s2) 0; }
+/* 热词雷达三区摘要 chips（用户批复③：雷达是导航摘要，词表才是完整列表） */
+.radar-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: var(--s2) 0 var(--s3); }
+.radar-chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; color: var(--ink); }
+.radar-chip:hover { border-color: #9db69b; background: #f4f8f1; }
+.radar-chip small { color: var(--muted); margin-left: 4px; }
 .source-tag { font-size: 11px; color: var(--muted); background: var(--soft); border-radius: 4px; padding: 2px 6px; }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1273,9 +1294,10 @@ main {
 .page-header .page-subtitle { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
 .page-toolbar { display: flex; gap: var(--s2); align-items: center; justify-content: flex-end; flex-wrap: wrap; margin: var(--s3) 0; }
 .form-section {
-  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  background: #fbfcf9; border: 1px solid var(--line); border-radius: 10px;
   padding: var(--s4); margin-bottom: var(--s4);
 }
+.activity-tools .activity-header-actions { margin-bottom: var(--s3); }
 .form-section > h2 { font-size: 16px; margin: 0 0 var(--s3); }
 .form-section .helper-text { display: block; font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 5px; }
 .form-section .field { margin: var(--s4) 0; }
@@ -1318,11 +1340,16 @@ main {
   border-color: #c2cebf;
 }
 .card-row { padding: var(--s4) 0; border-bottom: 1px solid var(--line); }
+/* 审查台条目完整卡片（用户截图批复⑥）：独立边框卡替代分隔线 */
+.review-row.card-row {
+  border: 1px solid var(--line); border-radius: 10px; background: #fff;
+  padding: var(--s4); margin: var(--s3) 0; border-bottom: 1px solid var(--line);
+}
 .card-row-top { display: flex; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
 .card-row-top .check { margin: 0; flex: none; }
 .card-title { font-size: 16px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 260px; }
 .card-row-top > .article-title { flex: 1 1 260px; min-width: 0; text-align: left; }
-.card-badges { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: none; }
+.card-badges { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: none; min-width: 0; max-width: 100%; }
 .card-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; color: var(--muted); line-height: 1.5; margin: 6px 0; }
 .card-row-bottom { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .card-meta { font-size: 12px; color: var(--muted); min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
