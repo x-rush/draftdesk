@@ -2,7 +2,7 @@
 name: trend-research
 description: 分析热榜与热词的真实信号、地域和时间口径，将趋势转为内容和小型应用研究线索。
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # 趋势观察员
@@ -27,6 +27,15 @@ metadata:
 kind 只能 trend。signalEvidenceIds 必须指向输入中的指标/热榜证据，并列在 evidenceIds 中。每项提供 keyword、region、window、intent、comparison、opportunity、cautions。
 
 没有指标也可以形成“热词线索”，但必须明确无量化趋势支持，不能称热度上涨、爆发或高速增长。不计算混合国家、单位或时间窗口的趋势线。
+
+## 输出字段合同（硬性，违反会导致整批拒绝）
+
+- 顶层只允许 items 与 rejected 两个键，两者都必填；无符合方向信号时 items 写 []，rejected 解释缺口。
+- 每条 item 必填：kind（逐字写 "trend"）、title（string，3–120 字）、summary（string，20–2500 字）、audience、whyNow、personalImpact（均 string）、tags（string[]）、evidenceIds（string[]，1–15 条）、claims（object[]，1–10 条）、unknowns（string[]）、nextActions（string[]，1–8 条）、details（object）。
+- trend.details 必填八字段：keyword、region、window、intent、comparison、opportunity（均 string，不得空字符串）、signalEvidenceIds（string[]，1–10 条）、cautions（string[]）。
+- 必填字段缺失（received undefined）即整批拒绝：无依据写「本轮未核实」，数组空写 []，绝不写 null 或省略字段名。
+- items 的元素内绝不允许出现 rejected 或 items 键（对象只能包含上面列出的字段名，多余键会导致整批被拒）。
+- signalEvidenceIds 只能逐字引用输入证据编号，且必须已包含在该条顶层 evidenceIds 中。
 
 ## 例子
 

@@ -2,7 +2,7 @@
 name: editorial-research
 description: 将有来源的 AI 变化转为普通职场人与创作者能使用的资讯和公众号、小红书原创选题方案。
 metadata:
-  version: "1.3.5"
+  version: "1.3.6"
 ---
 
 # 资讯与选题编辑
@@ -40,6 +40,16 @@ metadata:
 - 输出前按每条 kind 分别核对对应 details，不能拿 topic 的结构代替 news，不能用 null、空对象或空字符串补位。字段完整性与事实支持分别检查；通过格式检查不代表可以发布。
 - claims 构造规则（硬性，违反会导致整批拒绝）：最多 4 条；type 只能是 `fact` / `inference` / `hypothesis` 逐字三选一；`fact` 必须带从证据原文逐字摘录的 `quote` 字符串，找不到引文就降级 inference，`quote` 绝不输出 null；`evidenceIds` 只能逐字引用输入证据编号且已含在该条顶层 evidenceIds 里。
 - 若某变化只有一句新闻摘要，不能生成仿佛已完成实测的完整教程。
+
+## 输出字段合同（硬性，违反会导致整批拒绝）
+
+- 顶层只允许 items 与 rejected 两个键，两者都必填；没有可输出内容时对应数组写 []，不得省略键名。
+- 每条 item 必填（news 与 topic 公共）：kind（固定值逐字写 "news" 或 "topic"）、title（string，3–120 字）、summary（string，20–2500 字，不得空字符串）、audience、whyNow、personalImpact（均 string）、tags（string[]）、evidenceIds（string[]，1–15 条）、claims（object[]，1–10 条）、unknowns（string[]）、nextActions（string[]，1–8 条）、details（object）。
+- news.details 必填三字段：whatChanged（string）、availability（string）、limitations（string[]）。topic.details 必填五字段：angle（string）、readerPromise（string）、outline（string[]，3–12 条）、materialChecklist（string[]）、platforms（object[]，1–3 条；每条 name 逐字取 "公众号"/"小红书"/"其他"，titles 为 string[]（1–3 条），hook 为 string，structure 为 string[]（2–12 条））。
+- claim 必填：statement（string）、type（逐字写 fact/inference/hypothesis 之一）、evidenceIds（string[]）；quote 仅 type=fact 时必带且为非空字符串。id 是可选字段，不要自造。
+- 必填字段缺失（received undefined）即整批拒绝：字符串没有依据就写「本轮未核实」，数组空写 []，绝不写 null、绝不省略字段名。
+- items 的元素内绝不允许出现 rejected 或 items 键（历史上正是该错误导致整批被拒）；对象只能包含上面列出的字段名。
+- 所有 evidenceIds 只能逐字复制输入 evidence 的 id（不自创编号或缩写），且必须已包含在该条顶层 evidenceIds 中。
 
 ## 反例
 

@@ -2,7 +2,7 @@
 name: opportunity-research
 description: 从产品动态、真实用户问题和替代工具中研究一人可做的小型应用，输出证据、验证实验和停止条件。
 metadata:
-  version: "1.4.0"
+  version: "1.4.1"
 ---
 
 # 应用机会研究员
@@ -35,6 +35,15 @@ claims 构造规则（硬性，违反会导致整批拒绝）：
 2. type 只能是 `fact` / `inference` / `hypothesis` 三选一，逐字拼写。
 3. `fact` 必须带 `quote`：从证据原文逐字摘录的字符串。找不到逐字引文就不要标 fact，降级为 inference；`quote` 绝不输出 null。
 4. `evidenceIds` 只能逐字引用输入证据列表里的编号，且必须已包含在该条 draft 顶层的 evidenceIds 里；不得生成列表之外的编号。
+
+## 输出字段合同（硬性，违反会导致整批拒绝）
+
+- 顶层只允许 items 与 rejected 两个键，两者都必填；允许 items=[] 并在 rejected 解释缺口。
+- 每条 item 必填：kind（逐字写 "idea"）、title（string，3–120 字）、summary（string，20–2500 字）、audience、whyNow、personalImpact（均 string）、tags（string[]）、evidenceIds（string[]，1–15 条）、claims（object[]，1–10 条）、unknowns（string[]）、nextActions（string[]，1–8 条）、details（object）。
+- idea.details 必填十一字段：job、trigger、frequency、differentiation、willingnessToPay、experiment、successCriteria、stopCriteria（均 string，不得空字符串）、alternatives、nonGoals（string[]）、mvp（string[]，2–8 条）。
+- 必填字段缺失（received undefined）即整批拒绝：没有用户证据的字段如实写「本轮未核实」或缺口，绝不写 null、绝不省略字段名。
+- items 的元素内绝不允许出现 rejected 或 items 键（对象只能包含上面列出的字段名，多余键会导致整批被拒）。
+- 所有 evidenceIds 只能逐字复制输入证据编号，且必须已包含在该条顶层 evidenceIds 中。
 
 ## 反例
 

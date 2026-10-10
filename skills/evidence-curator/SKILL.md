@@ -2,7 +2,7 @@
 name: evidence-curator
 description: 将原始资讯、热榜、工具动态和用户问题整理为可追溯的研究证据簇，保留时间、地域、反证与材料缺口。
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # 证据整理员
@@ -42,6 +42,15 @@ clusters 构造规则（硬性，违反会导致整批拒绝）：
 1. 每个 cluster 必须完整包含 label、summary、evidenceIds、contradictions、missing 五个字段，逐字段输出；数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」，绝不能省略字段名或写 null。
 2. evidenceIds 只能逐字引用输入证据列表里的编号，且必须已在输入中存在。
 3. excluded 里每条也要写全 reason 与 evidenceId。
+
+## 输出字段合同（硬性，违反会导致整批拒绝）
+
+- 顶层只允许 clusters 与 excluded 两个键，两者都必填；clusters 可为 []，剔除的每条证据进 excluded。
+- 每个 cluster 必填五字段：label（string，1–3000 字）、summary（string，20–2500 字，能回溯原材料）、evidenceIds（string[]，1–15 条）、contradictions（string[]）、missing（string[]）。
+- excluded 每条必填两字段：evidenceId（string）、reason（string）。
+- 必填字段缺失（received undefined）即整批拒绝：字符串无依据写「本轮未核实」，数组空写 []，绝不写 null 或省略字段名。
+- cluster 对象内绝不允许出现 excluded 或 clusters 键（对象只能包含上面列出的字段名，多余键会导致整批被拒）。
+- evidenceIds 与 evidenceId 只能逐字复制输入证据列表里的编号，不使用序号或重新生成的 ID。
 
 
 ## 随任务加载的参考规程
