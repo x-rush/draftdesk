@@ -6,5 +6,9 @@ export async function register() {
   if (process.env.DRAFTDESK_EMBEDDED_WORKER === "0") return;
   const { startWorkerLoop } = await import("./worker/loop");
   const { store } = await import("./core/store");
-  startWorkerLoop(store());
+  const { recoverOrphanJobs } = await import("./core/pipeline");
+  const db = store();
+  const n = recoverOrphanJobs(db);
+  if (n) console.log("[startup] 孤儿任务回收:", n, "条置回 queued");
+  startWorkerLoop(db);
 }

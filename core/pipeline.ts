@@ -297,6 +297,20 @@ export async function runJob(
     clearInterval(heartbeat);
   }
 }
+// 孤儿回收（信息架构 v2 增补）：running 但从未持有租约（leaseUntil 缺失）且创建超过
+// 30 分钟 → 置回 queued 重新认领。有租约的过期回收走 claim() 既有路径（置 failed）。
+export function recoverOrphanJobs(db: Store, maxAgeMs = 30 * 60000) {
+  const cutoff = Date.now() - maxAgeMs;
+  let recovered = 0;
+  for (const j of db.list<any>('jobs')) {
+    if (j.state !== 'running' || j.leaseUntil) continue;
+    if (Date.parse(j.createdAt || now()) > cutoff) continue;
+    db.put('jobs', j.id, { ...j, state: 'queued', stage: '等待执行（孤儿回收）' });
+    recovered++;
+  }
+  return recovered;
+}
+
 export function scheduleTick(db: Store, date = new Date()) {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",

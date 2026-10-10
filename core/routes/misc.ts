@@ -28,6 +28,20 @@ export const routes: RouteDef[] = [
     }),
   },
   {
+    // 手动触发内置分析（信息架构 v2 增补）：入队 job，worker 认领后跑整理/提词/审核链
+    methods: ["POST"],
+    pattern: "plans/:id/analyze",
+    handler: async ({ db, params }) => {
+      const plan = db.get<any>("plans", params.id);
+      if (!plan) throw new AppError("研究策略不存在", 404);
+      if (plan.kind === "activities") throw new AppError("活动策略无内置分析；采集走登录浏览器流程。", 400);
+      const running = db.list<any>("jobs").some((j) => j.planId === params.id && j.state === "running");
+      if (running) return json({ ok: true, triggered: false, running: true });
+      const job = db.enqueue(params.id, [], undefined, undefined, true);
+      return json({ ok: true, triggered: true, jobId: job!.id }, 202);
+    },
+  },
+  {
     methods: ["POST"],
     pattern: "plans",
     handler: async ({ db, readBody }) => {

@@ -11,6 +11,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { busy, setPlan, navigate, act, setNotice } = ws;
   const [extractBusy, setExtractBusy] = useState(false);
   const [extractNote, setExtractNote] = useState("");
+  const [analyzeBusy, setAnalyzeBusy] = useState("");
   return (
     <>
       <div className="toolbar">
@@ -70,6 +71,16 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
               </small>
             </div>
             <div className="plan-actions">
+              {p.kind !== "activities" && (
+                <button disabled={busy || analyzeBusy === p.id} onClick={() => void (async () => {
+                  setAnalyzeBusy(p.id);
+                  try {
+                    const r = await api<{ triggered: boolean; running: boolean }>("plans/" + p.id + "/analyze", {});
+                    setNotice(r.triggered ? "内置分析已入队（整理→提词→审核）。" : "该策略已有分析在运行。");
+                    await ws.refresh();
+                  } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
+                })()}>立即分析</button>
+              )}
               {p.kind === "activities" ? <button className="primary" onClick={() => navigate("activities")}>前往活动采集</button> : <button
                 disabled={
                   busy ||

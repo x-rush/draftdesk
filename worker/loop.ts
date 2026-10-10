@@ -4,7 +4,7 @@
 // 启动入口：根目录 instrumentation.ts（Next 服务启动时注册，构建期与测试不触发）。
 import type { Store } from "../core/store";
 import { now } from "../core/store";
-import { runJob, scheduleTick } from "../core/pipeline";
+import { recoverOrphanJobs, runJob, scheduleTick } from "../core/pipeline";
 import { seenTermsTick } from "../core/seen-extract";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
@@ -15,6 +15,7 @@ export function startWorkerLoop(db: Store) {
   if (g.__draftdeskWorker) return g.__draftdeskWorker;
   const state = { stopping: false };
   g.__draftdeskWorker = state;
+  recoverOrphanJobs(db);
   console.log("[worker] 研究任务循环启动（单进程模式）");
   (async () => {
     while (!state.stopping) {
