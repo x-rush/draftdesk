@@ -229,14 +229,24 @@ export function parseRelatedRising(raw: string): { query: string; value: string 
 }
 
 export async function fetchRelatedRising(keyword: string, geo: string, doFetch: DoFetch, outer?: AbortSignal): Promise<{ query: string; value: string }[]> {
-  const req = encodeURIComponent(JSON.stringify({ keyword, geo }));
-  const response = await doFetch(`https://trends.google.com/trends/api/relatedqueries?hl=zh-CN&tz=-480&req=${req}`, {
-    signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(12000)]),
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    },
+  const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" };
+  // token 三步舞：直接 GET relatedqueries 无凭证 404（实测），必须先 explore 换
+  // RELATED_QUERIES widget token，再用 token 调 widgetdata/relatedsearches。
+  const exploreReq = encodeURIComponent(JSON.stringify({ comparisonItem: [{ keyword, geo, time: "today 1-m" }], category: 0, property: "" }));
+  const explore = await doFetch(`https://trends.google.com/trends/api/explore?hl=zh-CN&tz=-480&req=${exploreReq}`, {
+    signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(12000)]), headers: UA,
   });
-  if (!response.ok) throw new Error(`relatedqueries HTTP ${response.status}`);
+  if (!explore.ok) throw new Error(`explore HTTP ${explore.status}`);
+  const exploreBody = await explore.text();
+  const start = exploreBody.indexOf("{");
+  const widgets = start >= 0 ? JSON.parse(exploreBody.slice(start))?.widgets : null;
+  const widget = Array.isArray(widgets) ? widgets.find((w: any) => w?.id === "RELATED_QUERIES") : null;
+  if (!widget?.token) throw new Error("explore 无 RELATED_QUERIES widget");
+  const request = encodeURIComponent(typeof widget.request === "string" ? widget.request : JSON.stringify(widget.request));
+  const response = await doFetch(`https://trends.google.com/trends/api/widgetdata/relatedsearches?hl=zh-CN&tz=-480&token=${encodeURIComponent(widget.token)}&req=${request}`, {
+    signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(12000)]), headers: UA,
+  });
+  if (!response.ok) throw new Error(`relatedsearches HTTP ${response.status}`);
   return parseRelatedRising(await response.text());
 }
 

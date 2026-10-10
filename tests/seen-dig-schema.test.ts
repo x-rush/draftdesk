@@ -21,6 +21,7 @@ test("intent 规则判定：四大意图与优先级（教程→对比→商业�
   assert.equal(classifyIntent("剪映会员多少钱"), "commercial");
   assert.equal(classifyIntent("is notion free"), "commercial");
   assert.equal(classifyIntent("is notion down？"), "question");
+  assert.equal(classifyIntent("deepseek 是谁"), "question");
   assert.equal(classifyIntent("which tool"), "question");
   assert.equal(classifyIntent("randomterm"), "informational");
 });

@@ -158,7 +158,7 @@ test("引擎 B：rising 词查 PAA，问题词入库 intent=question；被封静
   } finally { cleanup(dir); }
 });
 
-test("引擎 C：relatedqueries 解析 )]}', 前缀与 Rising 列表；入库带 seed", async () => {
+test("引擎 C：explore 换 token 后取 Rising 列表，入库带 seed", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-trends-"));
   try {
     const db = new Store(dir);
@@ -166,13 +166,21 @@ test("引擎 C：relatedqueries 解析 )]}', 前缀与 Rising 列表；入库带
       db.put("sources", s.id, { ...s, enabled: false });
     db.put("sources", "trends-us", { id: "trends-us", name: "Trends US", type: "trends", region: "US", enabled: true, sourceType: "trend", note: "" });
     const RSS = "<rss><channel><title>Daily Search Trends</title><item><title>AI Notebook</title></item><item><title>Local LLM</title></item></channel></rss>";
-    const API = ")]}',\n" + JSON.stringify({ default: { rankedList: [
+    const EXPLORE = ")]}',\n" + JSON.stringify({ widgets: [
+      { id: "TIMESERIES", token: "bad" },
+      { id: "RELATED_QUERIES", token: "tok-1", request: { restriction: { geo: "US" } } },
+    ] });
+    const RELATED = ")]}',\n" + JSON.stringify({ default: { rankedList: [
       { rankedKeyword: [{ query: { query: "top 关键词不应出现" } }] },
       { rankedKeyword: [{ query: { query: "ai notebook free" }, value: 5000, formattedValue: "Breakout" }, { query: { query: "local llm 工具" }, value: 250, formattedValue: "+250%" }] },
     ] } });
     const fakeFetch = (async (url: any) => {
       const u = String(url);
-      if (u.includes("relatedqueries")) return new Response(API, { status: 200 });
+      if (u.includes("widgetdata/relatedsearches")) {
+        assert.ok(u.includes("token=tok-1"), "relatedsearches 必须携带 explore 换来的 token");
+        return new Response(RELATED, { status: 200 });
+      }
+      if (u.includes("api/explore")) return new Response(EXPLORE, { status: 200 });
       if (u.includes("trending/rss")) return new Response(RSS, { status: 200 });
       throw new Error("unexpected " + u);
     }) as unknown as typeof fetch;

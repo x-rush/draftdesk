@@ -22,8 +22,8 @@ export function classifyIntent(term: string): SeenTermIntent {
   if (zh("替代", "对比", "比较", "哪个好", "同类", "平替") || en("alternative", "vs", "versus", "compare", "comparison", "instead of")) return "comparison";
   // ③ commercial：价格/多少钱/收费/费用/免费/买
   if (zh("价格", "多少钱", "收费", "费用", "免费", "报价", "买") || en("price", "pricing", "cost", "free", "cheap", "discount", "deal", "buy")) return "commercial";
-  // ④ question：疑问句式（问号结尾/句首疑问词/语气词）
-  if (/[？?]$/.test(raw) || zh("吗", "么", "哪个", "哪些") || en("is", "are", "can", "does", "do", "should", "which", "when", "where", "who", "will")) return "question";
+  // ④ question：疑问句式（问号结尾/句首疑问词/语气词/「是谁」句式）
+  if (/[？?]$/.test(raw) || zh("吗", "么", "哪个", "哪些", "谁", "是多少") || en("is", "are", "can", "does", "do", "should", "which", "when", "where", "who", "will")) return "question";
   return "informational";
 }
 
