@@ -162,3 +162,26 @@ export function parseHackerNewsStory(raw:unknown,rank:number,collectedAt:string)
   ...(Number.isFinite(published)&&published>0&&published<4000000000?{publishedAt:new Date(published*1000).toISOString()}:{}),sourceType:"community",region:"全球",language:"en",contentLevel:summary?"excerpt":"headline",
   ...(Number.isFinite(score)&&score>=0?{metric:{name:"Hacker News 榜单分数",value:String(score),unit:"points",period:collectedAt,cadence:"instant" as const}}:{metric:{name:"Hacker News 榜单名次",value:String(rank),unit:"rank",period:collectedAt,cadence:"instant" as const}})};
 }
+
+// HN Algolia 公开检索 API：front_page 快照。分数是社区关注线索，不等于搜索热度。
+export function parseHnAlgolia(raw:unknown,collectedAt:string):EvidenceInput[]{
+  const payload=raw as Record<string,unknown>;
+  if(!payload||typeof payload!=="object"||!Array.isArray((payload as {hits?:unknown}).hits))
+    throw new AppError("HN Algolia 返回格式异常（缺 hits）。");
+  const hits=(payload as {hits:Record<string,unknown>[]}).hits;
+  const items:EvidenceInput[]=[];
+  for(const hit of hits.slice(0,30)){
+    const title=typeof hit.title==="string"?hit.title:"";
+    if(!title)continue;
+    const url=typeof hit.url==="string"&&hit.url?hit.url:hit.objectID?"https://news.ycombinator.com/item?id="+hit.objectID:"";
+    if(!url)continue;
+    const points=typeof hit.points==="number"&&Number.isFinite(hit.points)?String(hit.points):"";
+    const comments=typeof hit.num_comments==="number"&&Number.isFinite(hit.num_comments)?String(hit.num_comments):"";
+    items.push({title:title.slice(0,300),url,excerpt:(title+"（HN 讨论 "+(comments||"0")+" 条）").slice(0,8000),collectedAt,sourceType:"community",region:"全球",language:"en",contentLevel:"headline",
+    acquisition:{method:"platform",provider:"HN Algolia",platform:"Hacker News"},
+    publishedAt:typeof hit.created_at==="string"&&hit.created_at?hit.created_at:undefined,
+    ...(points?{metric:{name:"HN 得分",value:points,unit:"points",period:collectedAt,cadence:"instant" as const}}:{})});
+  }
+  if(!items.length)throw new AppError("HN Algolia 未解析到条目。");
+  return items;
+}

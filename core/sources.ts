@@ -5,7 +5,7 @@ import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
 import {relevanceReason,type DiscoveryCandidate,type CandidateStatus,type SourceCoverage,type DiscoveryRecord} from "./discovery";
-import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform} from "./hotlists";
+import { parseHnAlgolia, parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform } from "./hotlists";
 // 官方公开 JSON 接口（允许列表以精确 URL 匹配，配置来源时不可自填）：
 const BILIBILI_POPULAR_URL="https://api.bilibili.com/x/web-interface/popular";
 const WEIBO_HOTSEARCH_URL="https://weibo.com/ajax/side/hotSearch";
@@ -420,6 +420,9 @@ export async function collect(
         else if(s.url === "https://github.com/trending") items=parseGithubTrending(await safeRead(s.url,signal),now());
         else if(s.url === BILIBILI_POPULAR_URL) items=parseBilibiliPopular(await apiJsonRead(s.url,"https://www.bilibili.com/",signal),now());
         else if(s.url === WEIBO_HOTSEARCH_URL) items=parseWeiboHotSearch(await apiJsonRead(s.url,"https://weibo.com/",signal),now());
+        else if(s.url === "https://hn.algolia.com/api/v1/search?tags=front_page"){
+          items=parseHnAlgolia(await apiJsonRead(s.url,"https://news.ycombinator.com/",signal),now());
+        }
         else if(s.url === "https://hacker-news.firebaseio.com/v0/topstories.json"){
           const result=await collectHackerNews(signal);items=result.items;
           if(result.failures)warnings.push(`${s.name}：${result.failures} 条详情读取失败；已保留成功条目。`);

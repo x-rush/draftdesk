@@ -89,3 +89,21 @@ test("热点分类：upsert 幂等+urlKey 身份键+suggest 门槛；订阅排�
     cleanup(dir);
   }
 });
+
+test("HN Algolia 解析：title/url 缺失跳过，无 url 回退 HN 讨论页，分数进指标", async () => {
+  const { parseHnAlgolia } = await import("../core/hotlists");
+  const at = "2026-10-10T00:00:00.000Z";
+  const items = parseHnAlgolia({
+    hits: [
+      { title: "Show HN: 热词雷达", url: "https://example.com/radar", points: 88, num_comments: 12, created_at: "2026-10-09T00:00:00Z", objectID: "1" },
+      { title: "Ask HN: 无外链讨论帖", points: 5, objectID: "2" },
+      { title: "", objectID: "3" },
+    ],
+  }, at);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].url, "https://example.com/radar");
+  assert.equal(items[0].metric?.value, "88");
+  assert.equal(items[0].publishedAt, "2026-10-09T00:00:00Z");
+  assert.equal(items[1].url, "https://news.ycombinator.com/item?id=2");
+  assert.equal(items[1].metric?.value, "5");
+});

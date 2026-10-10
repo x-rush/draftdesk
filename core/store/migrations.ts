@@ -214,6 +214,26 @@ export const migrations: Migration[] = [
         kv.put("clusters", "clu-inbox", { id: "clu-inbox", topic: "选题收集箱", memberIds: [], memberCount: 0, kind: "inbox", window: "", suggestedPlatforms: [], target: "hotspots", status: "active", producedBy: "human", createdAt: now() });
     },
   },
+  {
+    id: "seen-sources-v1",
+    // 热词捕获（信息架构 v2 增补）：Reddit 社区 ×2 + HN Algolia 前页。
+    run: ({ kv }) => {
+      for (const id of ["hn-algolia", "reddit-sd", "reddit-agents"]) {
+        const source = defaultSources.find((s) => s.id === id);
+        if (source && !kv.get("sources", id)) kv.put("sources", id, source);
+      }
+    },
+  },
+  {
+    id: "trend-radar-regional-v1",
+    // 热词捕获（用户批复）：trend-radar 补齐 7 国 Trends（us/gb 已在，补 de/in/jp/kr/tw）。
+    run: ({ kv }) => {
+      const plan = kv.get<any>("plans", "trend-radar");
+      if (!plan) return;
+      const missing = ["trends-de", "trends-in", "trends-jp", "trends-kr", "trends-tw"].filter((id) => !(plan.sourceIds || []).includes(id));
+      if (missing.length) kv.put("plans", plan.id, { ...plan, sourceIds: [...(plan.sourceIds || []), ...missing] });
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {
