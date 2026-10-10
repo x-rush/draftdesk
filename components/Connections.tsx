@@ -18,6 +18,7 @@ export function Connections({
   pagination?: import("react").ReactNode;
   plans: Plan[];
   onChange: () => Promise<void>;
+  config: any;
   sources: Source[]; jobs: Job[]; artifacts: Artifact[]; onOpen:(a:Artifact)=>void;
 }) {
   const [name, setName] = useState("Hermes 研究助手"),

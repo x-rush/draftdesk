@@ -284,7 +284,7 @@ export function Workbench() {
                   pagination={ws.pager(data.pagination.submissions, ws.setReceiptsPage)}
                   plans={data.plans}
                   onChange={refresh}
-                  sources={data.sources} jobs={data.jobs} artifacts={data.artifacts} onOpen={setSelected}
+                  sources={data.sources} jobs={data.jobs} artifacts={data.artifacts} onOpen={setSelected} config={data.config}
                 />
               )}
               {view === "chat" && (
