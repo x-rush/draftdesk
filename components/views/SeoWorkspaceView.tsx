@@ -80,10 +80,10 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         <h2>🔥 热词雷达</h2>
         <p className="muted">三层雷达：新词（48h 内首见）→ 突增（观测晋级）→ 持续（连续 3 天在榜）。数据来自全源标题流的每日提取与外部 Agent 双写。</p>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <nav className="discovery-modes" aria-label="雷达分区">
-          <button className={radarTab === "new" ? "active" : ""} onClick={() => setRadarTab("new")}>🆕 新词 {radar.fresh.length}</button>
-          <button className={radarTab === "rising" ? "active" : ""} onClick={() => setRadarTab("rising")}>📈 突增 {radar.rising.length}</button>
-          <button className={radarTab === "sustained" ? "active" : ""} onClick={() => setRadarTab("sustained")}>🔥 持续 {radar.sustained.length}</button>
+        <nav className="discovery-modes" aria-label="雷达分区" style={{ marginTop: 8 }}>
+          <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => setRadarTab("new")}>🆕 新词 {radar.fresh.length}</button>
+          <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => setRadarTab("rising")}>📈 突增 {radar.rising.length}</button>
+          <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => setRadarTab("sustained")}>🔥 持续 {radar.sustained.length}</button>
         </nav>
         <button disabled={radarBusy} onClick={() => void (async () => {
           setRadarBusy(true);
@@ -95,17 +95,18 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
         </div>
         <nav className="discovery-modes" aria-label="搜索意图筛选" style={{ marginTop: 8 }}>
-          <button className={digIntent === "all" ? "active" : ""} onClick={() => setDigIntent("all")}>全部 {intentCounts.all}</button>
+          <button className={digIntent === "all" ? "active" : ""} aria-current={digIntent === "all" ? "page" : undefined} onClick={() => setDigIntent("all")}>全部 {intentCounts.all}</button>
           {DIG_INTENTS.map(([key, label]) => (
-            <button key={key} className={digIntent === key ? "active" : ""} onClick={() => setDigIntent(key)}>{label} {intentCounts[key]}</button>
+            <button key={key} className={digIntent === key ? "active" : ""} aria-current={digIntent === key ? "page" : undefined} onClick={() => setDigIntent(key)}>{label} {intentCounts[key]}</button>
           ))}
         </nav>
         {zoneView(zoneLists[radarTab]).length === 0 ? (
           <p className="muted">{digIntent !== "all" ? "该意图下暂无热词。" : radarTab === "new" ? "今日无爆发级新词，常规词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥2 次即晋级）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
         ) : (
-          <div className="discovery-list">
+          <div className="discovery-list" role="list" aria-label={`热词词表（${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区）`}>
             {zoneView(zoneLists[radarTab]).map((t) => (
-              <article className="discovery-row" key={t.id}>
+              <article className="discovery-row" key={t.id} role="listitem"
+                aria-label={`热词 ${t.term}，状态：${t.status === "new" ? "新词" : t.status === "rising" ? "突增" : "持续"}${t.intent ? `，意图：${DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}` : ""}${isLongTail(t.term) ? "，长尾词" : ""}`}>
                 <div className="row-content">
                   <div className="row-meta">
                     <span className="pill">{t.status === "new" ? "🆕 新词" : t.status === "rising" ? "📈 突增" : "🔥 持续"}</span>
@@ -130,7 +131,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
       </section>
       <nav className="discovery-modes" aria-label="SEO 板块">
         {[["terms", "全量热词"], ["matched", "选题×搜索词"], ["intent", "意图分层"]].map(([id, label]) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id as typeof tab)}>{label}</button>
+          <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id as typeof tab)}>{label}</button>
         ))}
       </nav>
       {terms.length === 0 && tab !== "radar" && <Empty title="还没有搜索词数据。">
@@ -162,7 +163,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                     {(t.sourceUrls || []).slice(0, 2).map((u: string) => <a key={u} href={u} target="_blank" rel="noopener noreferrer">源链接 ↗</a>)}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => { setDiscussionContext({ title: t.term, url: t.sourceUrls?.[0] || "", source: (t.sources || []).join("/") }); navigate("chat"); }}>讨论</button>
+                    <button aria-label={`讨论：${t.term}`} onClick={() => { setDiscussionContext({ title: t.term, url: t.sourceUrls?.[0] || "", source: (t.sources || []).join("/") }); navigate("chat"); }}>讨论</button>
                   </div>
                 </div>
               </article>

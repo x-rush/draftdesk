@@ -23,8 +23,8 @@ export function ActivityBatchesPanel({ ws, data }: { ws: any; data: any }) {
           {b.pin && <span className="pill">📌 置顶</span>}
           <span className="pill">{b.category || "未分类"}</span>
           <strong style={{ flex: 1 }}>{b.platform} · {b.count} 条 <small>{date(b.receivedAt)}{b.reason ? ` · ${b.reason}` : ""}</small></strong>
-          <button onClick={() => { const first = b; ws.setDiscussionContext({ title: `${first.platform} 活动批次（${first.count} 条）`, url: "", source: first.platform }); ws.navigate("chat"); }}>讨论</button>
-          <button onClick={() => setPromoteBatch(promoteBatch === b.id ? null : b.id)}>推进</button>
+          <button aria-label={`讨论：${b.platform} 活动批次`} onClick={() => { const first = b; ws.setDiscussionContext({ title: `${first.platform} 活动批次（${first.count} 条）`, url: "", source: first.platform }); ws.navigate("chat"); }}>讨论</button>
+          <button aria-label={`推进：${b.platform} 活动批次`} onClick={() => setPromoteBatch(promoteBatch === b.id ? null : b.id)}>推进</button>
           <ArchiveButton label="归档" onConfirm={() => { setIgnored([...ignored, b.id]); void ws.act(async () => { await api("activity-batches/archive", { batchId: b.id }); ws.setNotice("批次已归档（标记不感兴趣，置顶取消）。可通过刷新页面在全部列表查看。"); }); }} />
         </div>
       ))}

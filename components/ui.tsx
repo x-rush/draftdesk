@@ -89,6 +89,8 @@ export function Drawer({
   return (
     <dialog
       ref={ref}
+      role="dialog"
+      aria-modal="true"
       aria-labelledby={titleId}
       className={"drawer " + (wide ? "wide" : "")}
       onCancel={(e) => {

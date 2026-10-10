@@ -38,8 +38,8 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onS
       <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.category&&<span className="pill">{row.category}</span>}{row.mediaType==="video"&&<span className="pill">🎬 视频</span>}{row.mediaType==="image"&&<span className="pill">🖼 图片</span>}{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
       <p>{row.reason}</p><small>关联采集：{row.planNames.join("、")}</small>
       <div className="hotspot-card-actions" style={{display:"flex",gap:6,marginTop:6}}>
-        <button onClick={()=>onDiscuss(row)}>讨论</button>
-        <button onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
+        <button aria-label={`讨论：${row.title}`} onClick={()=>onDiscuss(row)}>讨论</button>
+        <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
         <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
       </div>
       {promoting===row.url&&<div style={{display:"grid",gap:6,marginTop:6,padding:9,border:"1px solid var(--line)",borderRadius:9}}>

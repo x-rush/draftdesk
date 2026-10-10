@@ -14,6 +14,7 @@ export function ArchiveButton({ onConfirm, disabled, label = "归档" }: { onCon
     <button
       disabled={disabled}
       className={confirming ? "danger" : ""}
+      aria-label={confirming ? "确认归档" : `归档（${label}）`}
       onClick={() => (confirming ? onConfirm() : setConfirming(true))}
     >
       {confirming ? "确认归档？" : label}
