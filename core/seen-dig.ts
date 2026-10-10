@@ -298,14 +298,15 @@ export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { int
   if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
   db.put("meta", "seen-dig-running", { at: new Date().toISOString() });
   void (async () => {
-    console.log("[seen-dig] 热词挖掘开始（联想展开 → PAA → Trends Rising）");
+    console.log("[seen-dig] 热词挖掘开始（Trends Rising → 联想展开 → PAA）");
     try {
+      // C 先行：Trends 配额与 suggest 共享 IP 信誉，A 的 680 请求会污染 C 的窗口
+      const c = await runTrendsRising(db, doFetch).catch((e) => ({ keywords: 0, rising: 0, skipped: 0, error: String(e) }));
+      console.log(`[seen-dig] 引擎C TrendsRising：关键词 ${c.keywords} / 上升词 ${c.rising}（跳过 ${(c as any).skipped ?? 0}）`);
       const a = await runSuggestExpansion(db, doFetch, opts);
       console.log(`[seen-dig] 引擎A 联想展开：种子 ${a.seeds} / 请求 ${a.requests}（失败 ${a.failed}）/ 新词 ${a.newTerms} / 更新 ${a.updated}`);
       const b = await runPaa(db, doFetch).catch((e) => ({ rising: 0, questions: 0, skipped: 0, error: String(e) }));
       console.log(`[seen-dig] 引擎B PAA：rising ${b.rising} / 问题词 ${b.questions}（跳过 ${(b as any).skipped ?? 0}）`);
-      const c = await runTrendsRising(db, doFetch).catch((e) => ({ keywords: 0, rising: 0, skipped: 0, error: String(e) }));
-      console.log(`[seen-dig] 引擎C TrendsRising：关键词 ${c.keywords} / 上升词 ${c.rising}（跳过 ${(c as any).skipped ?? 0}）`);
       const summary = { at: new Date().toISOString(), suggest: a, paa: b, trends: c };
       db.put("meta", doneKey(today), summary);
       db.put("meta", "seen-dig-last", { date: today, ...summary });
