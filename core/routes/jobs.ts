@@ -31,6 +31,9 @@ export const routes: RouteDef[] = [
       if (db.get<any>("plans", value.planId)?.kind === "activities" && !value.evidenceIds.length) throw new AppError("请先从创作活动页面导入官方规则；活动研究不再使用搜索。", 400);
       if (value.evidenceIds.some((id) => !db.get("evidence", id)))
         throw new AppError("证据不存在");
+      // 小刺收尾：整批证据已消费时拒绝入队（此前会静默入队→无推荐 no-op——用户实测抓到）。
+      if (value.evidenceIds.length > 0 && value.evidenceIds.every((id) => db.get<any>("consumption", `evidence:${id}`)))
+        throw new AppError("该证据已消费过，无法重试；请从研究策略重新采集。", 409);
       return json(db.enqueue(value.planId, value.evidenceIds, undefined, value.receiptId, value.retry, value.targetKeywords), 202);
     },
   },
