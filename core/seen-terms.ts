@@ -97,3 +97,8 @@ export function has3Consecutive(days: string[]): boolean {
 }
 
 function now0() { return new Date().toISOString(); }
+
+// 主路径写入标记：外部 Agent PUT 成功后调用，供 worker 兜底闸门判断「今日已有数据」。
+export function markSeenTermsWrite(kv: TermStore) {
+  kv.put("meta", "seen-terms-last-write", { at: new Date().toISOString() });
+}

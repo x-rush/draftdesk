@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { mergeSeenTerm } from "../seen-terms";
+import { markSeenTermsWrite, mergeSeenTerm } from "../seen-terms";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const upsertSchema = z.object({
@@ -32,6 +32,7 @@ export const routes: RouteDef[] = [
         mergeSeenTerm(db, item, by);
         upserted++;
       }
+      markSeenTermsWrite(db);
       return json({ ok: true, upserted, by });
     },
   },
