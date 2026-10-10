@@ -3,7 +3,8 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { markSeenTermsWrite, mergeSeenTerm } from "../seen-terms";
+import { mergeSeenTerm, observeSeenTerm } from "../seen-terms";
+import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const upsertSchema = z.object({
@@ -20,6 +21,15 @@ const upsertSchema = z.object({
 }).strict();
 
 export const routes: RouteDef[] = [
+  {
+    // UI「立即整理/刷新雷达」（信息架构 v2 增补）：写 manual 请求，worker tick 立即执行提取
+    methods: ["POST"],
+    pattern: "seen-terms/extract",
+    handler: ({ db }) => {
+      const result = requestSeenTermsExtraction(db);
+      return json({ ok: true, ...result, note: result.alreadyDone ? "今日已整理。" : "提取已触发，约 1-2 分钟后雷达与词表自动更新。" });
+    },
+  },
   {
     methods: ["PUT"],
     pattern: "agent/seen-terms",
