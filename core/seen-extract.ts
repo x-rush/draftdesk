@@ -30,8 +30,10 @@ export function seenTermsGate(db: Store): { date: string; at: string } | undefin
 }
 
 // 手动触发（UI「立即整理/刷新雷达」）：当日内一次；已完成则 alreadyDone。
+// 同时写挖掘（联想展开）手动标记——提取与挖掘各自独立幂等，互不阻塞。
 export function requestSeenTermsExtraction(db: Store): { triggered: boolean; alreadyDone: boolean } {
   const today = new Date().toISOString().slice(0, 10);
+  db.put("meta", "seen-dig-manual", { date: today, at: new Date().toISOString() });
   if (db.get("meta", extractDoneKey(today))) return { triggered: false, alreadyDone: true };
   db.put("meta", "seen-terms-manual", { date: today, at: new Date().toISOString() });
   return { triggered: true, alreadyDone: false };
