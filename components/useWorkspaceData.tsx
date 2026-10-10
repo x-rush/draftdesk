@@ -62,6 +62,7 @@ export function useWorkspaceData() {
   const [discussionContext, setDiscussionContext] = useState<import("./ActionButtons").DiscussContext | null>(null);
   const [seoTerms, setSeoTerms] = useState<any[]>([]);
   const [siteProjects, setSiteProjects] = useState<any[]>([]);
+  const [seenTerms, setSeenTerms] = useState<any[]>([]);
   const [previewPlan, setPreviewPlan] = useState("daily-editorial");
   const knownJobs = useRef(new Map<string, string>()), activityReady = useRef(false), activitySince = useRef(Date.now()), restoreScroll = useRef(true);
   const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
@@ -69,12 +70,13 @@ export function useWorkspaceData() {
   currentKey.current = requestKey;
   async function refresh() {
     const key = currentKey.current, version = ++requestVersion.current;
-    const [next, outlineList, clusterList, seoTermList, siteProjectList] = await Promise.all([
+    const [next, outlineList, clusterList, seoTermList, siteProjectList, seenTermList] = await Promise.all([
       api<Snapshot>("workspace?" + key),
       api<{ items: any[] }>("outlines"),
       api<{ items: any[] }>("clusters"),
       api<{ items: any[] }>("seo-terms"),
       api<{ items: any[] }>("site-projects"),
+      api<{ items: any[] }>("seen-terms"),
     ]);
     if (currentKey.current === key && requestVersion.current === version) {
       setData(next);
@@ -83,6 +85,7 @@ export function useWorkspaceData() {
       setClusters(clusterList?.items ?? []);
       setSeoTerms(seoTermList?.items ?? []);
       setSiteProjects(siteProjectList?.items ?? []);
+      setSeenTerms(seenTermList?.items ?? []);
       const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
       if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
       next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
@@ -167,7 +170,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, discussionContext, setDiscussionContext,
+    outlines, clusters, seoTerms, siteProjects, seenTerms, discussionContext, setDiscussionContext,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,
