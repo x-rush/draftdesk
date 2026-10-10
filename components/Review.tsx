@@ -148,23 +148,25 @@ export function Review() {
 
   return (
     <div>
-      <p className="muted">
-        建议可以多源，拍板只能一个。quality 是证据可信度（AI 判），decision 是要不要写（这里拍）；
-        否决/发布后会自动消费对应热榜，approved/deferred 会保留在待办里。
-      </p>
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
 
-      <section className="surface">
-        <h2>决策队列</h2>
-        <div className="toolbar" role="tablist" aria-label="决策状态筛选">
-          {["pending", ...STATUSES.filter((s) => s !== "pending"), "all"].map((s) => (
-            <button key={s} className={status === s ? "active" : ""} onClick={() => setStatus(s)}>
-              {s === "all" ? `全部 ${rows.length}` : `${statusLabels[s]} ${stats[s] || 0}`}
-            </button>
-          ))}
+      <section className="surface page-list">
+        <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--s2)" }}>
+          <h2 style={{ margin: 0 }}>决策队列</h2>
+          <details className="help-bubble">
+            <summary className="button" aria-label="拍板规则说明" style={{ padding: "5px 10px" }}>？规则</summary>
+            <span className="help-pop">建议可以多源，拍板只能一个。quality 是证据可信度（AI 判），decision 是要不要写（这里拍）；否决/发布后会自动消费对应热榜，approved/deferred 会保留在待办里。</span>
+          </details>
         </div>
-        <div className="toolbar">
+        <div className="page-toolbar" style={{ justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: "var(--s2)", flexWrap: "wrap" }} role="tablist" aria-label="决策状态筛选">
+            {["pending", ...STATUSES.filter((s) => s !== "pending"), "all"].map((s) => (
+              <button key={s} className={status === s ? "active" : ""} onClick={() => setStatus(s)}>
+                {s === "all" ? `全部 ${rows.length}` : `${statusLabels[s]} ${stats[s] || 0}`}
+              </button>
+            ))}
+          </div>
           <details className="filters-popover">
             <summary className="button" aria-label="筛选与批量操作">筛选与批量（已选 {selected.size}）</summary>
             <div className="popover-panel">

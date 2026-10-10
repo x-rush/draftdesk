@@ -20,7 +20,7 @@ export function AgentSetup({plan,sources}:{plan?:Plan;sources:Source[]}) {
     <Field label="研究模式"><Select value={mode} onChange={e=>setMode(e.target.value)}><option value="evidence">仅采集证据</option><option value="full">完整研究，提交草稿</option></Select></Field>
     <p>支持 OpenClaw／Hermes 等任何 Agent——接入指导是通用的，OpenClaw／Hermes 只是本机实测过的样例。把下方提示词交给你的 Agent，由它检查环境、安装或读取 Skill、配置搜索与提交方式，并向你报告缺项；确认后再让它在自己的调度能力里安排定时搜罗回传。{agent==="OpenClaw"?"OpenClaw 每轮宜使用新会话。":agent==="Hermes"?"Hermes 若限制写文件，可改为输出标准 JSON 由受信工具提交。":"具体安装路径由对应运行器决定。"}</p>
     <p className="muted">这是配置辅助，不是工作台替你修改 Agent 环境。模型、搜索及提交令牌由你在自己的 Agent 环境中处理；提示词不包含任何密钥。</p>
-    <pre className="code">{`DRAFTDESK_URL=${base}\nDRAFTDESK_TOKEN=由用户在 Agent 的安全环境中自行配置`}</pre>
+    <div style={{ display: "flex", gap: "var(--s2)", alignItems: "center", flexWrap: "wrap" }}><pre className="code" style={{ flex: 1, minWidth: 260, margin: 0 }}><pre className="code">{`DRAFTDESK_URL=${base}\nDRAFTDESK_TOKEN=由用户在 Agent 的安全环境中自行配置`}</pre></pre><button onClick={async()=>{try{await navigator.clipboard.writeText(`DRAFTDESK_URL=${base}`);setNotice("已复制工作台地址；令牌由你在 Agent 环境自行配置，不落提示词。")}catch{setNotice("复制失败，请手动选择文本。")}}}>复制地址</button></div>
     {!validBase&&<p role="alert">请填写不含凭据、查询参数和路径的 HTTPS 入口地址。</p>}
     <div className="toolbar"><button disabled={!validBase} onClick={async()=>{try{await navigator.clipboard.writeText(instructions);setNotice("已复制配置提示词，不含令牌。请交给你的 Agent 执行并核对小样本回执。")}catch{setNotice("复制失败，请下载配置包。")}}}>复制给 Agent 的配置提示词</button>
     <button disabled={!validBase} onClick={()=>download("draftdesk-agent-setup.json",{agent,location,mode,baseUrl:base,plan,sources:selected,instructions})}>下载配置说明与策略</button></div>

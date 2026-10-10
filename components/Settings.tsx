@@ -41,7 +41,7 @@ export function Settings({
   }
   return (
     <form
-      className="settings-form surface"
+      className="settings-form surface page-form"
       onSubmit={(e) => {
         e.preventDefault();
         void act(async () => {
@@ -57,34 +57,39 @@ export function Settings({
         });
       }}
     >
-      <h2>消费执行方</h2>
-      <p className="muted">{(config.consumerMode || "external") === "external"
-        ? "当前：外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。"
-        : "当前：内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}</p>
-      <Field label="模式（保存前即时生效）">
-        <select
-          value={config.consumerMode || "external"}
-          onChange={(e) =>
-            void act(async () => {
-              await api("consumerMode", { consumerMode: e.target.value });
-            })
-          }
-        >
-          <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
-          <option value="builtin">内置管线（每晚自动采集与分析）</option>
-        </select>
-      </Field>
-      <hr />
-      <h2>参与方</h2>
-      <p className="muted">
-        内置 AI 与外部 Agent 各自负责消费链路的不同环节，产出在审查台可按来源筛选；停用某来源后其已产出的内容仍可查，只是不再新增。
-      </p>
-      <hr />
-      <h2>阿里云百炼</h2>
-      <p>
-        研究、审稿与讨论共用同一模型。填写百炼 API Key，而非阿里云 AccessKey ID
-        / Secret。
-      </p>
+      <section className="form-section">
+        <h2>消费执行方</h2>
+        <span className="helper-text">{(config.consumerMode || "external") === "external"
+          ? "当前：外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。"
+          : "当前：内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}</span>
+        <Field label="模式（保存前即时生效）">
+          <select
+            value={config.consumerMode || "external"}
+            onChange={(e) =>
+              void act(async () => {
+                await api("consumerMode", { consumerMode: e.target.value });
+              })
+            }
+          >
+            <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
+            <option value="builtin">内置管线（每晚自动采集与分析）</option>
+          </select>
+        </Field>
+      </section>
+      <section className="form-section">
+        <h2>参与方</h2>
+        <span className="helper-text">
+          内置 AI 与外部 Agent 各自负责消费链路的不同环节，产出在审查台可按来源筛选；停用某来源后其已产出的内容仍可查，只是不再新增。
+        </span>
+        <Field label="内置 AI 参与开关">
+          <p className="helper-text" style={{ margin: 0 }}>在审查台「内置 AI 参与开关（aiPolicy）」分区配置：triage / outline / draft / aiWriter 四开关。</p>
+        </Field>
+      </section>
+      <section className="form-section">
+        <h2>阿里云百炼</h2>
+        <span className="helper-text">
+          研究、审稿与讨论共用同一模型。填写百炼 API Key，而非阿里云 AccessKey ID / Secret。
+        </span>
       <Field label="API Base URL">
         <input
           type="url"
@@ -113,19 +118,10 @@ export function Settings({
           onChange={(e) => setValue({ ...value, apiKey: e.target.value })}
         />
       </Field>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={value.clearApiKey}
-          onChange={(e) =>
-            setValue({ ...value, clearApiKey: e.target.checked })
-          }
-        />
-        清除已保存的百炼密钥
-      </label>
-      <hr />
-      <h2>我的兴趣类别</h2>
-      <p className="muted">勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</p>
+      </section>
+      <section className="form-section">
+        <h2>我的兴趣类别</h2>
+        <span className="helper-text">勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</span>
       <Field label="兴趣类别（可多选）">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(["模型动态", "Agent生态", "图像视频", "开发工具", "成本额度", "教程实战", "其他"] as const).map((cat) => (
@@ -147,8 +143,9 @@ export function Settings({
           ))}
         </div>
       </Field>
-      <hr />
-      <h2>搜索与质量预算</h2>
+      </section>
+      <section className="form-section">
+        <h2>搜索与质量预算</h2>
       <Field
         label="网页搜索后端"
         hint="Tavily 先行 + SearXNG 补位：先走 Tavily，无 Key、请求失败或相关结果不足 3 条时自动用本地 SearXNG 补位合并；仅 SearXNG 则完全不消耗 Tavily 额度。"
@@ -188,16 +185,16 @@ export function Settings({
           onChange={(e) => setValue({ ...value, tavilyKey: e.target.value })}
         />
       </Field>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={value.clearTavilyKey}
-          onChange={(e) =>
-            setValue({ ...value, clearTavilyKey: e.target.checked })
-          }
-        />
-        清除已保存的搜索密钥
-      </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={value.clearTavilyKey}
+            onChange={(e) =>
+              setValue({ ...value, clearTavilyKey: e.target.checked })
+            }
+          />
+          清除已保存的搜索密钥
+        </label>
       <Field label="受众与内容定位">
         <textarea
           required
@@ -221,6 +218,20 @@ export function Settings({
           }
         />
       </Field>
+      </section>
+      <section className="danger-zone">
+        <h2>危险操作</h2>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={value.clearApiKey}
+            onChange={(e) =>
+              setValue({ ...value, clearApiKey: e.target.checked })
+            }
+          />
+          清除已保存的百炼密钥（保存后生效，需重新配置才能调用模型）
+        </label>
+      </section>
       {error && (
         <p role="alert" className="error">
           {error}

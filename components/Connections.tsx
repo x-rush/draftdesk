@@ -44,71 +44,11 @@ export function Connections({
     }
   }
   return (
-    <div className="connection-layout">
+    <div className="page-split">
+      <div className="split-main">
+      {error && <p className="error" role="alert">{error}</p>}
+      {notice && <p className="notice" role="status">{notice}</p>}
       <AgentSetup plan={plans.find(p=>p.id===plan)} sources={sources}/>
-      <section className="surface">
-        <h2>让外部研究进入同一个工作台</h2>
-        <p>
-          两条研究路径二选一即可，随时可切换：<strong>内置管线</strong>是默认路径，零额外组件，在「研究策略」打开「每天自动运行」即可；<strong>外部回传</strong>适合已有
-          OpenClaw／Hermes 等个人助理的用户——关掉内置定时，让
-          Agent 按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，替代内置管线。接收后先待审，需要时再交给内置研究流程。
-        </p>
-        {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="notice">
-          所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请到「研究策略」关闭该策略的「每天自动运行」。
-        </p>}
-        <ol className="setup-steps">
-          <li>下载 Skill 包，交给你的智能体安装。</li>
-          <li>创建令牌（勾选读取/消费可让 Agent 读取并标记搜罗数据），通过环境变量配置地址和令牌。</li>
-          <li>让智能体按协议提交，检查下方收件回执。</li>
-        </ol>
-        <p>
-          分步操作、各运行器 MCP 配置示例与排障见{" "}
-          <a href="https://github.com/x-rush/draftdesk/blob/main/docs/agent-integration.md" target="_blank" rel="noreferrer">
-            外部 Agent 接入指南
-          </a>
-          。
-        </p>
-        <div className="toolbar">
-
-          <a className="button" href="/api/v1/skill-bundle" download>
-            下载 Skills 与提交脚本
-          </a>
-          <button
-            onClick={() =>
-              void act(async () =>
-                download("draftdesk-intake.schema.json", await api("schema")),
-              )
-            }
-          >
-            下载 JSON Schema
-          </button>
-          <button
-            onClick={() =>
-              void act(async () =>
-                download(
-                  "draftdesk-plan.json",
-                  plans.find((p) => p.id === plan),
-                ),
-              )
-            }
-          >
-            导出所选策略
-          </button>
-        </div>
-        <Field label="交给外部工具的研究策略">
-          <Select value={plan} onChange={(e) => setPlan(e.target.value)}>
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <p className="muted">
-          模型密钥不交给外部工具。外部收件不会自动产生付费分析，也不会自动公开。跨机器访问需要另行配置安全网络入口。
-        </p>
-      </section>
       <section className="surface">
         <h2>接入令牌</h2>
         <form
@@ -200,7 +140,7 @@ export function Connections({
           </details>
         )}
       </section>
-      <section className="surface span-all">
+      <section className="surface">
         <h2>手动导入证据包</h2>
         <p>也可以直接粘贴符合协议的 JSON，不需要创建令牌。</p>
         <textarea
@@ -254,7 +194,7 @@ export function Connections({
           </button>
         </div>
       </section>
-      <section className="surface span-all">
+      <section className="surface">
         <h2>收件箱</h2>
         {!receipts.length && (
           <p className="muted">
@@ -299,16 +239,41 @@ export function Connections({
         );})}
         {pagination}
       </section>
-      {error && (
-        <p className="error span-all" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="notice span-all" role="status">
-          {notice}
-        </p>
-      )}
+      </div>
+      <aside className="split-side">
+        <section className="surface">
+          <h2>两条研究路径</h2>
+          <p className="helper-text">二选一，随时切换：<strong>内置管线</strong>零额外组件；<strong>外部回传</strong>适合已有个人助理 Agent 的用户。</p>
+          {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="notice">
+            所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请到「研究策略」关闭「每天自动运行」。
+          </p>}
+          <details>
+            <summary>路径说明与接入步骤</summary>
+            <p className="helper-text">内置管线是默认路径，在「研究策略」打开「每天自动运行」即可。外部回传：关掉内置定时，让 Agent 按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，替代内置管线。接收后先待审，需要时再交给内置研究流程。</p>
+            <ol className="setup-steps">
+              <li>下载 Skill 包，交给你的智能体安装。</li>
+              <li>创建令牌（勾选读取/消费可让 Agent 读取并标记搜罗数据），通过环境变量配置地址和令牌。</li>
+              <li>让智能体按协议提交，检查左侧收件回执。</li>
+            </ol>
+            <p className="helper-text">分步操作、各运行器 MCP 配置示例与排障见 <a href="https://github.com/x-rush/draftdesk/blob/main/docs/agent-integration.md" target="_blank" rel="noreferrer">外部 Agent 接入指南</a>。</p>
+          </details>
+          <Field label="交给外部工具的研究策略">
+            <Select value={plan} onChange={(e) => setPlan(e.target.value)}>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="card-actions" style={{ justifyContent: "flex-start" }}>
+            <a className="button button-secondary" href="/api/v1/skill-bundle" download>Skills 与提交脚本</a>
+            <button onClick={() => void act(async () => download("draftdesk-intake.schema.json", await api("schema")))}>JSON Schema</button>
+            <button onClick={() => void act(async () => download("draftdesk-plan.json", plans.find((p) => p.id === plan)))}>导出策略</button>
+          </div>
+          <p className="helper-text">模型密钥不交给外部工具。外部收件不会自动产生付费分析，也不会自动公开。跨机器访问需要另行配置安全网络入口。</p>
+        </section>
+      </aside>
     </div>
   );
 }
