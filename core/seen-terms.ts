@@ -58,8 +58,9 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   const day = opts.day ?? today();
-  const observations = (prev?.observations ?? 0) + 1;
   const daysSeen: string[] = [...new Set([...(prev?.daysSeen || []), day])].sort();
+  // 一天一次计数：同日重复提取不膨胀 observations
+  const observations = (prev?.observations ?? 0) + (prev?.daysSeen?.includes(day) ? 0 : 1);
   let status: SeenTermStatus = prev?.status ?? "new";
   if (status !== "archived") {
     if (status === "new" && observations >= 2) status = "rising";
