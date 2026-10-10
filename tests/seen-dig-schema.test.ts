@@ -46,7 +46,7 @@ test("observeSuggestion：新词 status=new 带 seed 血缘与规则 intent", ()
     assert.equal(doc.intent, "comparison");
     assert.equal(doc.observations, 1);
     assert.equal(doc.producedBy, "suggest-expansion/1.0.0");
-    assert.deepEqual(db.get("seen-terms", doc.id).sources, ["suggest-expansion"]);
+    assert.deepEqual(db.get<any>("seen-terms", doc.id).sources, ["suggest-expansion"]);
   } finally { cleanup(dir); }
 });
 

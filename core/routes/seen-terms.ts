@@ -30,7 +30,7 @@ export const routes: RouteDef[] = [
     pattern: "seen-terms/extract",
     handler: ({ db }) => {
       const result = requestSeenTermsExtraction(db);
-      return json({ ok: true, ...result, note: result.alreadyDone ? "今日已整理。" : "提取已触发，约 1-2 分钟后雷达与词表自动更新。" });
+      return json({ ok: true, ...result, note: result.alreadyDone ? "今日已整理。" : "热词提取与挖掘已触发（联想展开/PAA/Trends Rising 需数分钟），完成后雷达与词表自动更新。" });
     },
   },
   {

@@ -8,8 +8,11 @@ import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Empty, api, date } from "../ui";
 import { Pagination } from "../Pagination";
 import { Select } from "../Select";
+import { isLongTail } from "../../core/seen-terms";
 
 const INTENTS = ["怎么选型", "怎么装", "怎么修", "免费替代", "价格对比", "其他"] as const;
+// 热词掘金 v3：seen-terms 搜索意图四类筛选与中文标签
+const DIG_INTENTS: [string, string][] = [["question", "问题类"], ["comparison", "比价类"], ["informational", "教程类"], ["commercial", "商业类"]];
 
 export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { seoTerms, busy, act, setNotice, navigate, setDiscussionContext, refresh } = ws;
@@ -41,7 +44,21 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
     sustained: seen.filter((t) => t.status === "sustained"),
   };
   const [radarTab, setRadarTab] = useState<"new" | "rising" | "sustained">("new");
-  const zoneLists: Record<string, any[]> = { new: radar.fresh, rising: radar.rising, sustained: radar.sustained };
+  const zoneLists: Record<string, any[]> = {
+    new: radar.fresh,
+    rising: radar.rising,
+    sustained: radar.sustained,
+  };
+  const [digIntent, setDigIntent] = useState("all");
+  const intentCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: seen.length };
+    for (const [key] of DIG_INTENTS) counts[key] = seen.filter((t) => t.intent === key).length;
+    return counts;
+  }, [seen]);
+  const zoneView = (list: any[]) => {
+    const filtered = digIntent === "all" ? list : list.filter((t) => t.intent === digIntent);
+    return filtered.sort((a, b) => (b.lastSeenAt || "").localeCompare(a.lastSeenAt || ""));
+  };
   const [projectBusy, setProjectBusy] = useState<string | null>(null);
   const [radarBusy, setRadarBusy] = useState(false);
   async function projectTerm(term: string) {
@@ -72,30 +89,31 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
           setRadarBusy(true);
           try {
             const r = await api<{ triggered: boolean; alreadyDone: boolean }>("seen-terms/extract", {});
-            setNotice(r.alreadyDone ? "今日已整理。" : "热词提取已触发，约 1-2 分钟后雷达自动更新。");
+            setNotice(r.alreadyDone ? "今日已整理。" : "热词整理与挖掘已触发（联想展开/PAA/Trends Rising，需数分钟），完成后雷达与词表自动更新。");
             await ws.refresh();
           } catch (e) { setNotice((e as Error).message); } finally { setRadarBusy(false); }
         })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
         </div>
-        <button disabled={radarBusy} onClick={() => void (async () => {
-          setRadarBusy(true);
-          try {
-            const r = await api<{ triggered: boolean; alreadyDone: boolean }>("seen-terms/extract", {});
-            setNotice(r.alreadyDone ? "今日已整理。" : "热词提取已触发，约 1-2 分钟后雷达自动更新。");
-            await ws.refresh();
-          } catch (e) { setNotice((e as Error).message); } finally { setRadarBusy(false); }
-        })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
-        {zoneLists[radarTab].length === 0 ? (
-          <p className="muted">{radarTab === "new" ? "今日无爆发级新词，常规词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥2 次即晋级）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
+        <nav className="discovery-modes" aria-label="搜索意图筛选" style={{ marginTop: 8 }}>
+          <button className={digIntent === "all" ? "active" : ""} onClick={() => setDigIntent("all")}>全部 {intentCounts.all}</button>
+          {DIG_INTENTS.map(([key, label]) => (
+            <button key={key} className={digIntent === key ? "active" : ""} onClick={() => setDigIntent(key)}>{label} {intentCounts[key]}</button>
+          ))}
+        </nav>
+        {zoneView(zoneLists[radarTab]).length === 0 ? (
+          <p className="muted">{digIntent !== "all" ? "该意图下暂无热词。" : radarTab === "new" ? "今日无爆发级新词，常规词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥2 次即晋级）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
         ) : (
           <div className="discovery-list">
-            {zoneLists[radarTab].map((t) => (
+            {zoneView(zoneLists[radarTab]).map((t) => (
               <article className="discovery-row" key={t.id}>
                 <div className="row-content">
                   <div className="row-meta">
                     <span className="pill">{t.status === "new" ? "🆕 新词" : t.status === "rising" ? "📈 突增" : "🔥 持续"}</span>
                     {t.offTopic && <span className="pill">圈外</span>}
+                    {t.intent && <span className="pill">{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
+                    {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                     <span>观测 {t.observations} 次</span>
+                    {t.seed && <span>血缘：{t.seed}</span>}
                     {(t.sources || []).length > 0 && <span>{(t.sources || []).join(" · ")}</span>}
                   </div>
                   <strong>{t.term}</strong>
