@@ -25,20 +25,7 @@ services:
       interval: 20s
       timeout: 5s
       retries: 5
-  worker:
-    build:
-      context: .
-      target: worker
-    command: ["node", "--import", "tsx", "worker/index.ts"]
-    stop_grace_period: 16m
-    volumes:
-      - ./data:/app/data
-    environment:
-      DRAFTDESK_DATA_DIR: /app/data
-      DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
-      DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
-      DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}
-    restart: unless-stopped
+
   dailyhot:
     # 热榜聚合 API：仅项目内网（工作台 core/sources.ts 写死 http://dailyhot:6688），
     # 不占宿主端口。镜像按 sha256 digest 固定，升级需显式改这里。
