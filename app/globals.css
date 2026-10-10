@@ -1225,6 +1225,13 @@ main {
 .skeleton-title { width: 68%; height: 16px; }
 .skeleton-text { width: 88%; }
 @keyframes skeleton-shimmer { to { background-position: -200% 0; } }
+.hotspot-controls-wide { grid-template-columns: minmax(200px,2fr) repeat(4,minmax(118px,1fr)); }
+@media(max-width:850px){.hotspot-controls-wide{grid-template-columns:1fr 1fr}}
+.hotspot-health { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px var(--s4); margin-bottom: var(--s3); font-size: 13px; }
+.hotspot-health > summary { cursor: pointer; color: var(--muted); }
+/* 热词雷达紧凑行（审查：默认 discovery-row 26px 上下距对词表过松） */
+.radar-list .discovery-row { padding: 13px 4px; }
+.source-tag { font-size: 11px; color: var(--muted); background: var(--soft); border-radius: 4px; padding: 2px 6px; }
 
 /* ═══════════════════════════════════════════════════════════════════
    设计系统 · 四种页面模板（设计系统落地专项 2026-10-11）
@@ -1251,9 +1258,9 @@ main {
 .page-header h1, .page-header h2 { margin: 0 0 4px; }
 .page-header .page-subtitle { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
 .page-toolbar { display: flex; gap: var(--s2); align-items: center; justify-content: flex-end; flex-wrap: wrap; margin: var(--s3) 0; }
-.page-form .form-section {
+.form-section {
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
-  padding: var(--s4); margin-bottom: var(--s6);
+  padding: var(--s4); margin-bottom: var(--s4);
 }
 .form-section > h2 { font-size: 16px; margin: 0 0 var(--s3); }
 .form-section .helper-text { display: block; font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 5px; }
@@ -1297,13 +1304,14 @@ main {
   border-color: #c2cebf;
 }
 .card-row { padding: var(--s4) 0; border-bottom: 1px solid var(--line); }
-.card-row-top { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.card-row-top { display: flex; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
 .card-row-top .check { margin: 0; flex: none; }
-.card-title { font-size: 16px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-title { font-size: 16px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 260px; }
+.card-row-top > .article-title { flex: 1 1 260px; min-width: 0; text-align: left; }
 .card-badges { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: none; }
 .card-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; color: var(--muted); line-height: 1.5; margin: 6px 0; }
 .card-row-bottom { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
-.card-meta { font-size: 12px; color: var(--muted); min-width: 0; }
+.card-meta { font-size: 12px; color: var(--muted); min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 .card-actions select { width: auto; min-width: 130px; }
 .filters-popover { position: relative; display: inline-block; }

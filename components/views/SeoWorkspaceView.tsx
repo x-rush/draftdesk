@@ -94,7 +94,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         {ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
           <p className="muted">{radarTab === "new" ? "今日无爆发级新词，常规词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥3 次且 7 天内首见）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
         ) : (
-          <div className="discovery-list" role="list" aria-label={`热词词表（${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区，前 20 条）`}>
+          <div className="discovery-list radar-list" role="list" aria-label={`热词词表（${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区，前 20 条）`}>
             {zoneLists[radarTab].map((t) => (
               <article className="discovery-row" key={t.id} role="listitem"
                 aria-label={`热词 ${t.term}，状态：${t.status === "new" ? "新词" : t.status === "rising" ? "突增" : "持续"}${t.intent ? `，意图：${DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}` : ""}${isLongTail(t.term) ? "，长尾词" : ""}`}>
@@ -106,7 +106,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                     {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                     <span>观测 {t.observations} 次</span>
                     {t.seed && <span>血缘：{t.seed}</span>}
-                    {(t.sources || []).length > 0 && <span>{(t.sources || []).join(" · ")}</span>}
+                    {(t.sources || []).length > 0 && <span>{(t.sources || []).map((src: string) => ({ "suggest-expansion": "联想挖掘", paa: "PAA 问答", "trends-rising": "Trends 上升" } as Record<string, string>)[src] || src).join(" · ")}</span>}
                   </div>
                   <strong>{t.term}</strong>
                   {t.status === "sustained" && (
