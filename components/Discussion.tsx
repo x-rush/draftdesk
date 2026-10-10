@@ -15,12 +15,14 @@ export function Discussion({
   history,
   onChange,
   hotspotContext, onOutlineCreated,
+  inboxSuggestions,
 }: {
   artifact?: Artifact;
   history: Summary[];
   onChange: () => Promise<void>;
   hotspotContext?: { title: string; url: string; source: string };
   onOutlineCreated?: () => void;
+  inboxSuggestions?: { outlineTitle: string; by: string; verdict: string; score?: number; reason?: string }[];
 }) {
   const [conversation, setConversation] = useState<Conversation>({
       id: "",
@@ -181,6 +183,19 @@ export function Discussion({
             .finally(() => setOutlineBusy(false));
         }}>{outlineBusy ? "生成中…" : "生成大纲（进每日发现）"}</button>
       </div>}
+      {!!inboxSuggestions?.length && <details className="discussion-suggestions" style={{ margin: "8px 0", padding: 9, border: "1px solid var(--line)", borderRadius: 9 }}>
+        <summary>外部 Agent 建议（{inboxSuggestions.length}）</summary>
+        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+          {inboxSuggestions.slice(0, 20).map((s, i) => (
+            <li key={i} style={{ marginBottom: 4 }}>
+              <span className="pill">{s.verdict}</span>{" "}
+              <strong>{s.outlineTitle}</strong>{" "}
+              {typeof s.score === "number" && <small>评分 {s.score} · </small>}
+              <small>{s.by}{s.reason ? ` · ${s.reason}` : ""}</small>
+            </li>
+          ))}
+        </ul>
+      </details>}
       <aside className="history">
         <button
           disabled={busy || working}

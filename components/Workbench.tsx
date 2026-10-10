@@ -292,6 +292,7 @@ export function Workbench() {
                   history={data.conversations}
                   onChange={refresh}
                   hotspotContext={ws.discussionContext ?? undefined}
+                  inboxSuggestions={(ws.outlines || []).filter((o) => o.clusterId === "clu-inbox" && o.suggestions?.length).flatMap((o) => o.suggestions.map((s: any) => ({ outlineTitle: o.title, by: s.by, verdict: s.verdict, score: s.score, reason: s.reason })))}
                   onOutlineCreated={refresh}
                 />
               )}
