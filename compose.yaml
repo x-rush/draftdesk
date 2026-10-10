@@ -6,9 +6,14 @@ services:
     ports:
       - "127.0.0.1:${DRAFTDESK_PORT:-5173}:3000"
     volumes:
-      - ./data:/app/data
+      # 存储根治（2026-10-10）：库移入 named volume，绕开 Windows bind mount
+      # 共享层（9p/FUSE）——四次挂载类事故（截断/失谐/页损坏）同根因。代码零改动
+      # （容器内路径不变）。每日快照经 janitor 写 ./backups（bind 只追加、不扩展，无截断风险）。
+      - draftdesk-data:/app/data
+      - ./backups:/app/backups
     environment:
       DRAFTDESK_DATA_DIR: /app/data
+      DRAFTDESK_BACKUP_DIR: /app/backups
       DRAFTDESK_ALLOWED_HOSTS: host.docker.internal
       DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
@@ -52,3 +57,6 @@ services:
 # （http://dailyhot:6688、http://searxng:8080），fresh clone 一条命令即可启动。
 volumes:
   searxng-cache:
+  # name 固定为 draftdesk-data：compose 默认会加项目前缀（draftdesk_draftdesk-data），
+  # 首次搬迁已按字面名建卷，固定名避免双卷分叉（事故现场：空卷被初始化成 70 行新库）。
+  draftdesk-data: { driver: local, name: draftdesk-data }

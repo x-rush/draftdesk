@@ -1,3 +1,5 @@
+import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import path from "node:path";
 import type { Store } from "./store";
 import { urlKey } from "./hotspots";
 
@@ -11,15 +13,20 @@ export const RETENTION = {
   seenTerms: { purgeArchivedAfterDays: 90 },
 };
 
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; skipped?: boolean } | null {
+export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
   // consumerMode=external：消费与回收由外部 Agent 负责，内置 janitor 停用（§4.2 干净分解）。
   const seenPurged = purgeArchivedSeenTerms(db);
+  // 备份通道（存储根治批）：volume 内的库每日快照到 bind mount backups/；失败不阻塞主流程。
+  let backup: JanitorBackup;
+  try { backup = runDailyBackup(db); }
+  catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -63,11 +70,28 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, backup };
   db.put("meta", "janitor", result);
   return result;
 }
 
+// 每日库快照（存储根治批）：VACUUM INTO 导出一致性好（含 wal 合并），文件名带日期；
+// 目录为 bind mount（纯追加写、无文件扩展，无截断风险）；保留最近 14 份。回滚路径：
+// compose 改回 bind mount 后用最新快照覆盖 data/draftdesk.sqlite 即可。
+export function runDailyBackup(db: Store): JanitorBackup {
+  const dir = process.env.DRAFTDESK_BACKUP_DIR || path.join(process.cwd(), "backups");
+  mkdirSync(dir, { recursive: true });
+  const date = new Date().toISOString().slice(0, 10);
+  const file = path.join(dir, `draftdesk-${date}.sqlite`);
+  rmSync(file, { force: true });
+  db.db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  const bytes = statSync(file).size;
+  const all = readdirSync(dir).filter((f) => /^draftdesk-\d{4}-\d{2}-\d{2}\.sqlite$/.test(f)).sort();
+  for (const old of all.slice(0, Math.max(0, all.length - 14))) {
+    try { rmSync(path.join(dir, old)); } catch { /* best effort */ }
+  }
+  return { file, bytes };
+}
 // seen-terms 归档出库：status=archived 且最后更新超窗口的直接删除（清理出库，非软删）。
 export function purgeArchivedSeenTerms(db: Store): number {
   const cutoff = Date.now() - RETENTION.seenTerms.purgeArchivedAfterDays * 86400000;
