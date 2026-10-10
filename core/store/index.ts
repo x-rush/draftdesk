@@ -200,10 +200,13 @@ export class Store {
     const qualityCounts = { ready: 0, review: 0, rejected: 0 };
     snapshot.artifacts.forEach((a) => { if (a.quality in qualityCounts) qualityCounts[a.quality as keyof typeof qualityCounts]++; });
     const consumedHotspotKeys = new Set(consumptionHotspotKeys(this));
-    const hotspotSummary = hotspotFeed(snapshot.discovery, new URLSearchParams("hotspotConsumed=include"), 1, consumedHotspotKeys);
+    const hotspotCategoryMap = new Map<string, string>();
+    for (const c of this.list<any>("hotspot-categories")) hotspotCategoryMap.set(c.identity, c.category);
+    const interested = this.get<any>("config", "main")?.interestedCategories as string[] | undefined;
+    const hotspotSummary = hotspotFeed(snapshot.discovery, new URLSearchParams("hotspotConsumed=include"), 1, consumedHotspotKeys, hotspotCategoryMap, interested);
     const hotspotConsumption = consumptionSummary(this, "hotspots");
     return { ...snapshot, discovery: params.get("jobId") ? researchDiscovery.find((d) => d.jobId === params.get("jobId")) || null : researchDiscovery[0] || null,
-      hotspots: view === "hotspots" ? hotspotFeed(snapshot.discovery, params, pageSize, consumedHotspotKeys) : null, artifacts: artifacts.items, jobs: jobs.items,
+      hotspots: view === "hotspots" ? hotspotFeed(snapshot.discovery, params, pageSize, consumedHotspotKeys, hotspotCategoryMap, interested) : null, artifacts: artifacts.items, jobs: jobs.items,
       submissions: submissions.items.map((r) => ({ ...r, artifacts: snapshot.artifacts.filter((a) => r.artifactIds?.includes(a.id) || r.jobs.some((j: Job) => j.id === a.jobId)) })),
       evidence: snapshot.evidence.filter((e) => artifacts.items.some((a) => a.evidenceIds.includes(e.id))),
       events: [], metrics: [],

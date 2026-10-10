@@ -58,9 +58,9 @@ const navGroups = [
 ] as const;
 const externalNavGroups = [
   { label: "选题", ids: ["discover", "decisions"] },
-  { label: "素材", ids: ["hotspots", "trends", "ideas", "chat"] },
+  { label: "素材", ids: ["hotspots", "trends", "ideas", "chat", "activities"] },
   { label: "设置", ids: ["plans", "sources", "connections", "settings"] },
-  { label: "内置功能", ids: ["activities", "skills", "runs"], collapsed: true },
+  { label: "内置功能", ids: ["skills", "runs"], collapsed: true },
 ] as const;
 const headings: Record<string, [string, string]> = {
   discover: [
@@ -252,7 +252,9 @@ export function Workbench() {
                 onDiscuss={(row) => { ws.setDiscussionContext({ title: row.title, url: row.url, source: row.sourceNames[0] || "" }); navigate("chat"); }}
                 onArchive={(row) => void act(async () => { await api("consume", { target: "hotspots", ids: [row.url], reason: "off-domain" }); setNotice("已归档：该热点不再出现在默认列表（可切换「查看已消费」找回）。"); })}
                 onPromote={(row, payload) => void act(async () => { await api("outlines", { clusterId: payload.clusterId, platform: payload.platform, contentType: "资讯解读", title: row.title, keyPoints: [payload.angle].filter(Boolean), evidenceRefs: [row.url] }); setNotice("已生成为选题（进入每日发现待拍队列）。"); })}
-                clusters={ws.clusters} />}
+                clusters={ws.clusters}
+                hotspotSort={ws.hotspotSort}
+                onSort={(value) => { ws.setHotspotSort(value); ws.setHotspotPage(1); }} />}
               {view === "discover" && data && (
                 <nav className="discovery-modes" aria-label="每日发现视图">
                   <button className={ws.discoveryMode === "queue" ? "active" : ""} aria-current={ws.discoveryMode === "queue" ? "page" : undefined} onClick={() => ws.setDiscoveryMode("queue")}>选题待拍</button>
@@ -331,7 +333,7 @@ export function Workbench() {
       )}{" "}
       <div className="bottom-tabs">
         <button className={view === "discover" ? "active" : ""} onClick={() => navigate("discover")}>选题</button>
-        <button className={["hotspots","trends","ideas","chat"].includes(view) ? "active" : ""} onClick={() => navigate("hotspots")}>素材</button>
+        <button className={["hotspots","trends","ideas","chat","activities"].includes(view) ? "active" : ""} onClick={() => navigate("hotspots")}>素材</button>
         <button className={["plans","sources","connections","settings"].includes(view) ? "active" : ""} onClick={() => navigate("settings")}>设置</button>
         <button onClick={() => setMobile(!mobile)}>更多</button>
       </div>

@@ -358,6 +358,7 @@ export const planSchema = z
   })
   .strict();
 export type Plan = z.infer<typeof planSchema>;
+export const HOTSPOT_CATEGORIES = ["模型动态", "Agent生态", "图像视频", "开发工具", "成本额度", "教程实战", "其他"] as const;
 export const configSchema = z
   .object({
     baseUrl: z
@@ -385,6 +386,7 @@ export const configSchema = z
       .refine((v) => !v || /^https?:\/\//.test(v), "SearXNG 地址需以 http(s):// 开头")
       .optional(),
     dailyTokenLimit: z.number().int().min(30000).max(2000000),
+    interestedCategories: z.array(z.enum(HOTSPOT_CATEGORIES)).max(7).optional(),
   })
   .strict();
 export type Config = z.infer<typeof configSchema>;

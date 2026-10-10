@@ -21,6 +21,7 @@ export function Settings({
     clearTavilyKey: false,
     webSearchProvider: config.webSearchProvider || "hybrid",
     searxngUrl: config.searxngUrl || "",
+    interestedCategories: config.interestedCategories || [],
   }),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
@@ -122,6 +123,30 @@ export function Settings({
         />
         清除已保存的百炼密钥
       </label>
+      <hr />
+      <h2>我的兴趣类别</h2>
+      <p className="muted">勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</p>
+      <Field label="兴趣类别（可多选）">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {(["模型动态", "Agent生态", "图像视频", "开发工具", "成本额度", "教程实战", "其他"] as const).map((cat) => (
+            <label className="check" key={cat}>
+              <input
+                type="checkbox"
+                checked={(value.interestedCategories || []).includes(cat)}
+                onChange={(e) =>
+                  setValue({
+                    ...value,
+                    interestedCategories: e.target.checked
+                      ? [...(value.interestedCategories || []), cat]
+                      : (value.interestedCategories || []).filter((c: string) => c !== cat),
+                  })
+                }
+              />
+              {cat}
+            </label>
+          ))}
+        </div>
+      </Field>
       <hr />
       <h2>搜索与质量预算</h2>
       <Field

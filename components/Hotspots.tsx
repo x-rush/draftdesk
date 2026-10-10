@@ -7,10 +7,10 @@ import {Select} from "./Select";
 import {ArchiveButton} from "./ActionButtons";
 import {date} from "./ui";
 
-export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId}:{
+export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort}:{
   feed:HotspotFeed|null;sources:Source[];query:string;status:string;source:string;plan:string;busy:boolean;
   onQuery:(value:string)=>void;onStatus:(value:string)=>void;onSource:(value:string)=>void;onPlan:(value:string)=>void;
-  onPage:(page:number)=>void;onRefresh:()=>void;
+  onPage:(page:number)=>void;onRefresh:()=>void;hotspotSort?:string;onSort:(value:string)=>void;
   onDiscuss:(row:any)=>void;onArchive:(row:any)=>void;
   onPromote:(row:any,payload:{clusterId:string;platform:string;angle:string})=>void;
   clusters:any[];clusterId?:string;
@@ -26,6 +26,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onS
       <input aria-label="搜索热点" placeholder="搜索标题、来源或筛选原因" value={query} onChange={e=>onQuery(e.target.value)}/>
       <Select aria-label="热点来源" value={source} onChange={e=>onSource(e.target.value)}><option value="all">全部来源</option>{feed?.sourceOptions.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}{available.filter(s=>!feed?.sourceOptions.some(option=>option.id===s.id)).map(s=><option value={s.id} key={s.id}>{s.name} · 尚未采集</option>)}</Select>
       <Select aria-label="热点状态" value={status} onChange={e=>onStatus(e.target.value)}><option value="all">全部线索</option><option value="watch">待观察</option><option value="selected">进入过分析</option><option value="filtered">被策略筛除</option></Select>
+      <Select aria-label="排序方式" value={hotspotSort||"interested"} onChange={e=>onSort(e.target.value)}><option value="interested">感兴趣分类置顶</option><option value="time">纯时间序</option></Select>
       <Select aria-label="采集策略" value={plan} onChange={e=>onPlan(e.target.value)}><option value="all">全部采集批次</option>{feed?.planOptions.map(name=><option value={name} key={name}>{name}</option>)}</Select>
     </div>
     <div className="hotspot-actions"><button disabled={busy||source==="all"||!available.some(s=>s.id===source)} onClick={onRefresh}>刷新所选来源 · 不调用 AI</button><span>{source==="all"?"选择一个来源即可读取它的最新公开榜单。":"刷新不会更改研究策略，也不会产生 AI 推荐。"}</span></div>
@@ -34,7 +35,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,onQuery,onS
     {!feed?.items.length?<div className="lens-empty"><h2>当前筛选下没有热点</h2><p>选择已启用来源刷新榜单，或清除搜索与状态筛选。来源读取失败可在「运行记录」和采集覆盖中核对。</p></div>:<div className="hotspot-list">{feed.items.map(row=><article className="hotspot-card" key={row.url}>
       <div className="hotspot-card-top"><span>{row.sourceNames.join(" · ")}</span><small>{date(row.lastSeen)} · {row.observations>1?`观察 ${row.observations} 次`:`榜单位置 ${row.rank??"未知"}`}</small></div>
       <h3><a href={row.url} target="_blank" rel="noopener noreferrer">{row.title} ↗</a></h3>
-      <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.mediaType==="video"&&<span className="pill">🎬 视频</span>}{row.mediaType==="image"&&<span className="pill">🖼 图片</span>}{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
+      <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.category&&<span className="pill">{row.category}</span>}{row.mediaType==="video"&&<span className="pill">🎬 视频</span>}{row.mediaType==="image"&&<span className="pill">🖼 图片</span>}{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
       <p>{row.reason}</p><small>关联采集：{row.planNames.join("、")}</small>
       <div className="hotspot-card-actions" style={{display:"flex",gap:6,marginTop:6}}>
         <button onClick={()=>onDiscuss(row)}>讨论</button>

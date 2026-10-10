@@ -81,6 +81,7 @@ export function agentHotspots(db: Store, raw: unknown) {
         metric: c.metric,
         publishedAt: c.publishedAt,
         mediaType: c.mediaType,
+        category: (() => { const m = db.get<any>("hotspot-categories", urlKey(c.url)); return m?.category; })(),
         coverUrl: c.coverUrl,
         author: c.author,
       });

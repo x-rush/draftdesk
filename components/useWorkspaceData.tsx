@@ -51,6 +51,7 @@ export function useWorkspaceData() {
   const [page, setPage] = useState(1), [jobsPage, setJobsPage] = useState(1), [receiptsPage, setReceiptsPage] = useState(1);
   const [hotspotPage, setHotspotPage] = useState(1), [hotspotConsumed, setHotspotConsumed] = useState("hide"), [hotspotQ, setHotspotQ] = useState(""), [hotspotStatus, setHotspotStatus] = useState("all"), [hotspotSource, setHotspotSource] = useState("all"), [hotspotPlan, setHotspotPlan] = useState("all");
   const [loading, setLoading] = useState(false);
+  const [hotspotSort, setHotspotSort] = useState("interested");
   const [activityPlatform, setActivityPlatform] = useState("all"), [activityTime, setActivityTime] = useState("all");
   const [locationReady, setLocationReady] = useState(false), [creation, setCreation] = useState("all"), [jobId, setJobId] = useState(""), [runId, setRunId] = useState("");
   const [finished, setFinished] = useState<Snapshot["jobActivity"]>([]);
@@ -61,7 +62,7 @@ export function useWorkspaceData() {
   const [discussionContext, setDiscussionContext] = useState<import("./ActionButtons").DiscussContext | null>(null);
   const [previewPlan, setPreviewPlan] = useState("daily-editorial");
   const knownJobs = useRef(new Map<string, string>()), activityReady = useRef(false), activitySince = useRef(Date.now()), restoreScroll = useRef(true);
-  const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, view, kind, quality, q: query, pageSize: "20" }).toString();
+  const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
   const currentKey = useRef(requestKey), requestVersion = useRef(0);
   currentKey.current = requestKey;
   async function refresh() {
@@ -167,7 +168,7 @@ export function useWorkspaceData() {
     skills, setSkills, skill, setSkill, today,
     page, setPage, jobsPage, setJobsPage, receiptsPage, setReceiptsPage,
     hotspotPage, setHotspotPage, hotspotConsumed, setHotspotConsumed,
-    hotspotQ, setHotspotQ, hotspotStatus, setHotspotStatus, hotspotSource, setHotspotSource, hotspotPlan, setHotspotPlan,
+    hotspotQ, setHotspotQ, hotspotStatus, setHotspotStatus, hotspotSource, setHotspotSource, hotspotPlan, setHotspotPlan, hotspotSort, setHotspotSort,
     loading, activityPlatform, setActivityPlatform, activityTime, setActivityTime,
     locationReady, creation, setCreation, jobId, setJobId, runId, setRunId,
     finished, setFinished, discoveryMode, setDiscoveryMode,
