@@ -80,17 +80,7 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
             ))}
           </div>
         )}
-        {view === "trends" && (
-          <p className="context-note">
-            指标来自原始来源，保留地域、时间与单位。不把单次上榜解释为增长，也不把热度等同付费需求。
-          </p>
-        )}
         {view === "activities" && <p className="context-note">默认展示全部活动结果；使用「活动时间」和「质量状态」筛选当前可参与、待验证、已结束或已否决的记录。原始快照请在上方「创作活动」资料视图中查看。</p>}
-        {view === "ideas" && (
-          <p className="context-note">
-            此区域始终私有。每个机会都应包含现有替代、最小流程、实验与停止条件。
-          </p>
-        )}
         {!filtered.length ? (
           <Empty
             title={
