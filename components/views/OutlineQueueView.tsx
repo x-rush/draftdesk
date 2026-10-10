@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { ArrowUpRight } from "lucide-react";
 import { Drawer, Empty, api, date } from "../ui";
+import { useListKeyboardShortcuts } from "../useListKeyboardShortcuts";
 
 export function outlineScore(o: any): number {
   const scores = (o.suggestions || []).map((s: any) => s.score).filter((n: any) => typeof n === "number");
@@ -21,14 +22,21 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
     .filter((o) => o.decision === "pending")
     .sort((a, b) => outlineScore(b) - outlineScore(a) || b.createdAt.localeCompare(a.createdAt));
   const clusterOf = (o: any) => clusters.find((c) => c.id === o.clusterId);
+  useListKeyboardShortcuts(".discovery-row", { approve: () => pending[0] && decide(pending[0], "approved"), archive: () => pending[0] && decide(pending[0], "rejected", "其他"), discuss: () => pending[0] && setDetail(pending[0]) }, pending.length > 0);
 
   async function decide(o: any, decision: string, rejectReason?: string) {
     await api("outlines/" + o.id + "/decision", { decision, ...(rejectReason ? { rejectReason } : {}) });
     await ws.refresh();
   }
 
+  const totalToday = outlines.filter((o) => o.decision !== "pending").length + pending.length;
+  const doneToday = outlines.filter((o) => o.decision !== "pending").length;
   return (
     <>
+      {totalToday > 0 && <div className="queue-progress" style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--muted)" }}><span>今天还剩 {pending.length} 条待拍</span><span>已处理 {doneToday}/{totalToday}</span></div>
+        <div style={{ height: 6, background: "var(--line)", borderRadius: 3 }}><div style={{ height: 6, borderRadius: 3, background: "var(--ink)", width: Math.round((doneToday / totalToday) * 100) + "%" }} /></div>
+      </div>}
       {pending.length === 0 ? (
         <Empty title="今天还没有新选题。">
           去看看<button className="text-button" onClick={() => navigate("hotspots")}>热点资讯</button>找灵感 → 讨论或推进即可生成待拍选题。
