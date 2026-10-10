@@ -26,6 +26,12 @@ const upsertSchema = z.object({ items: z.array(termSchema).min(1).max(200) }).st
 
 export const routes: RouteDef[] = [
   {
+    // UI 只读口（无令牌）：每日发现/SEO 工作台的 refresh 并行拉取
+    methods: ["GET"],
+    pattern: "seo-terms",
+    handler: ({ db }) => json({ items: db.list("seo-terms"), total: db.list("seo-terms").length }),
+  },
+  {
     methods: ["PUT"],
     pattern: "agent/seo-terms",
     scope: "suggest",
