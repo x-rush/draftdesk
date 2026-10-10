@@ -22,12 +22,12 @@ export function createConsumption(kv: KV) {
         notice: "消费仅改变可见性与计数，不删除原始记录；30 天内可 unconsume。" };
     },
     unconsumeIdentities(target: "hotspots" | "evidence", identities: string[], dryRun = false) {
-      let revived = 0, expired = 0;
+      let revived = 0, expired = 0, notFound = 0;
       const stamp = now();
       const run = (write: boolean) => {
         for (const identity of identities) {
           const c = kv.get<any>("consumption", `${target}:${identity}`);
-          if (!c) continue;
+          if (!c) { notFound++; continue; }
           if (c.unconsumeUntil <= stamp) { expired++; continue; }
           if (write) kv.del("consumption", `${target}:${identity}`);
           revived++;
@@ -35,7 +35,8 @@ export function createConsumption(kv: KV) {
       };
       if (dryRun) run(false);
       else kv.transaction(() => run(true));
-      return { ok: dryRun || revived > 0, dryRun, target, revived, expired, notice: "超过 30 天撤销窗口的条目已软化处理，不再计入未消费。" };
+      // ok=false 时调用方应区分 notFound（已被撤销过或从未消费——决策翻转场景常见）与 expired（真超窗）
+      return { ok: dryRun || revived > 0, dryRun, target, revived, expired, notFound, notice: "超过 30 天撤销窗口的条目已软化处理，不再计入未消费。" };
     },
   };
 }

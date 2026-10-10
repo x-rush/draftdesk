@@ -34,14 +34,20 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       const { collection, row } = decisionTarget(id);
       if (collection === "artifacts" && row.archived) throw new AppError("已归档产物不可再拍板。");
       // rejected→pending 翻转（信息架构 v2-C）：拍错可反悔。自动撤销 rejected 时的联动消费
-      //（unconsume 30 天窗口，超窗抛 410 即「归档已成事实」）；再次 rejected 时消费幂等重放。
+      //（unconsume 30 天窗口；已撤销过/身份不存在的条目静默跳过并计入 notFound）；再次 rejected 时消费幂等重放。
       if (input.decision === "pending") {
         if (row.decision !== "rejected") throw new AppError("只有已否决的条目可以翻回待定。", 400, "INVALID_PAYLOAD");
+        let unconsumedCount = 0, unconsumeExpired = 0, unconsumeNotFound = 0;
         if (collection === "outlines" || collection === "decisions" || collection === "artifacts") {
           const ids = linkedHotspotIds(row);
-          if (ids.length) unconsumeIdentities("hotspots", ids, false);
+          if (ids.length) {
+            const r = unconsumeIdentities("hotspots", ids, false);
+            unconsumedCount = r.revived;
+            unconsumeExpired = r.expired;
+            unconsumeNotFound = r.notFound ?? 0;
+          }
         }
-        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined };
+        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined, unconsumedCount, unconsumeExpired, unconsumeNotFound };
         kv.put(collection, id, reverted);
         return reverted;
       }
@@ -117,6 +123,6 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
   };
 }
 
-type Consumption = { unconsumeIdentities: (target: "hotspots" | "evidence", identities: string[], dryRun?: boolean) => { ok: boolean; revived: number; expired: number }; consumeIdentities: (target: "hotspots" | "evidence", identities: string[], reason: string, consumedBy: string, producedRef?: string, dryRun?: boolean) => { ok: boolean; toConsume: number; alreadyConsumed: number } };
+type Consumption = { unconsumeIdentities: (target: "hotspots" | "evidence", identities: string[], dryRun?: boolean) => { ok: boolean; revived: number; expired: number; notFound?: number }; consumeIdentities: (target: "hotspots" | "evidence", identities: string[], reason: string, consumedBy: string, producedRef?: string, dryRun?: boolean) => { ok: boolean; toConsume: number; alreadyConsumed: number } };
 
 export type Decisions = ReturnType<typeof createDecisions>;
