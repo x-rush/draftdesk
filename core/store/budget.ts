@@ -28,7 +28,9 @@ export function createBudget(kv: KV, config: () => Config) {
         );
       kv.db
         .prepare(
-          "INSERT INTO budgets(day,reserved) VALUES(?,?) ON CONFLICT(day) DO UPDATE SET reserved=reserved+excluded.reserved",
+          // used 必须显式给 0：schema NOT NULL 无默认。历史库的当日行由旧数据
+          // 遮住了这条路径（雕刻重建/fresh clone 的每个新一天首次 reserve 必踩）。
+          "INSERT INTO budgets(day,reserved,used) VALUES(?,?,0) ON CONFLICT(day) DO UPDATE SET reserved=reserved+excluded.reserved",
         )
         .run(b.day, tokens);
     },

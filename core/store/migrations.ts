@@ -246,6 +246,18 @@ export const migrations: Migration[] = [
       kv.db.exec(`CREATE INDEX IF NOT EXISTS idx_seen_days ON documents(collection, json_array_length(json_extract(body,'$.daysSeen'))) WHERE collection='seen-terms'`);
     },
   },
+  {
+    id: "budgets-used-v1",
+    // 预算表结构统一（用户实弹抓到）：生产库的 budgets 曾带外加过 used 列
+    //（NOT NULL 无默认），而迁移建表与 reserve 的 INSERT 都停在两列老结构——
+    // 雕刻重建库/fresh clone 的每个新一天首次 reserve 必 NOT NULL 炸。
+    // 此迁移幂等补列，配合 reserve 显式写 used=0，两个世界归一。
+    run: ({ kv }) => {
+      const cols = kv.db.prepare("PRAGMA table_info(budgets)").all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === "used"))
+        kv.db.exec("ALTER TABLE budgets ADD COLUMN used INTEGER NOT NULL DEFAULT 0");
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {

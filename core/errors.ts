@@ -29,9 +29,14 @@ export class AppError extends Error {
 
 // Never echo provider bodies, URLs, or arbitrary exception messages into exports/UI.
 export function safeResearchError(error: unknown): string {
+  // 原始异常进容器日志（不含密钥/响应体），兜底文案只进 UI——没有这条，凌晨类
+  // 瞬时故障（如 2026-10-11 01:00 三连败 calls=0）永远查不到真相。
+  if (!(error instanceof AppError)) console.error("[research-error]", error instanceof Error ? `${error.name}: ${error.message}` : error);
   if (error instanceof AppError) return error.message;
-  if (error instanceof Error && (error.name === "TimeoutError" || /timeout|timed out/i.test(error.message)))
-    return "模型或来源请求超时；原始证据已保留，可缩小证据量后重试。未返回用量的调用仍可能计费。";
+  if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError" || /timeout|timed out|aborted/i.test(error.message)))
+    return error.name === "AbortError" && !/timeout/i.test(error.message)
+      ? "研究任务被中断（任务取消或服务重启）；原始证据已保留，可重试。"
+      : "模型或来源请求超时；原始证据已保留，可缩小证据量后重试。未返回用量的调用仍可能计费。";
   if (error instanceof SyntaxError)
     return "服务返回的内容不是有效 JSON；原始证据已保留，请检查服务兼容性后重试。";
   return "研究连接中断或服务异常；原始证据已保留，请检查网络和服务配置后重试。";
