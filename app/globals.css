@@ -442,10 +442,24 @@ main {
 .lens-list article small { color: #8b7651; }
 .lens-list article a { font-size: 15px; font-weight: 600; line-height: 1.5; }
 .lens-pages { display: flex; align-items: center; justify-content: center; gap: var(--s4); margin-top: 15px; }
-.coverage-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: var(--s3); margin: 23px 0; }
-.coverage-summary div { border: 1px solid #e0e7db; background: #f7f9f5; border-radius: 7px; padding: var(--s4); }
-.coverage-summary strong { display: block; font-size: 25px; line-height: 1.25; font-variant-numeric: tabular-nums; }
-.coverage-summary span { display: block; color: #62745e; font-size: 12px; margin-top: 4px; }
+/* 采集覆盖漏斗（用户截图批复）：总览漏斗条 + 来源卡内迷你漏斗 */
+.coverage-funnel { margin: var(--s4) 0; }
+.coverage-funnel-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: #eef1e8; }
+.funnel-seg { display: block; min-width: 2px; }
+.funnel-raw { background: #dfe6d3; }
+.funnel-matched { background: #a9c295; }
+.funnel-selected { background: #315c46; }
+.coverage-funnel-stats { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.coverage-funnel-stats strong { font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.funnel-arrow { color: #a5af9a; }
+.funnel-rate { margin-left: auto; color: var(--green); font-weight: 600; }
+.funnel-failed { color: #924035; }
+.coverage-source-head { display: flex; align-items: center; gap: 8px; }
+.coverage-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; }
+.coverage-dot.ok { background: #5f9b68; }
+.coverage-dot.failed-dot { background: #c26a4d; }
+.coverage-failed-label { color: #924035; margin-left: auto; }
+.coverage-source-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #eef1e8; margin: 8px 0 4px; }
 .coverage-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--s3); }
 .coverage-list article { border: 1px solid var(--line); padding: 15px; border-radius: 7px; }
 .coverage-list article.failed { border-color: #e6d7c2; background: #fcf9f5; }

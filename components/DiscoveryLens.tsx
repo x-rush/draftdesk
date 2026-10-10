@@ -10,12 +10,48 @@ export function DiscoveryLens({record,mode}:{record:DiscoveryRecord|null;mode:"w
   const needle=query.trim().toLocaleLowerCase();
   const filtered=watched.filter(c=>!needle||`${c.title} ${c.sourceName} ${c.reason}`.toLocaleLowerCase().includes(needle));
   const pageSize=20,pages=Math.max(1,Math.ceil(filtered.length/pageSize)),current=Math.min(page,pages);
-  if(mode==="coverage")return <section className="lens-panel" aria-label="采集覆盖报告">
-    <header><div><h2>{record.planName} · 采集覆盖{record.mode==="preview"?"（只采集预览）":""}</h2><p>{date(record.at)} · 本轮最多保留 {record.limit} 条证据。{record.mode==="preview"?"未调用 AI，尚未生成推荐。":"榜单标题是线索，未入选不等于无价值。"}</p></div></header>
-    <div className="coverage-summary"><div><strong>{record.sources.reduce((n,s)=>n+s.raw,0)}</strong><span>读取条目</span></div><div><strong>{record.sources.reduce((n,s)=>n+s.matched,0)}</strong><span>匹配策略</span></div><div><strong>{record.sources.reduce((n,s)=>n+s.selected,0)}</strong><span>{record.mode==="preview"?"保留证据":"进入分析"}</span></div><div><strong>{record.sources.filter(s=>s.status==="failed").length}</strong><span>来源失败</span></div></div>
-    <div className="coverage-list">{record.sources.map(s=><article key={s.sourceId} className={s.status==="failed"?"failed":""}><div><strong>{s.sourceName}</strong><small>{s.status==="failed"?"读取失败":"已读取"}</small></div><p>{s.status==="failed"?s.error:`读取 ${s.raw} · 匹配 ${s.matched} · 入模 ${s.selected}`}</p></article>)}</div>
-    <p className="lens-note">未命中关键词、超出证据预算和来源失败都可能造成遗漏。可调整研究策略后再运行；本报告不代表全网覆盖率。</p>
-  </section>;
+  if(mode==="coverage"){
+    const totals=record.sources.reduce((acc,s)=>({raw:acc.raw+s.raw,matched:acc.matched+s.matched,selected:acc.selected+s.selected}),{raw:0,matched:0,selected:0});
+    const failed=record.sources.filter(s=>s.status==="failed").length;
+    const rate=totals.raw?Math.round(totals.selected/totals.raw*1000)/10:0;
+    return <section className="lens-panel" aria-label="采集覆盖报告">
+      <header><div><h2>{record.planName} · 采集覆盖{record.mode==="preview"?"（只采集预览）":""}</h2><p>{date(record.at)} · 本轮最多保留 {record.limit} 条证据。{record.mode==="preview"?"未调用 AI，尚未生成推荐。":"榜单标题是线索，未入选不等于无价值。"}</p></div></header>
+      <div className="coverage-funnel" role="img" aria-label={`漏斗：读取 ${totals.raw} 条，匹配 ${totals.matched} 条，${record.mode==="preview"?"保留":"进入分析"} ${totals.selected} 条`}>
+        <div className="coverage-funnel-bar" aria-hidden="true">
+          {totals.raw>0&&<>
+            <span className="funnel-seg funnel-raw" style={{flex:totals.raw}}/>
+            <span className="funnel-seg funnel-matched" style={{flex:totals.matched}}/>
+            <span className="funnel-seg funnel-selected" style={{flex:totals.selected}}/>
+          </>}
+        </div>
+        <div className="coverage-funnel-stats">
+          <span><strong>{totals.raw}</strong> 读取条目</span>
+          <span className="funnel-arrow" aria-hidden="true">→</span>
+          <span><strong>{totals.matched}</strong> 匹配策略</span>
+          <span className="funnel-arrow" aria-hidden="true">→</span>
+          <span><strong>{totals.selected}</strong> {record.mode==="preview"?"保留证据":"进入分析"}</span>
+          <span className="funnel-rate">入模率 {rate}%</span>
+          {failed>0&&<span className="funnel-failed">{failed} 个来源读取失败</span>}
+        </div>
+      </div>
+      <div className="coverage-list">{record.sources.map(s=>{
+        const ok=s.status!=="failed";
+        return <article key={s.sourceId} className={s.status==="failed"?"failed coverage-source":"coverage-source"}>
+          <div className="coverage-source-head">
+            <strong><span className={ok?"coverage-dot ok":"coverage-dot failed-dot"} aria-hidden="true"/>{s.sourceName}</strong>
+            {!ok&&<small className="coverage-failed-label">读取失败</small>}
+          </div>
+          {ok&&s.raw>0&&<div className="coverage-source-bar" aria-hidden="true">
+            <span className="funnel-seg funnel-raw" style={{flex:s.raw}}/>
+            <span className="funnel-seg funnel-matched" style={{flex:s.matched}}/>
+            <span className="funnel-seg funnel-selected" style={{flex:s.selected}}/>
+          </div>}
+          <p>{ok?`读取 ${s.raw} · 匹配 ${s.matched} · ${record.mode==="preview"?"保留":"入模"} ${s.selected}${s.raw?` · ${Math.round(s.selected/s.raw*1000)/10}%`:""}`:s.error}</p>
+        </article>;
+      })}</div>
+      <p className="lens-note">未命中关键词、超出证据预算和来源失败都可能造成遗漏。可调整研究策略后再运行；本报告不代表全网覆盖率。</p>
+    </section>;
+  }
   return <section className="lens-panel" aria-label="待观察线索">
     <header><div><h2>待观察线索</h2><p>{record.planName} · {date(record.at)}。这些条目尚未作为 AI 推荐；请打开原始来源核对。</p></div></header>
     <div className="lens-controls"><input aria-label="搜索待观察线索" placeholder="搜索线索、来源或筛除原因" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/><label><input type="checkbox" checked={includeFiltered} onChange={e=>{setIncludeFiltered(e.target.checked);setPage(1);}}/> 包含规则筛除</label></div>
