@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { AppError } from "../store";
+import { AppError, now } from "../store";
 
 export const routes: RouteDef[] = [
   {
@@ -23,7 +23,7 @@ export const routes: RouteDef[] = [
       const id = z.string().parse((await readBody()).id);
       const c = db.get("connections", id);
       if (!c) throw new AppError("连接不存在", 404);
-      db.put("connections", id, { ...c, revoked: true });
+      db.put("connections", id, { ...c, revoked: true, revokedAt: now() });
       return json({ ok: true });
     },
   },

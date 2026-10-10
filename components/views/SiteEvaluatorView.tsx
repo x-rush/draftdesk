@@ -74,7 +74,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
                   ) : (
                     <button className="primary" disabled={busy} onClick={() => void act(async () => { await api("site-projects", { term: t.term }); setNotice("已立项建站（pending）。"); })}>推进 · 立项建站</button>
                   )}
-                  <button disabled={busy} onClick={() => setIgnored([...ignored, t.term])}>忽略</button>
+                  <button className="button-secondary" disabled={busy} onClick={() => setIgnored([...ignored, t.term])}>忽略</button>
                 </div>
               </article>
             );

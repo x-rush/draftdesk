@@ -9,13 +9,12 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   return (
     <>
       <div className="budget-strip">
-        <strong>
-          今日 token 预留：{data.budget.reserved.toLocaleString()} /{" "}
-          {data.budget.limit.toLocaleString()}
+        <span className="budget-label">今日 token 预留 · 保守预算包含最大输出，不等于账单</span>
+        <strong className="budget-number">
+          {data.budget.reserved.toLocaleString()}
+          <small> / {data.budget.limit.toLocaleString()} tokens</small>
         </strong>
-        <span>
-          保守预算包含最大输出，不等于账单；实际模型用量在每个任务中显示。
-        </span>
+        <span className="budget-note">实际模型用量在每个任务的条目中显示。</span>
       </div>
       {!data.jobs.length ? (
         <Empty title="研究尚未开始">
@@ -24,51 +23,36 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
       ) : (
         data.jobs.map((j) => (
           <section className="run" key={j.id}>
-            <header>
-              <div>
-                <h2>{j.plan.name}</h2>
-                {j.state === "completed" && <button onClick={() => showResults(j.id)}>查看本次结果</button>}
-                <small>
-                  {date(j.createdAt)} ·{" "}
-                  {j.external ? "外部证据分析" : "内置采集"}
-                </small>
-              </div>
-              <span className={"pill state-" + j.state}>
-                {
-                  {
-                    queued: "等待",
-                    running: "运行中",
-                    completed: "完成",
-                    failed: "失败",
-                    cancelled: "已取消",
-                  }[j.state]
-                }
+            <div className="card-row-top">
+              <h2 className="card-title">{j.plan.name}</h2>
+              <span className="card-badges">
+                <span className={"pill state-" + j.state}>
+                  {{ queued: "等待", running: "运行中", completed: "完成", failed: "失败", cancelled: "已取消" }[j.state]}
+                </span>
               </span>
-              {["queued", "running"].includes(j.state) && (
-                <button
-                  disabled={busy || j.cancelRequested}
-                  onClick={() =>
-                    void act(async () => {
-                      await api("cancel", { id: j.id });
-                    })
-                  }
-                >
-                  {j.cancelRequested ? "正在取消" : "取消任务"}
-                </button>
-              )}
-            </header>
-            <p>
-              {j.outcome === "no-findings" ? "完成 · 本轮无新增推荐" : j.stage} · {j.evidenceIds.length} 条证据 · {j.searchCount ?? "未记录"} 次搜索（含补证） · {j.calls}{" "}
-              次模型调用 · 已回传用量 {j.actualTokens.toLocaleString()}{" "}
-              tokens
+            </div>
+            <p className="card-summary">
+              {j.outcome === "no-findings" ? "完成 · 本轮无新增推荐" : j.stage}
             </p>
-            {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
+            <div className="card-row-bottom">
+              <span className="card-meta">
+                {date(j.createdAt)} · {j.external ? "外部证据分析" : "内置采集"} · {j.evidenceIds.length} 条证据 · {j.searchCount ?? "未记录"} 次搜索 · {j.calls} 次调用 · {j.actualTokens.toLocaleString()} tokens
+              </span>
+              <span className="card-actions">
+                {j.state === "completed" && <button className="button-secondary" onClick={() => showResults(j.id)}>查看本次结果</button>}
+                {["queued", "running"].includes(j.state) && (
+                  <button disabled={busy || j.cancelRequested} onClick={() => void act(async () => { await api("cancel", { id: j.id }); })}>
+                    {j.cancelRequested ? "正在取消" : "取消任务"}
+                  </button>
+                )}
+                {["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 &&
+                  <button className="button-secondary" disabled={busy || data.stats.activePlanIds.includes(j.planId)}
+                    onClick={() => void act(async () => {
+                      await api("jobs", { planId: j.planId, evidenceIds: j.evidenceIds });
+                    })}>使用保留证据重试</button>}
+              </span>
+            </div>
             {j.error && <p className="error">{j.error}</p>}
-            {["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 &&
-              <button disabled={busy || data.stats.activePlanIds.includes(j.planId)}
-                onClick={() => void act(async () => {
-                  await api("jobs", { planId: j.planId, evidenceIds: j.evidenceIds });
-                })}>使用保留证据重试（不重复搜索）</button>}
             {j.warnings.map((w, i) => (
               <p className="warning" key={i}>
                 {w}
@@ -76,7 +60,8 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
             ))}
             <ResearchBrief job={j} />
             <details>
-              <summary>步骤、预算与技能版本</summary>
+              <summary>步骤、预算与技能版本{["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 ? " · 重试说明" : ""}</summary>
+              {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
               <ol className="timeline">
                 {j.steps.map((s, i) => (
                   <li key={i}>

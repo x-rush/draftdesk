@@ -20,10 +20,10 @@ export function SkillsView({ ws }: { ws: Workspace }) {
           <div>
             <h2>{s.name}</h2>
             <p>{s.purpose}</p>
-            <small>
-              {s.id} · v{s.version} · {s.digest}
-            </small>
           </div>
+          <small className="skill-version">
+            {s.id} · v{s.version} · {s.digest}
+          </small>
           <ArrowUpRight size={20} />
         </button>
       ))}

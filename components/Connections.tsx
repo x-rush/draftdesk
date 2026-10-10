@@ -171,32 +171,34 @@ export function Connections({
             <button onClick={() => setToken("")}>我已保存，隐藏</button>
           </div>
         )}
-        {connections.map((c) => (
-          <div className="connection-row" key={c.id}>
-            <div>
-              <strong>{c.name}</strong>
-              <small>
-                {(c.scopes || ["submit"]).filter((s: string) => s !== "submit").map((s: string) => ({ read: "读取", consume: "消费", suggest: "建议写回" } as Record<string, string>)[s] || s).join(" + ") || "仅提交"} ·{" "}
-                {c.revoked
-                  ? "已撤销"
-                  : c.lastUsedAt
-                    ? "最近使用 " + date(c.lastUsedAt)
-                    : "尚未使用"}
-              </small>
-            </div>
-            <button
-              disabled={busy || c.revoked}
-              onClick={() =>
-                void act(async () => {
-                  await api("revoke", { id: c.id });
-                  setNotice("连接令牌已撤销。");
-                })
-              }
-            >
-              撤销
-            </button>
+        {connections.filter((c: any) => !c.revoked).map((c: any) => (
+          <div className="token-row" key={c.id}>
+            <span className="token-name">{c.name}</span>
+            <span className="token-scopes">{(c.scopes || ["submit"]).filter((sc: string) => sc !== "submit").map((sc: string) => ({ read: "读取", consume: "消费", suggest: "建议写回" } as Record<string, string>)[sc] || sc).join(" + ") || "仅提交"}</span>
+            <span className="token-scopes">{c.lastUsedAt ? "最近使用 " + date(c.lastUsedAt) : "尚未使用"}</span>
+            <span className="card-actions">
+              <button disabled={busy}
+                onClick={() =>
+                  void act(async () => {
+                    await api("revoke", { id: c.id });
+                    setNotice("连接令牌已撤销。");
+                  })
+                }
+              >撤销</button>
+            </span>
           </div>
         ))}
+        {connections.some((c: any) => c.revoked) && (
+          <details className="token-group">
+            <summary>已撤销 / 历史（{connections.filter((c: any) => c.revoked).length}）</summary>
+            {connections.filter((c: any) => c.revoked).map((c: any) => (
+              <div className="token-row" key={c.id}>
+                <span className="token-name">{c.name}</span>
+                <span className="token-scopes">{c.revokedAt ? "撤销于 " + date(c.revokedAt) : "已撤销"}</span>
+              </div>
+            ))}
+          </details>
+        )}
       </section>
       <section className="surface span-all">
         <h2>手动导入证据包</h2>

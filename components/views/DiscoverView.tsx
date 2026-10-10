@@ -30,7 +30,7 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           <button onClick={() => navigate("runs")}><span>失败任务</span><strong>{data.stats.failedRuns}</strong><small>查看原因与重试入口 ↗</small></button>
         </div>
       </section>}
-      {view === "discover" && <><nav className="discovery-modes" aria-label="每日发现视图">{(["results", "watch", "coverage"] as const).map(mode => <button key={mode} className={discoveryMode === mode ? "active" : ""} aria-current={discoveryMode === mode ? "page" : undefined} onClick={() => setDiscoveryMode(mode)}>{mode === "results" ? "分析结果" : mode === "watch" ? `本轮待观察${data.discovery ? ` ${data.discovery.candidates.filter(c => c.status === "watch").length}` : ""}` : "本轮来源覆盖"}</button>)}</nav><button className="text-button" onClick={() => navigate("hotspots")}>查看全部原始热点 →</button></>}
+      {view === "discover" && <button className="text-button" onClick={() => navigate("hotspots")}>查看全部原始热点 →</button>}
       {(view !== "discover" || discoveryMode === "results") && <>
         {jobId && <p className="context-note">正在查看本次研究的全部结果（含待验证和已否决）。<button onClick={() => { setJobId(""); setPage(1); }}>查看所有研究</button></p>}
         <div className="filter-row">

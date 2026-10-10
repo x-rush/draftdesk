@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { api, Field, formatApiError } from "./ui";
+import { api, Field, formatApiError, date } from "./ui";
 import { OutlineDrawer } from "./views/OutlineQueueView";
 import { creationLabels } from "../core/workspace-ui";
 
@@ -48,6 +48,9 @@ export function Review() {
   const [aiPolicy, setAiPolicy] = useState<any>(null);
   const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "公众号", contentType: "长文", title: "" });
   const [clusters, setClusters] = useState<any[]>([]);
+  // 布局专项④：否决原因选择器仅在点了「否决」后展开；筛选器收进弹出面板
+  const [reasonOpen, setReasonOpen] = useState<Set<string>>(new Set());
+  const [rowReason, setRowReason] = useState<Record<string, string>>({});
 
   async function reload() {
     const [list, stats, clustersRes] = await Promise.all([
@@ -162,108 +165,130 @@ export function Review() {
           ))}
         </div>
         <div className="toolbar">
-          <select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-            <option value="all">全部来源</option>
-            <option value="artifact">内置产物</option>
-            <option value="outline">大纲</option>
-            <option value="manual">手动</option>
-          </select>
-          <button disabled={busy || !selected.size} onClick={() => void batch("approved")}>批量通过</button>
-          <button disabled={busy || !selected.size} onClick={() => void batch("deferred")}>批量暂缓</button>
-          <button disabled={busy || !selected.size} onClick={() => void batch("rejected")}>批量否决</button>
-          <select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)} title="否决原因（批量否决时应用）">
-            {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <span className="muted">已选 {selected.size} 条</span>
+          <details className="filters-popover">
+            <summary className="button" aria-label="筛选与批量操作">筛选与批量（已选 {selected.size}）</summary>
+            <div className="popover-panel">
+              <Field label="来源筛选">
+                <select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+                  <option value="all">全部来源</option>
+                  <option value="artifact">内置产物</option>
+                  <option value="outline">大纲</option>
+                  <option value="manual">手动</option>
+                </select>
+              </Field>
+              <Field label="批量否决原因">
+                <select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
+                  {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </Field>
+              <div className="card-actions">
+                <button className="primary" disabled={busy || !selected.size} onClick={() => void batch("approved")}>批量通过</button>
+                <button className="button-secondary" disabled={busy || !selected.size} onClick={() => void batch("deferred")}>批量暂缓</button>
+                <button disabled={busy || !selected.size} onClick={() => void batch("rejected")}>批量否决</button>
+              </div>
+            </div>
+          </details>
         </div>
         {visible.length === 0 && <p>该状态下暂无条目。</p>}
-        {visible.map((row) => (
-          <div className="review-row" key={row.id}>
-            <label className="check">
-              <input
-                type="checkbox"
-                aria-label={`选择 ${row.title}`}
-                checked={selected.has(row.id)}
-                onChange={(e) => {
-                  const next = new Set(selected);
-                  if (e.target.checked) next.add(row.id); else next.delete(row.id);
-                  setSelected(next);
-                }}
-              />
-            </label>
-            <div className="review-body">
+        {visible.map((row) => {
+          const cluster = clusters.find((c) => c.id === row.clusterId);
+          return (
+          <div className="review-row card-row" key={row.id}>
+            <div className="card-row-top">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  aria-label={`选择 ${row.title}`}
+                  checked={selected.has(row.id)}
+                  onChange={(e) => {
+                    const next = new Set(selected);
+                    if (e.target.checked) next.add(row.id); else next.delete(row.id);
+                    setSelected(next);
+                  }}
+                />
+              </label>
               {row.sourceType === "outline" ? (
                 <button className="article-title" onClick={() => setDetail(row)}>{row.title}</button>
               ) : (
-                <strong>{row.title}</strong>
+                <strong className="card-title">{row.title}</strong>
               )}
-              <small>
-                <span className="creation-badge">{row.sourceType}</span>{" "}
-                <span className="creation-badge">{row.kind}</span>{" "}
-                <span className="creation-badge">{statusLabels[row.decision]}</span>{" "}
-                {row.quality && <span className="creation-badge">证据可信度 {qualityLabels[row.quality] || row.quality}</span>}{" "}
-                {row.evidenceCount !== undefined && <span className="creation-badge">证据 {row.evidenceCount} 条</span>}{" "}
-                {row.producedBy && <span className="creation-badge">{producedByLabel(row.producedBy)}</span>}
-                {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
+              <span className="card-badges">
+                <span className="creation-badge">{sourceFilterLabels[row.sourceType] || row.sourceType}</span>
+                <span className="creation-badge">{row.kind}</span>
+                <span className="creation-badge">{statusLabels[row.decision]}</span>
+                {row.quality && <span className="creation-badge">证据可信度 {qualityLabels[row.quality] || row.quality}</span>}
                 {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
-              </small>
-              {row.summary && <p className="muted">{row.summary.slice(0, 200)}</p>}
-              {row.suggestions && row.suggestions.length > 0 && (
-                <p className="muted">
-                  {row.suggestions.map((s, i) => (
-                    <span className="creation-badge" key={i} title={s.reason || ""}>
-                      {s.by}: {statusLabels[s.verdict] || s.verdict}{s.score ? ` ${s.score} 分` : ""}
-                    </span>
-                  ))}
-                </p>
-              )}
-              {row.decision === "pending" && (
-                <div className="toolbar">
-                  <button disabled={busy} onClick={() => void decide(row, "approved")}>通过</button>
-                  <button disabled={busy} onClick={() => void decide(row, "deferred")}>暂缓</button>
-                  <button disabled={busy} onClick={() => void decide(row, "rejected", "其他")}>否决</button>
-                  <select aria-label={`否决原因 ${row.title}`} onChange={(e) => { if (e.target.value) void decide(row, "rejected", e.target.value); e.target.value = ""; }} defaultValue="">
-                    <option value="">否决原因…</option>
-                    {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
-              )}
-              {["approved", "drafting"].includes(row.decision) && (
-                <div className="toolbar">
-                  <button disabled={busy} onClick={() => void decide(row, "drafting")}>开始写作</button>
-                  <input
-                    aria-label={`发布链接 ${row.title}`}
-                    placeholder="发布后回填链接"
-                    value={publishRef[row.id] || ""}
-                    onChange={(e) => setPublishRef({ ...publishRef, [row.id]: e.target.value })}
-                  />
-                  <button disabled={busy} onClick={() => void publish(row)}>回填发布</button>
-                </div>
-              )}
-              {["approved", "drafting", "published"].includes(row.decision) && (
-                <div>
-                  <Field label="草稿正文（可直接读、改、发布）">
-                    <textarea
-                      rows={6}
-                      value={draftText[row.id] ?? row.draftBody ?? ""}
-                      onChange={(e) => setDraftText({ ...draftText, [row.id]: e.target.value })}
-                    />
-                  </Field>
-                  {row.decision !== "published" && (
-                    <button disabled={busy} onClick={() => void act(async () => {
-                      await api(`decisions/${row.id}/draft`, { draftBody: draftText[row.id] ?? "" });
-                      await reload();
-                      setNotice("草稿正文已保存。");
-                    })}>保存草稿</button>
-                  )}
-                </div>
-              )}
-              {row.decision === "published" && row.publishedRef && (
-                <p><a href={row.publishedRef} target="_blank" rel="noreferrer">{row.publishedRef}</a></p>
-              )}
+                {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
+              </span>
             </div>
+            {row.summary && <p className="card-summary">{row.summary.slice(0, 200)}</p>}
+            <div className="card-row-bottom">
+              <span className="card-meta">
+                {row.createdAt ? date(row.createdAt) : ""}
+                {row.evidenceCount !== undefined ? ` · 证据 ${row.evidenceCount} 条` : ""}
+                {row.producedBy ? ` · ${producedByLabel(row.producedBy)}` : ""}
+                {cluster ? ` · 簇：${cluster.topic}` : ""}
+                {row.suggestions && row.suggestions.length > 0 ? " · " + row.suggestions.map((s) => `${s.by} ${s.score ? s.score + "分" : statusLabels[s.verdict] || s.verdict}`).join(" / ") : ""}
+              </span>
+              <span className="card-actions">
+                {row.decision === "pending" && (
+                  <>
+                    <button className="primary" disabled={busy} onClick={() => void decide(row, "approved")}>通过</button>
+                    <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "deferred")}>暂缓</button>
+                    {reasonOpen.has(row.id) ? (
+                      <>
+                        <select aria-label={`否决原因 ${row.title}`} value={rowReason[row.id] || ""} onChange={(e) => setRowReason({ ...rowReason, [row.id]: e.target.value })}>
+                          <option value="">否决原因…</option>
+                          {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                        <button disabled={busy || !rowReason[row.id]} onClick={() => { void decide(row, "rejected", rowReason[row.id]); setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id))); }}>确认否决</button>
+                        <button className="button-secondary" onClick={() => setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id)))}>取消</button>
+                      </>
+                    ) : (
+                      <button disabled={busy} onClick={() => setReasonOpen(new Set([...reasonOpen, row.id]))}>否决</button>
+                    )}
+                  </>
+                )}
+                {["approved", "drafting"].includes(row.decision) && (
+                  <>
+                    <button disabled={busy} onClick={() => void decide(row, "drafting")}>开始写作</button>
+                    <input
+                      aria-label={`发布链接 ${row.title}`}
+                      placeholder="发布后回填链接"
+                      value={publishRef[row.id] || ""}
+                      onChange={(e) => setPublishRef({ ...publishRef, [row.id]: e.target.value })}
+                      style={{ maxWidth: 220 }}
+                    />
+                    <button disabled={busy} onClick={() => void publish(row)}>回填发布</button>
+                  </>
+                )}
+              </span>
+            </div>
+            {row.decision === "published" && row.publishedRef && (
+              <p><a href={row.publishedRef} target="_blank" rel="noreferrer">{row.publishedRef}</a></p>
+            )}
+            {["approved", "drafting", "published"].includes(row.decision) && (
+              <details className="row-fold">
+                <summary>草稿正文（可直接读、改、发布）</summary>
+                <Field label="草稿正文">
+                  <textarea
+                    rows={6}
+                    value={draftText[row.id] ?? row.draftBody ?? ""}
+                    onChange={(e) => setDraftText({ ...draftText, [row.id]: e.target.value })}
+                  />
+                </Field>
+                {row.decision !== "published" && (
+                  <button disabled={busy} onClick={() => void act(async () => {
+                    await api(`decisions/${row.id}/draft`, { draftBody: draftText[row.id] ?? "" });
+                    await reload();
+                    setNotice("草稿正文已保存。");
+                  })}>保存草稿</button>
+                )}
+              </details>
+            )}
           </div>
-        ))}
+          );
+        })}
       </section>
 
       <section className="surface">
