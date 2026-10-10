@@ -3,7 +3,7 @@
 // 数据源 = seo-terms 集合（外部 Agent 每日 upsert；category 主题类 + intent 搜索意图两字段）
 // 与 seen-terms 集合（热词雷达三层：新词/突增/持续）。
 // 板块：🔥 热词雷达（顶部）→ 全量词表 → 选题×搜索词 → 意图分层。
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Empty, api, date } from "../ui";
 import { Pagination } from "../Pagination";
@@ -104,7 +104,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
           <div className="filter-row">
             <Select aria-label="主题分类" value={category} onChange={(e) => setCategory(e.target.value)}><option value="all">全部分类</option>{[...new Set(terms.map((t) => t.category).filter(Boolean))].filter((o) => o !== "all").map((o) => <option key={o} value={o}>{o}</option>)}</Select>
             <Select aria-label="搜索意图" value={intent} onChange={(e) => setIntent(e.target.value)}><option value="all">全部意图</option>{INTENTS.filter((o) => terms.some((t) => t.intent === o)).map((o) => <option key={o} value={o}>{o}</option>)}</Select>
-            <Select aria-label="平台" value={source} onChange={(e) => setSource(e.target.value)}><option value="all">全部平台</option>{platforms.map((p) => <option key={p} value={p}>{p}</option>)}</Select>
+            <Select aria-label="平台" value={source} onChange={(e) => setSource(e.target.value)}><option value="all">全部平台</option>{platforms.map((p: string) => <option key={p} value={p}>{p}</option>)}</Select>
           </div>
           <div className="discovery-list">
             {pageItems.map((t) => (
