@@ -1,4 +1,3 @@
-"use client";
 // 热点分类路由（信息架构 v2-3）：外部 Agent 按热点 urlKey 写入 AI 分类；
 // 身份键 = urlKey(url)（与热点列表/消费同口径），同键后写覆盖（幂等 upsert）。
 // 读：GET /agent/hotspot-categories（read scope，全量或按 ids）。
