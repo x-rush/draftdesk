@@ -98,7 +98,7 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
   );
 }
 
-function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void> }) {
+export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return (
     <Drawer

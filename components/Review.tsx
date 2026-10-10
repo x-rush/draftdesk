@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { api, Field, formatApiError } from "./ui";
+import { OutlineDrawer } from "./views/OutlineQueueView";
 import { creationLabels } from "../core/workspace-ui";
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
@@ -31,6 +32,7 @@ const sourceFilterLabels: Record<string, string> = { artifact: "内置产物", o
 
 export function Review() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [detail, setDetail] = useState<any>(null);
   const [status, setStatus] = useState<string>("pending");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -190,7 +192,11 @@ export function Review() {
               />
             </label>
             <div className="review-body">
-              <strong>{row.title}</strong>
+              {row.sourceType === "outline" ? (
+                <button className="article-title" onClick={() => setDetail(row)}>{row.title}</button>
+              ) : (
+                <strong>{row.title}</strong>
+              )}
               <small>
                 <span className="creation-badge">{row.sourceType}</span>{" "}
                 <span className="creation-badge">{row.kind}</span>{" "}
@@ -199,7 +205,6 @@ export function Review() {
                 {row.evidenceCount !== undefined && <span className="creation-badge">证据 {row.evidenceCount} 条</span>}{" "}
                 {row.producedBy && <span className="creation-badge">{producedByLabel(row.producedBy)}</span>}
                 {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
-                {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
                 {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
               </small>
               {row.summary && <p className="muted">{row.summary.slice(0, 200)}</p>}
@@ -341,6 +346,18 @@ export function Review() {
         />
         <button className="primary" disabled={busy} onClick={() => void savePersona()}>保存人设配置</button>
       </section>
+      {detail && (
+        <OutlineDrawer
+          outline={detail}
+          cluster={clusters.find((c) => c.id === detail.clusterId)}
+          onClose={() => setDetail(null)}
+          onDecide={async (decision, rejectReason) => {
+            await decide(detail, decision, rejectReason);
+            const refreshed = rows.find((x) => x.id === detail.id);
+            setDetail(refreshed && refreshed.decision !== detail.decision ? refreshed : null);
+          }}
+        />
+      )}
     </div>
   );
 }
