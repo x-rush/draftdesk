@@ -8,6 +8,31 @@ type TermStore = { get<T>(collection: string, id: string): T | undefined; put<T>
 export type SeenTermStatus = "new" | "rising" | "sustained" | "archived";
 const RANK: Record<SeenTermStatus, number> = { new: 0, rising: 1, sustained: 2, archived: 3 };
 
+// 搜索意图（热词掘金 v3）：规则判定先行，供词表筛选与选题匹配。
+// 判定顺序按需求清单：教程/方法 → 对比/替代 → 价格/商业 → 疑问句式兜底。
+export type SeenTermIntent = "informational" | "comparison" | "commercial" | "question";
+export function classifyIntent(term: string): SeenTermIntent {
+  const raw = term.trim();
+  const lower = raw.toLowerCase();
+  const zh = (...markers: string[]) => markers.some((m) => raw.includes(m));
+  const en = (...markers: string[]) => markers.some((m) => new RegExp(`(^|[^a-z])${m}([^a-z]|$)`, "i").test(lower));
+  // ① informational：怎么/如何/为什么/教程/方法/步骤/指南
+  if (zh("怎么", "如何", "为什么", "教程", "方法", "步骤", "指南", "是什么") || en("how", "what is", "why", "guide", "tutorial", "walkthrough")) return "informational";
+  // ② comparison：替代/对比/比较/vs/哪个好/同类
+  if (zh("替代", "对比", "比较", "哪个好", "同类", "平替") || en("alternative", "vs", "versus", "compare", "comparison", "instead of")) return "comparison";
+  // ③ commercial：价格/多少钱/收费/费用/免费/买
+  if (zh("价格", "多少钱", "收费", "费用", "免费", "报价", "买") || en("price", "pricing", "cost", "free", "cheap", "discount", "deal", "buy")) return "commercial";
+  // ④ question：疑问句式（问号结尾/句首疑问词/语气词）
+  if (/[？?]$/.test(raw) || zh("吗", "么", "哪个", "哪些") || en("is", "are", "can", "does", "do", "should", "which", "when", "where", "who", "will")) return "question";
+  return "informational";
+}
+
+// 长尾词判定（词表徽章）：≥3 个空格分隔的词元视为长尾（博客选题金矿）。
+// 中文连写无空格按 1 个词元处理；联想展开结果常含产品名+意图词，多为一词元以上。
+export function isLongTail(term: string): boolean {
+  return term.trim().split(/\s+/).length >= 3;
+}
+
 export function termId(term: string): string {
   return term.trim().toLowerCase();
 }
@@ -30,6 +55,7 @@ export function getSeenTerm(kv: TermStore, term: string): any | undefined {
 export function mergeSeenTerm(kv: TermStore, input: {
   term: string; sources?: string[]; relatedSearches?: string[]; offTopic?: boolean;
   status?: SeenTermStatus; frequency?: number; observations?: number; lastSeenAt?: string;
+  seed?: string; intent?: SeenTermIntent;
 }, by: string) {
   const id = termId(input.term);
   const prev = kv.get<any>("seen-terms", id);
@@ -44,6 +70,9 @@ export function mergeSeenTerm(kv: TermStore, input: {
     observations: Math.max(prev?.observations ?? 0, input.observations ?? 0, input.frequency ?? 0),
     status,
     offTopic: input.offTopic ?? prev?.offTopic,
+    // 血缘（seed）只记首见种子；intent 显式传入优先，否则保留旧值
+    seed: prev?.seed ?? input.seed,
+    intent: input.intent ?? prev?.intent,
     daysSeen: prev?.daysSeen ?? [],
     producedBy: by,
     updatedAt: now0(),
@@ -77,9 +106,52 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     status,
     daysSeen,
     offTopic: opts.offTopic ?? prev?.offTopic,
+    seed: prev?.seed,
+    intent: prev?.intent ?? classifyIntent(term),
     producedBy: prev?.producedBy ?? "builtin-extract/1.0.0",
     updatedAt: now0(),
     ...(prev?.createdAt ? {} : { createdAt: now0() }),
+  };
+  kv.put("seen-terms", id, doc);
+  return doc;
+}
+
+// 联想展开入库（热词掘金 v3 引擎 A）：新词 status=new 带种子血缘；
+// 已存在词只推进 lastSeenAt/observations（每日跑一次，天然同日至多 +1），
+// seed 只记首见，intent 缺失时按规则补判。
+export function observeSuggestion(kv: TermStore, term: string, seed: string, opts: { source?: string; intent?: SeenTermIntent } = {}) {
+  const id = termId(term);
+  const prev = kv.get<any>("seen-terms", id);
+  if (prev) {
+    const doc = {
+      ...prev,
+      lastSeenAt: new Date().toISOString(),
+      observations: (prev.observations ?? 0) + 1,
+      sources: [...new Set([...(prev.sources || []), ...(opts.source ? [opts.source] : [])])],
+      seed: prev.seed ?? seed,
+      intent: opts.intent ?? prev.intent ?? classifyIntent(term),
+      updatedAt: now0(),
+    };
+    kv.put("seen-terms", id, doc);
+    return doc;
+  }
+  const now = new Date().toISOString();
+  const doc = {
+    id,
+    term: term.trim(),
+    firstSeenAt: now,
+    lastSeenAt: now,
+    sources: [opts.source || "suggest-expansion"],
+    relatedSearches: [],
+    observations: 1,
+    status: "new" as SeenTermStatus,
+    daysSeen: [],
+    seed,
+    intent: opts.intent ?? classifyIntent(term),
+    offTopic: undefined,
+    producedBy: "suggest-expansion/1.0.0",
+    updatedAt: now,
+    createdAt: now,
   };
   kv.put("seen-terms", id, doc);
   return doc;

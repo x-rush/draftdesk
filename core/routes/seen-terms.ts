@@ -7,6 +7,7 @@ import { mergeSeenTerm, observeSeenTerm } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
+const intentEnum = z.enum(["informational", "comparison", "commercial", "question"]);
 const upsertSchema = z.object({
   items: z.array(z.object({
     term: z.string().trim().min(1).max(80),
@@ -17,6 +18,8 @@ const upsertSchema = z.object({
     status: statusEnum.optional(),
     frequency: z.number().int().min(0).optional(),
     lastSeenAt: z.string().datetime().optional(),
+    seed: z.string().trim().max(80).optional(),
+    intent: intentEnum.optional(),
   })).min(1).max(200),
 }).strict();
 
