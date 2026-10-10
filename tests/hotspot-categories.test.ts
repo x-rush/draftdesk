@@ -57,7 +57,7 @@ test("热点分类：upsert 幂等+urlKey 身份键+suggest 门槛；订阅排�
     const at = new Date().toISOString();
     db.put("discovery", "cat-j1", { jobId: "cat-j1", at, planName: "p", candidates: [
       { url: "https://c.example/1", title: "已订阅类", sourceId: "s", sourceName: "S", status: "watch", reason: "r", observedAt: at },
-      { url: "https://c.example/2", title: "未订阅类", sourceId: "s", sourceName: "S", status: "watch", reason: "r", observedAt: at },
+      { url: "https://c.example/2", title: "未订阅类", sourceId: "s", sourceName: "S", status: "watch", reason: "r", observedAt: new Date(Date.parse(at) + 1000).toISOString() },
     ], sources: [] });
     const feedInterested = dbModule && (await import("../core/hotspots")).hotspotFeed(
       db.list("discovery"),
