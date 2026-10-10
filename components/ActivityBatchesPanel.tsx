@@ -25,7 +25,7 @@ export function ActivityBatchesPanel({ ws, data }: { ws: any; data: any }) {
           <strong style={{ flex: 1 }}>{b.platform} · {b.count} 条 <small>{date(b.receivedAt)}{b.reason ? ` · ${b.reason}` : ""}</small></strong>
           <button onClick={() => { const first = b; ws.setDiscussionContext({ title: `${first.platform} 活动批次（${first.count} 条）`, url: "", source: first.platform }); ws.navigate("chat"); }}>讨论</button>
           <button onClick={() => setPromoteBatch(promoteBatch === b.id ? null : b.id)}>推进</button>
-          <ArchiveButton label="归档" onConfirm={() => { setIgnored([...ignored, b.id]); void api("activity-batches/" + b.id).catch(() => {}); }} />
+          <ArchiveButton label="归档" onConfirm={() => { setIgnored([...ignored, b.id]); void ws.act(async () => { await api("activity-batches/archive", { batchId: b.id }); ws.setNotice("批次已归档（标记不感兴趣，置顶取消）。可通过刷新页面在全部列表查看。"); }); }} />
         </div>
       ))}
       {promoteBatch && (() => {
