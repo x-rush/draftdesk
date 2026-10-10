@@ -153,6 +153,170 @@ export async function requestModel(
     );
   return { text: output, usage, reservation };
 }
+// ---- 结构修复提示词（纯函数，便于守护测试）----
+// 把已给模型看的 JSON Schema 渲染成逐字段缩进清单：类型、必填标记(*)、枚举逐字值。
+function renderSchemaTemplate(schemaJson: string): string {
+  try {
+    const root = JSON.parse(schemaJson);
+    const resolveRef = (node: any): any =>
+      typeof node?.$ref === "string" && node.$ref.startsWith("#/")
+        ? node.$ref.split("/").slice(1).reduce((v: any, k: string) => v?.[k], root)
+        : node;
+    const typeOf = (node: any): string | string[] => resolveRef(node)?.type;
+    const leafDesc = (node: any): string => {
+      const target = resolveRef(node);
+      const types = (Array.isArray(target.type) ? target.type : [target.type]).filter((t: string) => t !== "null");
+      const base = types[0];
+      const nullable = types.length !== (Array.isArray(target.type) ? target.type : [target.type]).length;
+      if (target.enum) return "枚举，只能逐字选一: " + target.enum.map((v: unknown) => JSON.stringify(v)).join(" | ");
+      if ("const" in target) return "固定值，必须逐字写: " + JSON.stringify(target.const);
+      if (target.format === "date-time") return "string（ISO 8601 日期时间，如 2026-01-01T00:00:00Z）" + (nullable ? " 或 null" : "");
+      if (base === "string") {
+        const span = target.minLength > 1 ? `（长度 ${target.minLength}${target.maxLength ? "–" + target.maxLength : "+"}）` : "";
+        return "string" + span + (nullable ? " 或 null" : "");
+      }
+      if (base === "integer" || base === "number")
+        return base + (target.minimum != null ? `（≥${target.minimum}）` : "") + (target.maximum != null ? `（≤${target.maximum}）` : "") + (nullable ? " 或 null" : "");
+      if (base === "boolean") return "boolean" + (nullable ? " 或 null" : "");
+      return base || "unknown";
+    };
+    const render = (node: any, name: string, required: boolean, depth: number): string[] => {
+      const target = resolveRef(node);
+      const pad = "  ".repeat(depth);
+      const star = required ? "*" : "";
+      if (Array.isArray(target.anyOf) || Array.isArray(target.oneOf)) {
+        const branches = target.anyOf || target.oneOf;
+        const lines = [`${pad}- ${name}${star}: 以下任一：`];
+        for (const branch of branches) {
+          const resolved = resolveRef(branch);
+          if (resolved.type === "null") lines.push(`${pad}    - 或 null：仅当确实无值可写时才用`);
+          else lines.push(...render(resolved, `（分支）`, false, depth + 2));
+        }
+        return lines;
+      }
+      if (typeOf(target) === "object") {
+        const lines = [`${pad}- ${name}${star}: object，字段：`];
+        for (const [key, child] of Object.entries(target.properties || {}))
+          lines.push(...render(child, key, (target.required || []).includes(key), depth + 1));
+        if (target.additionalProperties && typeof target.additionalProperties === "object")
+          lines.push(...render(target.additionalProperties, "（任意键）", false, depth + 1));
+        return lines;
+      }
+      if (typeOf(target) === "array") {
+        const span = target.minItems || target.maxItems
+          ? `（${target.minItems ? "至少 " + target.minItems + " 项" : ""}${target.minItems && target.maxItems ? "，" : ""}${target.maxItems ? "最多 " + target.maxItems + " 项" : ""}）`
+          : "";
+        const lines = [`${pad}- ${name}${star}: array${span}`];
+        if (target.items) lines.push(...render(resolveRef(target.items), "每项", false, depth + 1));
+        return lines;
+      }
+      return [`${pad}- ${name}${star}: ${leafDesc(target)}`];
+    };
+    if (typeOf(root) !== "object") return "";
+    return (root.properties ? Object.entries(root.properties) : [])
+      .map(([key, child]) => render(child, key, (root.required || []).includes(key), 0).join("\n"))
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+// 从 Schema 程序化合成最小有效输出骨架：只含必填字段，数组给单元素或 []，
+// 字符串给「本轮未核实」（日期给固定 ISO 示例），枚举取第一个值，字面量逐字。
+function exampleFromSchema(schemaJson: string): unknown {
+  try {
+    const root = JSON.parse(schemaJson);
+    const resolveRef = (node: any): any =>
+      typeof node?.$ref === "string" && node.$ref.startsWith("#/")
+        ? node.$ref.split("/").slice(1).reduce((v: any, k: string) => v?.[k], root)
+        : node;
+    const build = (node: any): unknown => {
+      const target = resolveRef(node);
+      const branches = target.anyOf || target.oneOf;
+      if (Array.isArray(branches)) {
+        const pick = branches.map(resolveRef).find((b: any) => b.type !== "null");
+        return pick ? build(pick) : null;
+      }
+      const types = Array.isArray(target.type) ? target.type.filter((t: string) => t !== "null") : [target.type];
+      const base = types[0];
+      if (target.enum) return target.enum[0];
+      if ("const" in target) return target.const;
+      if (base === "object")
+        return Object.fromEntries(
+          (target.required || []).map((key: string) => [key, build(target.properties?.[key] ?? {})]),
+        );
+      if (base === "array") {
+        const item = resolveRef(target.items || {});
+        const structural = item.type === "object" || item.anyOf || item.oneOf;
+        return structural ? [build(item)] : [];
+      }
+      if (base === "string") return target.format === "date-time" ? "2026-01-01T00:00:00Z" : "本轮未核实";
+      if (base === "integer" || base === "number") return 1;
+      if (base === "boolean") return false;
+      return null;
+    };
+    return build(root);
+  } catch {
+    return null;
+  }
+}
+// 组装修复提示词。issues 是已格式化的「路径: 消息」行；条件块按问题文本路由，
+// 结构模板与示例仅在 Schema 可解析时注入。
+export function buildRepairPrompt(issues: string[], schemaJson: string): string {
+  const parts: string[] = [];
+  parts.push("上次输出未满足 JSON Schema。逐项修复以下实际校验错误：");
+  parts.push(...issues.map((issue) => "- " + issue));
+  const pathOf = (issue: string) => issue.slice(0, Math.max(0, issue.indexOf(": ")));
+  if (issues.some((s) => s.includes("received undefined") || s.includes("Too small")))
+    parts.push(
+      "",
+      "被报 received undefined 的字段必须显式输出：字段名不能省略，数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」。",
+    );
+  if (issues.some((s) => pathOf(s).includes("clusters")))
+    parts.push(
+      "",
+      "clusters 重写规则：每条必须完整包含 label、summary、evidenceIds、contradictions、missing 五字段；数组空时写 []，字符串依据材料写摘要或「本轮未核实」，绝不省略字段名或写 null；evidenceIds 只逐字引用允许列表。",
+    );
+  if (issues.some((s) => pathOf(s).includes("claims")))
+    parts.push(
+      "",
+      "claims 重写规则：最多 4 条；type 只能逐字写 fact/inference/hypothesis；fact 必须带证据原文逐字摘录的 quote 字符串（绝不写 null，没有引文就降级 inference）；evidenceIds 只能逐字引用允许列表里的编号，且已含在该条顶层 evidenceIds 中。",
+    );
+  if (issues.some((s) => pathOf(s).split(".").pop() === "details"))
+    parts.push(
+      "",
+      "缺失 details 时，按该条 kind 的 Schema 重建必填字段，不能因为摘要已有内容就省略。仅从原始证据和已有受支持内容整理；没有依据的范围或限制明确写本轮未核实，不用空对象、null 或编造事实补齐。",
+    );
+  const banned = [
+    ...new Set(
+      issues.flatMap((s) => [...s.matchAll(/Unrecognized key: "([^"]+)"/g)].map((m) => m[1])),
+    ),
+  ];
+  if (banned.length)
+    parts.push(
+      "",
+      "## 字段黑名单（上次正是因输出了这些 Schema 未声明的键而被拒，本次绝对禁止再出现）：" +
+        banned.map((key) => JSON.stringify(key)).join("、") +
+        "。这些键只能出现在 Schema 声明的位置（如顶层 rejected），绝不能塞进 items 元素等对象内部；只输出下方模板列出的字段名。",
+    );
+  const template = renderSchemaTemplate(schemaJson);
+  if (template) {
+    parts.push(
+      "",
+      "## 输出结构模板（字段名后带 * 为必填，必填字段一个都不能少；不得输出模板之外的任何字段）",
+      template,
+      "",
+      "## 最小有效输出骨架（仅演示字段名与嵌套结构；值为占位符，不得照抄为事实内容；长度、项数等约束以模板标注为准）",
+      JSON.stringify(exampleFromSchema(schemaJson), null, 1),
+    );
+  }
+  if (schemaJson.includes('"enum"'))
+    parts.push(
+      "",
+      "枚举出口：枚举字段只能从模板列出的值中逐字选一个（区分大小写）；证据不足以支撑某个高承诺取值时，改选承诺更低的取值；仅当「本轮未核实」本身就是该字段的枚举值之一时才允许写它，否则写了也会再次被拒。",
+    );
+  parts.push("", "保持证据 ID 不变，重写完整 JSON，不添加事实。");
+  return parts.join("\n");
+}
 export async function structured<T>(
   db: Store,
   job: Job,
@@ -224,20 +388,10 @@ export async function structured<T>(
         { role: "assistant", content: response.text.slice(0, 18000) },
         {
           role: "user",
-          content:
-            "上次输出未满足 JSON Schema。逐项修复以下实际校验错误：\n" + issues.map(message=>[...aliases].reduce((v,[id,alias])=>v.split(id).join(alias),message)).join("\n") +
-            (fields.some(issue => String(issue.message).includes("received undefined") || String(issue.message).includes("Too small"))
-              ? "\n被报 received undefined 的字段必须显式输出：字段名不能省略，数组字段空时写 []，字符串字段依据材料写摘要或「本轮未核实」。"
-              : "") +
-            (fields.some(issue => String(issue.path.join(".")).includes("clusters"))
-              ? "\nclusters 重写规则：每条必须完整包含 label、summary、evidenceIds、contradictions、missing 五字段；数组空时写 []，字符串依据材料写摘要或「本轮未核实」，绝不省略字段名或写 null；evidenceIds 只逐字引用允许列表。"
-              : "") +
-            (fields.some(issue => String(issue.path.join(".")).includes("claims"))
-              ? "\nclaims 重写规则：最多 4 条；type 只能逐字写 fact/inference/hypothesis；fact 必须带证据原文逐字摘录的 quote 字符串（绝不写 null，没有引文就降级 inference）；evidenceIds 只能逐字引用允许列表里的编号，且已含在该条顶层 evidenceIds 中。"
-              : "") +
-            (fields.some(issue => issue.path.at(-1) === "details")
-              ? "\n缺失 details 时，按该条 kind 的 Schema 重建必填字段，不能因为摘要已有内容就省略。仅从原始证据和已有受支持内容整理；没有依据的范围或限制明确写本轮未核实，不用空对象、null 或编造事实补齐。"
-              : "") + "\n保持证据 ID 不变，重写完整 JSON，不添加事实。",
+          content: [...aliases].reduce(
+            (v, [id, alias]) => v.split(id).join(alias),
+            buildRepairPrompt(issues, visibleSchema),
+          ),
         },
       );
     }
