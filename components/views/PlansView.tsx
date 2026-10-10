@@ -1,6 +1,7 @@
 "use client";
 // 研究策略视图（PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
 import { Layers, Play } from "lucide-react";
+import { useState } from "react";
 import { api } from "../ui";
 import { kindPlanLabels } from "../ui";
 import { PlanPreview } from "../ResearchBrief";
@@ -8,9 +9,23 @@ import type { Workspace, Snapshot } from "../useWorkspaceData";
 
 export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { busy, setPlan, navigate, act, setNotice } = ws;
+  const [extractBusy, setExtractBusy] = useState(false);
+  const [extractNote, setExtractNote] = useState("");
   return (
     <>
       <div className="toolbar">
+        <button
+          disabled={extractBusy}
+          onClick={() => void (async () => {
+            setExtractBusy(true);
+            try {
+              const r = await api<{ triggered: boolean; alreadyDone: boolean }>("seen-terms/extract", {});
+              setExtractNote(r.alreadyDone ? "今日已整理。" : "热词提取已触发，约 1-2 分钟后热词雷达自动更新。");
+            } catch (e) { setExtractNote((e as Error).message); } finally { setExtractBusy(false); }
+          })()}>
+          {extractBusy ? "整理中…" : "立即整理热词"}
+        </button>
+        {extractNote && <span role="status">{extractNote}</span>}
         <button
           className="primary"
           onClick={() =>

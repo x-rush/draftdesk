@@ -43,6 +43,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
   const [radarTab, setRadarTab] = useState<"new" | "rising" | "sustained">("new");
   const zoneLists: Record<string, any[]> = { new: radar.fresh, rising: radar.rising, sustained: radar.sustained };
   const [projectBusy, setProjectBusy] = useState<string | null>(null);
+  const [radarBusy, setRadarBusy] = useState(false);
   async function projectTerm(term: string) {
     setProjectBusy(term);
     try {
@@ -61,11 +62,29 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
       <section className="surface" style={{ marginBottom: 14 }}>
         <h2>🔥 热词雷达</h2>
         <p className="muted">三层雷达：新词（48h 内首见）→ 突增（观测晋级）→ 持续（连续 3 天在榜）。数据来自全源标题流的每日提取与外部 Agent 双写。</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <nav className="discovery-modes" aria-label="雷达分区">
           <button className={radarTab === "new" ? "active" : ""} onClick={() => setRadarTab("new")}>🆕 新词 {radar.fresh.length}</button>
           <button className={radarTab === "rising" ? "active" : ""} onClick={() => setRadarTab("rising")}>📈 突增 {radar.rising.length}</button>
           <button className={radarTab === "sustained" ? "active" : ""} onClick={() => setRadarTab("sustained")}>🔥 持续 {radar.sustained.length}</button>
         </nav>
+        <button disabled={radarBusy} onClick={() => void (async () => {
+          setRadarBusy(true);
+          try {
+            const r = await api<{ triggered: boolean; alreadyDone: boolean }>("seen-terms/extract", {});
+            setNotice(r.alreadyDone ? "今日已整理。" : "热词提取已触发，约 1-2 分钟后雷达自动更新。");
+            await ws.refresh();
+          } catch (e) { setNotice((e as Error).message); } finally { setRadarBusy(false); }
+        })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
+        </div>
+        <button disabled={radarBusy} onClick={() => void (async () => {
+          setRadarBusy(true);
+          try {
+            const r = await api<{ triggered: boolean; alreadyDone: boolean }>("seen-terms/extract", {});
+            setNotice(r.alreadyDone ? "今日已整理。" : "热词提取已触发，约 1-2 分钟后雷达自动更新。");
+            await ws.refresh();
+          } catch (e) { setNotice((e as Error).message); } finally { setRadarBusy(false); }
+        })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
         {zoneLists[radarTab].length === 0 ? (
           <p className="muted">{radarTab === "new" ? "今日无爆发级新词，常规词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥2 次即晋级）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
         ) : (
