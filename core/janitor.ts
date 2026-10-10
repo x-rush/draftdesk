@@ -7,16 +7,19 @@ import { urlKey } from "./hotspots";
 export const RETENTION = {
   hotspots: { autoConsumeOlderThanDays: 7 },
   evidence: { autoConsumeOlderThanDays: 30 },
+  // 热词词库（热词掘金 v3）：archived 超 90 天清理出库，活跃词库目标 5000-8000 条量级。
+  seenTerms: { purgeArchivedAfterDays: 90 },
 };
 
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
   // consumerMode=external：消费与回收由外部 Agent 负责，内置 janitor 停用（§4.2 干净分解）。
+  const seenPurged = purgeArchivedSeenTerms(db);
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -60,7 +63,24 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged };
   db.put("meta", "janitor", result);
   return result;
+}
+
+// seen-terms 归档出库：status=archived 且最后更新超窗口的直接删除（清理出库，非软删）。
+export function purgeArchivedSeenTerms(db: Store): number {
+  const cutoff = Date.now() - RETENTION.seenTerms.purgeArchivedAfterDays * 86400000;
+  let purged = 0;
+  for (const t of db.list<any>("seen-terms")) {
+    if (t.status !== "archived") continue;
+    const at = Date.parse(t.updatedAt || t.lastSeenAt || "");
+    if (Number.isFinite(at) && at < cutoff) { db.del("seen-terms", t.id); purged++; }
+  }
+  if (purged) {
+    // 出库后失效三区缓存（版本消费方在 core/seen-terms.ts）
+    const prev = db.get<{ n: number }>("meta", "seen-terms-version");
+    db.put("meta", "seen-terms-version", { n: (prev?.n ?? 0) + 1 });
+  }
+  return purged;
 }

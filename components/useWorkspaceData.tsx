@@ -62,7 +62,10 @@ export function useWorkspaceData() {
   const [discussionContext, setDiscussionContext] = useState<import("./ActionButtons").DiscussContext | null>(null);
   const [seoTerms, setSeoTerms] = useState<any[]>([]);
   const [siteProjects, setSiteProjects] = useState<any[]>([]);
-  const [seenTerms, setSeenTerms] = useState<any[]>([]);
+  // 热词词表（词表分页批）：服务端分页/筛选/搜索 + 三区与意图计数一次响应
+  const [seenList, setSeenList] = useState<any>({ items: [], total: 0, counts: {}, zones: null });
+  const [seenQ, setSeenQ] = useState(""), [seenStatus, setSeenStatus] = useState(""), [seenIntent, setSeenIntent] = useState(""), [seenPage, setSeenPage] = useState(1);
+  const [seenLoading, setSeenLoading] = useState(false);
   const [previewPlan, setPreviewPlan] = useState("daily-editorial");
   const knownJobs = useRef(new Map<string, string>()), activityReady = useRef(false), activitySince = useRef(Date.now()), restoreScroll = useRef(true);
   const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
@@ -70,13 +73,12 @@ export function useWorkspaceData() {
   currentKey.current = requestKey;
   async function refresh() {
     const key = currentKey.current, version = ++requestVersion.current;
-    const [next, outlineList, clusterList, seoTermList, siteProjectList, seenTermList] = await Promise.all([
+    const [next, outlineList, clusterList, seoTermList, siteProjectList] = await Promise.all([
       api<Snapshot>("workspace?" + key),
       api<{ items: any[] }>("outlines"),
       api<{ items: any[] }>("clusters"),
       api<{ items: any[] }>("seo-terms"),
       api<{ items: any[] }>("site-projects"),
-      api<{ items: any[] }>("seen-terms"),
     ]);
     if (currentKey.current === key && requestVersion.current === version) {
       setData(next);
@@ -85,7 +87,6 @@ export function useWorkspaceData() {
       setClusters(clusterList?.items ?? []);
       setSeoTerms(seoTermList?.items ?? []);
       setSiteProjects(siteProjectList?.items ?? []);
-      setSeenTerms(seenTermList?.items ?? []);
       const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
       if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
       next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
@@ -110,6 +111,19 @@ export function useWorkspaceData() {
     const timer = setInterval(() => { void refresh().catch(() => { }); }, 4000);
     return () => { alive = false; clearInterval(timer); requestVersion.current++; };
   }, [requestKey, locationReady]);
+  useEffect(() => {
+    if (!locationReady) return;
+    let alive = true;
+    setSeenLoading(true);
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ limit: "50", offset: String((seenPage - 1) * 50) });
+      if (seenQ.trim()) params.set("q", seenQ.trim());
+      if (seenStatus) params.set("status", seenStatus);
+      if (seenIntent) params.set("intent", seenIntent);
+      void api<any>("seen-terms?" + params).then((payload) => { if (alive) setSeenList(payload); }).catch(() => { }).finally(() => { if (alive) setSeenLoading(false); });
+    }, 300);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [seenQ, seenStatus, seenIntent, seenPage, locationReady]);
   useEffect(() => {
     setToday(new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long", timeZone: "Asia/Shanghai" }));
     void api<any[]>("skills")
@@ -181,7 +195,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, seenTerms, discussionContext, setDiscussionContext, mutateOutlines,
+    outlines, clusters, seoTerms, siteProjects, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,

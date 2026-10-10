@@ -234,6 +234,18 @@ export const migrations: Migration[] = [
       if (missing.length) kv.put("plans", plan.id, { ...plan, sourceIds: [...(plan.sourceIds || []), ...missing] });
     },
   },
+  {
+    id: "seen-terms-index-v1",
+    // 热词词表规模化（词表分页批）：表达式索引支撑 5000-8000（上限 3 万）条量级的
+    // 分页/三区/搜索下推查询。表达式须与 core/seen-terms.ts 查询逐字一致才会命中。
+    run: ({ kv }) => {
+      kv.db.exec(`CREATE INDEX IF NOT EXISTS idx_seen_status_seen ON documents(collection, json_extract(body,'$.status'), json_extract(body,'$.lastSeenAt'))`);
+      kv.db.exec(`CREATE INDEX IF NOT EXISTS idx_seen_status_first ON documents(collection, json_extract(body,'$.status'), json_extract(body,'$.firstSeenAt'))`);
+      kv.db.exec(`CREATE INDEX IF NOT EXISTS idx_seen_intent ON documents(collection, json_extract(body,'$.intent'))`);
+      kv.db.exec(`CREATE INDEX IF NOT EXISTS idx_seen_obs_first ON documents(json_extract(body,'$.observations'), json_extract(body,'$.firstSeenAt')) WHERE collection='seen-terms' AND json_extract(body,'$.offTopic') IS NOT 1`);
+      kv.db.exec(`CREATE INDEX IF NOT EXISTS idx_seen_days ON documents(collection, json_array_length(json_extract(body,'$.daysSeen'))) WHERE collection='seen-terms'`);
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {

@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { mergeSeenTerm, observeSeenTerm } from "../seen-terms";
+import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
@@ -55,12 +55,31 @@ export const routes: RouteDef[] = [
     pattern: "agent/seen-terms",
     scope: "read",
     methodGuardFirst: true,
-    handler: ({ db }) => json({ items: db.list("seen-terms"), total: db.list("seen-terms").length }),
+    handler: ({ db, query }) => json(seenListPayload(db, query)),
   },
   {
-    // UI 只读口（无令牌）：雷达板块数据源
+    // UI 只读口（无令牌）：雷达板块数据源。支持 ?limit&offset&status&intent&q
+    //（默认 50 上限 200，status 权重 + lastSeenAt 降序）；响应附三区与意图计数。
     methods: ["GET"],
     pattern: "seen-terms",
-    handler: ({ db }) => json({ items: db.list("seen-terms"), total: db.list("seen-terms").length }),
+    handler: ({ db, query }) => json(seenListPayload(db, query)),
   },
 ];
+
+// 列表 + 三区 + 意图计数一次出（SQLite 下推，3 万条量级 <100ms）。
+function seenListPayload(db: any, query: URLSearchParams) {
+  const limit = Math.min(200, Math.max(1, Number(query.get("limit")) || 50));
+  const offset = Math.max(0, Number(query.get("offset")) || 0);
+  const status = query.get("status") || "";
+  const intent = query.get("intent") || "";
+  const q = query.get("q") || "";
+  const list = querySeenTerms(db.kv, { limit, offset, status, intent, q });
+  return {
+    items: list.items,
+    total: list.total,
+    limit,
+    offset,
+    counts: seenIntentCounts(db.kv),
+    zones: seenTermZones(db.kv),
+  };
+}

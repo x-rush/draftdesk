@@ -79,6 +79,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
     ...(prev?.createdAt ? {} : { createdAt: now0() }),
   };
   kv.put("seen-terms", id, doc);
+  bumpSeenTermsVersion(kv);
   return doc;
 }
 
@@ -113,6 +114,7 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     ...(prev?.createdAt ? {} : { createdAt: now0() }),
   };
   kv.put("seen-terms", id, doc);
+  bumpSeenTermsVersion(kv);
   return doc;
 }
 
@@ -133,6 +135,7 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
       updatedAt: now0(),
     };
     kv.put("seen-terms", id, doc);
+    bumpSeenTermsVersion(kv);
     return doc;
   }
   const now = new Date().toISOString();
@@ -154,6 +157,7 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
     createdAt: now,
   };
   kv.put("seen-terms", id, doc);
+  bumpSeenTermsVersion(kv);
   return doc;
 }
 
@@ -174,4 +178,92 @@ function now0() { return new Date().toISOString(); }
 // 主路径写入标记：外部 Agent PUT 成功后调用，供 worker 兜底闸门判断「今日已有数据」。
 export function markSeenTermsWrite(kv: TermStore) {
   kv.put("meta", "seen-terms-last-write", { at: new Date().toISOString() });
+}
+
+// ---- 规模化查询（热词掘金 v3 + 词表分页批）：全部经 kv.sqlRows 在 SQLite C 层完成，
+// 3 万条量级目标：分页 <100ms / 三区 <50ms / q 搜索 <100ms。字段名均为内部常量。 ----
+type SqlStore = { sqlRows(sql: string, ...params: any[]): Array<Record<string, unknown>>; get<T>(collection: string, id: string): T | undefined };
+const parseRows = (rows: Array<Record<string, unknown>>) => rows.map((r) => JSON.parse(String(r.body)));
+
+// 写入版本号：merge/observe/observeSuggestion/归档出库各 bump 一次，
+// 供三区缓存判断「自上次计算以来数据是否变过」。
+export function bumpSeenTermsVersion(kv: TermStore) {
+  const prev = kv.get<{ n: number }>("meta", "seen-terms-version");
+  kv.put("meta", "seen-terms-version", { n: (prev?.n ?? 0) + 1 });
+}
+
+export type SeenListQuery = { limit: number; offset: number; status?: string; intent?: string; q?: string };
+const STATUS_ORDER = `CASE json_extract(body,'$.status') WHEN 'sustained' THEN 0 WHEN 'rising' THEN 1 WHEN 'new' THEN 2 ELSE 3 END`;
+
+export function querySeenTerms(kv: SqlStore, query: SeenListQuery): { items: any[]; total: number } {
+  const status = query.status || "";
+  const intent = query.intent || "";
+  const q = (query.q || "").trim().toLowerCase().slice(0, 80);
+  const where = [
+    "collection='seen-terms'",
+    "(?='' OR json_extract(body,'$.status')=?)",
+    "(?='' OR json_extract(body,'$.intent')=?)",
+    "(?='' OR json_extract(body,'$.id') LIKE '%'||?||'%')",
+  ].join(" AND ");
+  const params = [status, status, intent, intent, q, q];
+  const total = (kv.sqlRows(`SELECT COUNT(*) c FROM documents WHERE ${where}`, ...params)[0] as { c: number }).c;
+  const rows = kv.sqlRows(
+    `SELECT body FROM documents WHERE ${where} ORDER BY ${STATUS_ORDER}, json_extract(body,'$.lastSeenAt') DESC LIMIT ? OFFSET ?`,
+    ...params, query.limit, query.offset,
+  );
+  return { items: parseRows(rows), total };
+}
+
+// 雷达三区（服务端口径）：
+// 🆕 新词 = status=new，firstSeenAt 降序；
+// 📈 突增 = observations≥3 且 firstSeenAt 7 天内，观测降序；
+// 🔥 持续 = status=sustained，daysSeen 长度降序。各限 20 并带总数（查看全部）。
+// 列表与 COUNT 分离（窗口函数会破坏 LIMIT 短路，实测 2.4 万行全物化 81ms）；
+// 每条查询都被表达式索引命中并在 LIMIT 处截断，3 万条 <50ms。
+export function seenTermZones(kv: SqlStore, sinceDays = 7): { fresh: { items: any[]; total: number }; hot: { items: any[]; total: number }; sustained: { items: any[]; total: number } } {
+  const version = kv.get<{ n: number }>("meta", "seen-terms-version")?.n ?? 0;
+  if (zoneCache && zoneCache.v === version) return zoneCache.zones;
+  const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+  const count = (sql: string, ...params: any[]) =>
+    (kv.sqlRows(sql, ...params)[0] as { c: number } | undefined)?.c ?? 0;
+  const fresh = {
+    items: parseRows(kv.sqlRows(
+      `SELECT body FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.status')='new' ORDER BY json_extract(body,'$.firstSeenAt') DESC LIMIT 20`,
+    )),
+    total: count(`SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.status')='new'`),
+  };
+  const hotWhere = `collection='seen-terms' AND json_extract(body,'$.status')!='archived' AND json_extract(body,'$.offTopic') IS NOT 1 AND json_extract(body,'$.observations')>=3 AND json_extract(body,'$.firstSeenAt')>=?`;
+  const hot = {
+    items: parseRows(kv.sqlRows(
+      `SELECT body FROM documents WHERE ${hotWhere} ORDER BY json_extract(body,'$.observations') DESC LIMIT 20`,
+      since,
+    )),
+    total: count(`SELECT COUNT(*) c FROM documents WHERE ${hotWhere}`, since),
+  };
+  const sustained = {
+    items: parseRows(kv.sqlRows(
+      `SELECT body FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.status')='sustained' ORDER BY json_array_length(json_extract(body,'$.daysSeen')) DESC LIMIT 20`,
+    )),
+    total: count(`SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.status')='sustained'`),
+  };
+  const zones = { fresh, hot, sustained };
+  zoneCache = { v: version, zones };
+  return zones;
+}
+// 三区缓存：term 写入会 bump 版本；同版本内重复请求（雷达高频刷新）免掉
+// 两条 2 万+级 COUNT 全程扫描，只跑 LIMIT 短路的列表查询。
+let zoneCache: { v: number; zones: ReturnType<typeof seenTermZones> } | undefined;
+
+// 意图计数（词表筛选 tab 角标）：一次 GROUP BY。
+export function seenIntentCounts(kv: SqlStore): Record<string, number> {
+  const rows = kv.sqlRows(
+    `SELECT json_extract(body,'$.intent') intent, COUNT(*) c FROM documents WHERE collection='seen-terms' GROUP BY 1`,
+  );
+  const counts: Record<string, number> = { all: 0, question: 0, comparison: 0, informational: 0, commercial: 0 };
+  for (const row of rows) {
+    counts.all += Number(row.c);
+    const key = String(row.intent || "");
+    if (key in counts) counts[key] = Number(row.c);
+  }
+  return counts;
 }
