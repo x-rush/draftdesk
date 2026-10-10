@@ -29,7 +29,7 @@ export function getSeenTerm(kv: TermStore, term: string): any | undefined {
 // 外部 Agent upsert（批复 D 合并语义）
 export function mergeSeenTerm(kv: TermStore, input: {
   term: string; sources?: string[]; relatedSearches?: string[]; offTopic?: boolean;
-  status?: SeenTermStatus; frequency?: number; lastSeenAt?: string;
+  status?: SeenTermStatus; frequency?: number; observations?: number; lastSeenAt?: string;
 }, by: string) {
   const id = termId(input.term);
   const prev = kv.get<any>("seen-terms", id);
@@ -41,7 +41,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
     lastSeenAt: [input.lastSeenAt, prev?.lastSeenAt].filter(Boolean).sort().at(-1),
     sources: [...new Set([...(prev?.sources || []), ...(input.sources || [])])],
     relatedSearches: [...new Set([...(prev?.relatedSearches || []), ...(input.relatedSearches || [])])],
-    observations: Math.max(prev?.observations ?? 0, input.frequency ?? 0),
+    observations: Math.max(prev?.observations ?? 0, input.observations ?? 0, input.frequency ?? 0),
     status,
     offTopic: input.offTopic ?? prev?.offTopic,
     daysSeen: prev?.daysSeen ?? [],

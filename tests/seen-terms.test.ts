@@ -89,3 +89,51 @@ test("双写合并：sources 并集 / observations max / status 只升不降 / A
     cleanup(dir);
   }
 });
+
+test("observations 语义（复验序列）：PUT obs=1→读回1；不带 obs→不变；PUT obs=3→读回3；status 只升不降回归", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-obs-"));
+  const previous = process.env.DRAFTDESK_DATA_DIR;
+  process.env.DRAFTDESK_DATA_DIR = dir;
+  try {
+    const { handle } = await import("../core/http");
+    const call = async (route: string, method: string, body?: unknown, token?: string) => {
+      const res = await handle(new Request("http://127.0.0.1:5173/api/v1/" + route, {
+        method,
+        headers: { "content-type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      }), route.split("?")[0].split("/"));
+      return { res, body: await res.json() };
+    };
+    const conn = await call("connections", "POST", { name: "obs-agent", scopes: ["read", "suggest"] });
+    const auth = conn.body.token;
+    // ① PUT observations=1 → 读回 1
+    const p1 = await call("agent/seen-terms", "PUT", { items: [{ term: "X", observations: 1 }] }, auth);
+    assert.equal(p1.res.status, 200, JSON.stringify(p1.body).slice(0, 120));
+    const r1 = (await call("agent/seen-terms", "GET", undefined, auth)).body.items.find((x: any) => x.term === "X");
+    assert.equal(r1.observations, 1, "GET 应返回 observations 字段");
+    // ② PUT 不带 observations → 读回仍 1
+    await call("agent/seen-terms", "PUT", { items: [{ term: "X", lastSeenAt: "2026-10-10T00:00:00.000Z" }] }, auth);
+    const r2 = (await call("agent/seen-terms", "GET", undefined, auth)).body.items.find((x: any) => x.term === "X");
+    assert.equal(r2.observations, 1, "增量更新不应清零 observations");
+    // ③ PUT observations=3 → 读回 3
+    await call("agent/seen-terms", "PUT", { items: [{ term: "X", observations: 3 }] }, auth);
+    const r3 = (await call("agent/seen-terms", "GET", undefined, auth)).body.items.find((x: any) => x.term === "X");
+    assert.equal(r3.observations, 3);
+    // ④ status 只升不降回归：new → rising 生效；rising → new 拒绝降级
+    await call("agent/seen-terms", "PUT", { items: [{ term: "X", status: "rising" }] }, auth);
+    const r4 = (await call("agent/seen-terms", "GET", undefined, auth)).body.items.find((x: any) => x.term === "X");
+    assert.equal(r4.status, "rising");
+    await call("agent/seen-terms", "PUT", { items: [{ term: "X", status: "new", observations: 3 }] }, auth);
+    const r5 = (await call("agent/seen-terms", "GET", undefined, auth)).body.items.find((x: any) => x.term === "X");
+    assert.equal(r5.status, "rising", "status 不应降级");
+    assert.equal(r5.observations, 3);
+    // frequency 兼容：两者都传取大者
+    await call("agent/seen-terms", "PUT", { items: [{ term: "X", observations: 2, frequency: 9 }] }, auth);
+    const r6 = (await call("agent/seen-terms", "GET", undefined, auth)).body.items.find((x: any) => x.term === "X");
+    assert.equal(r6.observations, 9, "observations 与 frequency 同传应取大者");
+  } finally {
+    if (previous === undefined) delete process.env.DRAFTDESK_DATA_DIR;
+    else process.env.DRAFTDESK_DATA_DIR = previous;
+    cleanup(dir);
+  }
+});

@@ -9,6 +9,7 @@ const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const upsertSchema = z.object({
   items: z.array(z.object({
     term: z.string().trim().min(1).max(80),
+    observations: z.number().int().min(0).optional(),
     sources: z.array(z.string().max(40)).max(20).optional(),
     relatedSearches: z.array(z.string().max(80)).max(20).optional(),
     offTopic: z.boolean().optional(),
