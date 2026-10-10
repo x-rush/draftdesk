@@ -6,6 +6,7 @@ import { newlyFinished, type JobActivity } from "../core/workspace-ui";
 import { Hotspots } from "./Hotspots";
 import { formatApiError, api, download, Drawer, Empty } from "./ui";
 import { Review } from "./Review";
+import { ActivityBatchesPanel } from "./ActivityBatchesPanel";
 import type { Artifact, Plan, Source } from "../core/schema";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { PlanEditor, SourceEditor } from "./ResearchSetup";
@@ -271,6 +272,7 @@ export function Workbench() {
               {(["library", "activities"].includes(view) || (view === "discover" && ws.discoveryMode !== "queue")) && <DiscoverView ws={ws} data={data} />}
               {view === "trends" && <SeoWorkspaceView ws={ws} data={data} />}
               {view === "ideas" && <SiteEvaluatorView ws={ws} data={data} />}
+              {view === "activities" && <ActivityBatchesPanel ws={ws} data={data} />}
               {view === "plans" && <PlansView ws={ws} data={data} />}
               {view === "sources" && <SourcesView ws={ws} data={data} />}
               {view === "runs" && <RunsView ws={ws} data={data} />}

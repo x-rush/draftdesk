@@ -171,6 +171,10 @@ export class Store {
         messageCount: c.messages.length,
       })),
       worker: this.get("meta", "worker"),
+      activityBatches: this.list<any>("activity-batches").map((b) => {
+        const cat = this.get<any>("activity-categories", b.id);
+        return { id: b.id, receivedAt: b.receivedAt, platform: b.bundle?.platform, count: b.bundle?.items?.length || 0, hasCoverage: Boolean(b.bundle?.coverage), category: cat?.category, pin: cat?.pin === true, reason: cat?.reason };
+      }).sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || b.receivedAt.localeCompare(a.receivedAt)),
       submissions: this.list<any>("receipts").map((r) => ({ ...r, jobs: allJobs.filter((j) => j.receiptId === r.id || (!j.receiptId && j.external && j.evidenceIds.length === r.evidenceIds.length && j.evidenceIds.every((id) => r.evidenceIds.includes(id)))) })),
       budget: this.dayBudget(),
     };
