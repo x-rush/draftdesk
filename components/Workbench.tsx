@@ -18,6 +18,7 @@ import { SourcesView } from "./views/SourcesView";
 import { RunsView } from "./views/RunsView";
 import { SkillsView } from "./views/SkillsView";
 import { OutlineQueueView } from "./views/OutlineQueueView";
+import { SeoWorkspaceView } from "./views/SeoWorkspaceView";
 import { Settings } from "./Settings";
 import {
   BookOpen,
@@ -266,7 +267,8 @@ export function Workbench() {
                 </nav>
               )}
               {view === "discover" && ws.discoveryMode === "queue" && <OutlineQueueView ws={ws} data={data} />}
-              {(["library", "trends", "ideas", "activities"].includes(view) || (view === "discover" && ws.discoveryMode !== "queue")) && <DiscoverView ws={ws} data={data} />}
+              {(["library", "ideas", "activities"].includes(view) || (view === "discover" && ws.discoveryMode !== "queue")) && <DiscoverView ws={ws} data={data} />}
+              {view === "trends" && <SeoWorkspaceView ws={ws} data={data} />}
               {view === "plans" && <PlansView ws={ws} data={data} />}
               {view === "sources" && <SourcesView ws={ws} data={data} />}
               {view === "runs" && <RunsView ws={ws} data={data} />}

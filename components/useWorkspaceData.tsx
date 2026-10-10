@@ -60,6 +60,7 @@ export function useWorkspaceData() {
   const [outlines, setOutlines] = useState<any[]>([]);
   const [clusters, setClusters] = useState<any[]>([]);
   const [discussionContext, setDiscussionContext] = useState<import("./ActionButtons").DiscussContext | null>(null);
+  const [seoTerms, setSeoTerms] = useState<any[]>([]);
   const [previewPlan, setPreviewPlan] = useState("daily-editorial");
   const knownJobs = useRef(new Map<string, string>()), activityReady = useRef(false), activitySince = useRef(Date.now()), restoreScroll = useRef(true);
   const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
@@ -67,16 +68,18 @@ export function useWorkspaceData() {
   currentKey.current = requestKey;
   async function refresh() {
     const key = currentKey.current, version = ++requestVersion.current;
-    const [next, outlineList, clusterList] = await Promise.all([
+    const [next, outlineList, clusterList, seoTermList] = await Promise.all([
       api<Snapshot>("workspace?" + key),
       api<{ items: any[] }>("outlines"),
       api<{ items: any[] }>("clusters"),
+      api<{ items: any[] }>("seo-terms"),
     ]);
     if (currentKey.current === key && requestVersion.current === version) {
       setData(next);
       // UI GET /outlines、/clusters 返回 {items:[...]} 包裹形状
       setOutlines(outlineList?.items ?? []);
       setClusters(clusterList?.items ?? []);
+      setSeoTerms(seoTermList?.items ?? []);
       const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
       if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
       next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
@@ -161,7 +164,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, discussionContext, setDiscussionContext,
+    outlines, clusters, seoTerms, discussionContext, setDiscussionContext,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,
