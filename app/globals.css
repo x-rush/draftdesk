@@ -1541,6 +1541,13 @@ details.activity-import-fold > summary { font-size: 14px; }
 
 
 
+
+/* 运行行带详情折叠时顶部对齐（信号台批） */
+.term-row.top { align-items: start; }
+.term-row.top .term-main { margin-top: 2px; }
+.term-row .error, .term-row .warning { border-radius: 8px; padding: 7px 11px; }
+
+
 /* ── 研究策略 · 信号台版（完全重设计批）：策略卡 2 列网格 ── */
 .plan-grid {
   display: grid;
