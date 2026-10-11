@@ -20,4 +20,4 @@ export function trustedActivityRulesUrl(value:string){
   return u.hostname==="creator.douyin.com"||u.hostname==="activity.douyin.com"||u.hostname==="cp.kuaishou.com"||u.hostname==="creator.xiaohongshu.com"||u.hostname==="fe.xiaohongshu.com"&&u.pathname.startsWith("/ditto/vincent/")||u.hostname==="www.bilibili.com"&&u.pathname.startsWith("/blackboard/");
  }catch{return false;}
 }
-export const activityPageSchema=z.object({schemaVersion:z.literal("draftdesk.activity-page.v1"),title:z.string().trim().min(3).max(300),url:z.string().url().max(2048).refine(officialActivityUrl,"请使用四个平台的官方 HTTPS 来源地址"),text:z.string().trim().min(50).max(12000),capturedAt:z.string().datetime().optional()});
+export const activityPageSchema=z.object({schemaVersion:z.literal("draftdesk.activity-page.v1"),title:z.string().trim().min(1).max(300),url:z.string().url().max(2048).refine(officialActivityUrl,"请使用四个平台的官方 HTTPS 来源地址"),text:z.string().trim().min(50).max(12000),capturedAt:z.string().datetime().optional()});

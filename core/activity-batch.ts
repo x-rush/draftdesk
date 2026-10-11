@@ -3,7 +3,7 @@ import {officialActivityUrl,isActivityIndexUrl} from "./activity-import";
 
 export const activityBatchItemSchema=z.object({
  platform:z.enum(["哔哩哔哩","抖音","快手","小红书"]),
- title:z.string().trim().min(3).max(300),
+ title:z.string().trim().min(1).max(300),
  url:z.string().url().max(2048).refine(officialActivityUrl),
  text:z.string().max(12000),
  dateText:z.string().max(200),
