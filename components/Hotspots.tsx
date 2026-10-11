@@ -36,19 +36,21 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
       {feed?.sourceHealth.filter(s=>s.status==="failed"&&(source==="all"||source===s.id)).map(s=><p className="helper-text" role="status" key={s.id} style={{ color: "#9a6948" }}>{s.name} 最近一次读取失败（{date(s.at)}）：{s.error||"请检查来源状态后重试"}。该来源的旧线索仍保留。</p>)}
     </details>
     {loading&&!feed?.items.length?<Skeleton rows={3} label="热点加载中"/>:!feed?.items.length?<div className="lens-empty"><h2>当前筛选下没有热点</h2><p className="muted">去「研究策略」运行一次采集，或在上方刷新所选来源。</p><p>选择已启用来源刷新榜单，或清除搜索与状态筛选。来源读取失败可在「运行记录」和采集覆盖中核对。</p></div>:<div className="hotspot-list">{feed.items.map(row=><article className="hotspot-row" key={row.url}>
-      <div className="hotspot-row-main">
+      <div className="hotspot-row-head">
         <span className={row.status==="selected"?"coverage-dot ok":"coverage-dot"} title={row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"} />
         <a className="hotspot-row-title" href={row.url} target="_blank" rel="noopener noreferrer" title={row.title}>{row.title}</a>
-        {row.metric&&<span className="pill">{row.metric.name} {row.metric.value}{row.metric.unit}</span>}
-        <span className="hotspot-row-meta">{row.sourceNames[0]} · {date(row.lastSeen)}{row.observations>1?` · 观察 ${row.observations} 次`:""}</span>
+        {row.metric&&<span className="pill" title={`${row.metric.name}：${row.metric.value} ${row.metric.unit}`}>{row.metric.value}{row.metric.unit}</span>}
+      </div>
+      <div className="hotspot-row-actions">
+        <button aria-label={`讨论：${row.title}`} onClick={()=>onDiscuss(row)}>讨论</button>
+        <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
+        <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
       </div>
       <div className="hotspot-row-sub">
+        <span>{row.sourceNames[0]}</span>
+        <span>{date(row.lastSeen)}</span>
+        {row.observations>1&&<span>观察 {row.observations} 次</span>}
         <span className="hotspot-row-reason">{row.reason||"待观察线索"}</span>
-        <div className="hotspot-row-side">
-          <button aria-label={`讨论：${row.title}`} onClick={()=>onDiscuss(row)}>讨论</button>
-          <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
-          <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
-        </div>
       </div>
       {promoting===row.url&&<div style={{display:"grid",gap:6,marginTop:6,padding:9,border:"1px solid var(--line)",borderRadius:9}}>
         <Select aria-label="适配平台" value={promotePlatform} onChange={e=>setPromotePlatform(e.target.value)}>{["公众号","小红书","哔哩哔哩","抖音","知乎"].map(p=><option key={p} value={p}>{p}</option>)}</Select>
