@@ -217,7 +217,7 @@ export function ArtifactEditor({
         <p className="muted">
           证据引用和平台版本随草稿保留；涉及事实改变时请重新研究。
         </p>
-        <details className="draft-preview" open><summary>保存前预览{replace ? "与更新差异" : ""}</summary><h3>{draft.title}</h3><p>{draft.summary}</p><Details draft={draft} />
+        <details className="draft-preview fold-card" open><summary>保存前预览{replace ? "与更新差异" : ""}</summary><h3>{draft.title}</h3><p>{draft.summary}</p><Details draft={draft} />
           {replace && target && <section><h3>以下字段将更新</h3>{draftChanges(target, draft).length === 0 ? <p>内容没有变化。</p> : draftChanges(target, draft).map(k => <details key={k}><summary>{({ title: "标题", summary: "摘要", audience: "读者", details: "内容结构", tags: "标签", claims: "事实结论", evidenceIds: "引用证据", unknowns: "待核实", nextActions: "下一步", whyNow: "时效", personalImpact: "个人影响" } as Record<string, string>)[k] || k}</summary><strong>原内容</strong><pre>{JSON.stringify((target as any)[k], null, 2)}</pre><strong>更新后</strong><pre>{JSON.stringify((draft as any)[k], null, 2)}</pre></details>)}</section>}
         </details>
         {error && (

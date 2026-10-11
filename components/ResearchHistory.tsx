@@ -11,7 +11,7 @@ export function ResearchHistory({artifactId}:{artifactId:string}) {
     {!value && !error && <p>正在读取历史…</p>}
     {value && <>
       {!value.events.length && <p>暂无历史关联；不会据此推断增长。</p>}
-      {value.events.map(e=><details key={e.id}><summary>{e.title} · {e.revisions.filter(r=>r.change==="update").length} 次更新 · {e.revisions.filter(r=>r.change==="duplicate").length} 条转载/重复</summary>
+      {value.events.map(e=><details key={e.id} className="fold-card"><summary>{e.title} · {e.revisions.filter(r=>r.change==="update").length} 次更新 · {e.revisions.filter(r=>r.change==="duplicate").length} 条转载/重复</summary>
         <p>首次 {date(e.firstSeen)} · 最近采集 {date(e.lastSeen)}</p>
         <ol>{e.revisions.map(r=><li key={r.evidenceId}>{date(r.at)} · {{new:"首次记录",update:"资料有变化，仍需核对事实",duplicate:"相同材料，未算独立变化"}[r.change]}</li>)}</ol>
       </details>)}

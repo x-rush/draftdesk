@@ -129,7 +129,7 @@ export function Connections({
           </div>
         ))}
         {connections.some((c: any) => c.revoked) && (
-          <details className="token-group">
+          <details className="token-group fold-card">
             <summary>已撤销 / 历史（{connections.filter((c: any) => c.revoked).length}）</summary>
             {connections.filter((c: any) => c.revoked).map((c: any) => (
               <div className="token-row" key={c.id}>
@@ -247,7 +247,7 @@ export function Connections({
           {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="notice">
             所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请到「研究策略」关闭「每天自动运行」。
           </p>}
-          <details>
+          <details className="fold-card">
             <summary>路径说明与接入步骤</summary>
             <p className="helper-text">内置管线是默认路径，在「研究策略」打开「每天自动运行」即可。外部回传：关掉内置定时，让 Agent 按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，替代内置管线。接收后先待审，需要时再交给内置研究流程。</p>
             <ol className="setup-steps">

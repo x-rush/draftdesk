@@ -97,7 +97,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
                   )}
                   {t.siteRationale && <p className="muted">判断依据：{t.siteRationale}</p>}
                   {t.contentOutline?.length ? (
-                    <details>
+                    <details className="fold-card">
                       <summary>需求大纲（{t.contentOutline.length} 条）</summary>
                       <ol>{t.contentOutline.map((c: string, i: number) => <li key={i}>{c}</li>)}</ol>
                       <button onClick={() => { setDiscussionContext({ title: "站群深化：" + t.term, url: t.sourceUrls?.[0] || "", source: (t.sources || []).join("/") }); navigate("chat"); }}>发起讨论深化</button>

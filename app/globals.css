@@ -1372,12 +1372,7 @@ main {
 @media(max-width:850px){.hotspot-controls.hotspot-controls-wide{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.hotspot-controls.hotspot-controls-wide{grid-template-columns:1fr}
 .hotspot-controls.hotspot-controls-wide > * { min-width: 0; width: 100%; }}
-.hotspot-health { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px var(--s5); margin-bottom: var(--s3); font-size: 13px; }
-.hotspot-health > summary { cursor: pointer; color: var(--muted); padding: 4px 0; gap: 10px; }
-.hotspot-health > summary::before { margin-right: 6px; }
-.hotspot-health > summary:hover { color: var(--ink); }
-.hotspot-health > :not(summary) { padding-left: 16px; }
-.hotspot-health .hotspot-actions { margin: var(--s2) 0; }
+/* hotspot-health 旧卡样式已废：统一折叠卡 .fold-card 接管（保留类名做行为钩子） */
 /* 词表 chips 网格（全量审查批）：词清单=紧凑 chip 云，词名+x观测+标记 */
 .term-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .term-chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 13px; font-size: 13px; cursor: pointer; color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
@@ -1507,11 +1502,61 @@ main {
   padding: var(--s5); box-shadow: 0 12px 36px #233b3226; min-width: 300px;
   display: grid; gap: var(--s3);
 }
+
+/* ── 统一折叠卡（用户批复：全站 details 折叠块重设计）──
+   收起 = 紧凑浅底条（右指小箭头 + 13px 中量标题，悬停加深）；
+   展开 = summary 下分隔线 + 内容区（14px 横向缩进）。
+   内容型 details 一律加 .fold-card；弹层（help-bubble/filters-popover/more-menu）不用。 */
+details.fold-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  margin: var(--s2) 0;
+  overflow: hidden;
+}
+details.fold-card > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+  background: #fbfcf9;
+  transition: background 120ms ease;
+}
+details.fold-card > summary::-webkit-details-marker { display: none; }
+details.fold-card > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid #97a68b;
+  border-bottom: 1.6px solid #97a68b;
+  transform: rotate(-45deg);
+  transition: transform 150ms ease;
+}
+details.fold-card[open] > summary::before { transform: rotate(45deg); }
+details.fold-card[open] > summary { border-bottom: 1px solid var(--line); background: #fff; }
+details.fold-card > summary:hover { background: #f3f6ec; }
+details.fold-card > summary :is(h1,h2,h3,h4) { font-size: inherit; font-weight: inherit; margin: 0; }
+details.fold-card > :not(summary) { margin: 0; padding: 12px 14px 2px; }
+details.fold-card > :last-child:not(summary) { padding-bottom: 12px; }
+
 .row-fold {
   border: 1px solid var(--line); border-radius: 10px; background: #fafbf7;
   padding: 10px 14px; margin: var(--s3) 0;
 }
-.row-fold summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 2px 0; }
+.row-fold summary {
+  cursor: pointer; color: var(--muted); font-size: 13px; padding: 2px 0;
+  list-style: none; display: inline-flex; align-items: center; gap: 7px;
+}
+.row-fold summary::-webkit-details-marker { display: none; }
+.row-fold summary::before { content: ""; width: 6px; height: 6px; border-right: 1.6px solid #97a68b; border-bottom: 1.6px solid #97a68b; transform: rotate(-45deg); transition: transform 150ms ease; }
+.row-fold[open] > summary::before { transform: rotate(45deg); }
 .row-fold summary:hover { color: var(--ink); }
 .row-fold[open] { padding-bottom: var(--s4); }
 .row-fold > *:not(summary) { margin-top: var(--s3); }

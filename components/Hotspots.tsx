@@ -29,7 +29,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
       <Select aria-label="采集策略" value={plan} onChange={e=>onPlan(e.target.value)}><option value="all">全部采集批次</option>{feed?.planOptions.map(name=><option value={name} key={name}>{name}</option>)}</Select>
       <label className="check" style={{ margin: 0, whiteSpace: "nowrap" }}><input type="checkbox" checked={!!consumed} onChange={e=>onConsumed?.(e.target.checked)} />查看已消费</label>
     </div>
-    <details className="hotspot-health">
+    <details className="hotspot-health fold-card">
       <summary>采集状态{feed?.lastCollectedAt?` · 最近采集 ${date(feed.lastCollectedAt)}`:""}{feed?.sourceHealth.some(s=>s.status==="failed")?` · ${feed.sourceHealth.filter(s=>s.status==="failed").length} 个来源读取失败`:""}</summary>
       <div className="hotspot-actions" style={{ margin: "8px 0" }}><button className="button-secondary" disabled={busy||source==="all"||!available.some(s=>s.id===source)} onClick={onRefresh}>刷新所选来源（不调用 AI）</button><span className="helper-text">{source==="all"?"选择一个来源即可读取它的最新公开榜单。":"刷新不会更改研究策略，也不会产生 AI 推荐。"}</span></div>
       <p className="helper-text">这些是线索，不是已验证事实、连续增长率或发布建议；榜单热度只表示该平台当时的信号。</p>

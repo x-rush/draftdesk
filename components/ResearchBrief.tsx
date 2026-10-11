@@ -5,7 +5,7 @@ import {api} from "./ui";
 import {queryPlan,searchIntents} from "../core/research-policy";
 export function PlanPreview({plan,sources}:{plan:Plan;sources:Source[]}) {
   const initial=Math.max(0,plan.maxQueries-Math.min(2,Math.floor(plan.maxQueries/2)));
-  return <details><summary>搜罗计划预览</summary><p>{plan.goal}</p><p>受众：{plan.audience} · 近 {plan.lookbackDays} 天</p>
+  return <details className="fold-card"><summary>搜罗计划预览</summary><p>{plan.goal}</p><p>受众：{plan.audience} · 近 {plan.lookbackDays} 天</p>
     <p>最多 {plan.maxQueries} 次搜索（含最多 2 次补证）、{plan.maxEvidence} 条证据、{plan.maxItems} 条产物；{plan.maxModelCalls} 次模型调用 / {plan.maxTokens.toLocaleString()} token 预留。</p>
     <ul>{sources.filter(s=>plan.sourceIds.includes(s.id)).map(s=><li key={s.id}>{s.name} · {s.enabled?"启用":"关闭，不会读取"} · {s.note}</li>)}</ul>
     <p>检索方向：{searchIntents[plan.kind].join("；")}</p><ol>{queryPlan(plan,initial).map((q,i)=><li key={i}>{q.query}</li>)}</ol>
@@ -15,7 +15,7 @@ export function PlanPreview({plan,sources}:{plan:Plan;sources:Source[]}) {
 }
 export function ResearchBrief({job}:{job:Job}) {
   const [value,setValue]=useState<any>(null),[error,setError]=useState("");
-  return <details onToggle={e=>{if(e.currentTarget.open)void api("job-context/"+job.id).then(setValue).catch(()=>setError("读取失败，请关闭后重试。"))}}>
+  return <details className="fold-card" onToggle={e=>{if(e.currentTarget.open)void api("job-context/"+job.id).then(setValue).catch(()=>setError("读取失败，请关闭后重试。"))}}>
     <summary>研究结果说明</summary><p>{job.outcome==="no-findings"?"本轮无新增推荐，不代表系统错误。":job.state==="failed"?"研究失败，已保存的材料仍保留。":`当前阶段：${job.stage}`}</p>
     {!!job.warnings.length&&<><h4>来源问题</h4><ul>{job.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></>}
     {error&&<p role="alert">{error}</p>}{!value&&!error&&<p>读取中…</p>}

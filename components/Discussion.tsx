@@ -209,7 +209,7 @@ export function Discussion({
             .finally(() => setOutlineBusy(false));
         }}>{outlineBusy ? "生成中…" : "生成大纲（进每日发现）"}</button>
       </div>}
-      {!!inboxSuggestions?.length && <details className="discussion-suggestions" style={{ margin: "8px 0", padding: 9, border: "1px solid var(--line)", borderRadius: 9 }}>
+      {!!inboxSuggestions?.length && <details className="discussion-suggestions fold-card">
         <summary>外部 Agent 建议（{inboxSuggestions.length}）</summary>
         <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
           {inboxSuggestions.slice(0, 20).map((s, i) => (
@@ -317,7 +317,7 @@ export function Discussion({
               {working && <span>正在按研究 Skill 整理…</span>}
             </div>
           </div>
-          {context&&<details className="discussion-context"><summary>本次讨论的材料：{context.title} · {context.evidenceIds.length} 条证据</summary><p>{context.summary}</p><p>面向：{context.audience}</p><p>带入内容结构、事实结论、待核实问题与关联证据。没有关联的资料不会自动加入。</p></details>}
+          {context&&<details className="discussion-context fold-card"><summary>本次讨论的材料：{context.title} · {context.evidenceIds.length} 条证据</summary><p>{context.summary}</p><p>面向：{context.audience}</p><p>带入内容结构、事实结论、待核实问题与关联证据。没有关联的资料不会自动加入。</p></details>}
         </header>
                 {savedNotice&&<p role="status" className="notice">{savedNotice}</p>}
         <div className="messages" aria-live="polite">
