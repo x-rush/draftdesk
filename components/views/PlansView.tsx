@@ -80,7 +80,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                       运行
                     </button>
                   )}
-                  <details className="more-menu">
+                  <details className="more-menu" data-popover>
                     <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}>⋯更多</summary>
                     <span className="menu-pop">
                       {p.kind !== "activities" && (

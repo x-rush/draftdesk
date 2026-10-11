@@ -187,7 +187,7 @@ export function Review() {
       <section className="surface page-list">
         <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--s2)" }}>
           <h2 style={{ margin: 0 }}>决策队列</h2>
-          <details className="help-bubble">
+          <details className="help-bubble" data-popover>
             <summary className="button" aria-label="拍板规则说明" style={{ padding: "5px 10px" }}>？规则</summary>
             <span className="help-pop">建议可以多源，拍板只能一个。quality 是证据可信度（AI 判），decision 是要不要写（这里拍）；否决/发布后会自动消费对应热榜，approved/deferred 会保留在待办里。</span>
           </details>
@@ -200,7 +200,7 @@ export function Review() {
               </button>
             ))}
           </div>
-          <details className="filters-popover">
+          <details className="filters-popover" data-popover>
             <summary className="button" aria-label="筛选与批量操作">筛选与批量（已选 {selected.size}）</summary>
             <div className="popover-panel">
               <Field label="来源筛选">

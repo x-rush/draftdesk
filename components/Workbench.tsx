@@ -2,6 +2,7 @@
 // 工作台外壳（PHASE 5 拆分后）：侧边导航 / 顶栏 / 视图路由 / 抽屉挂载。
 // 状态与交互在 useWorkspaceData；六个视图各自成文件——本文件不再含视图内联 JSX。
 import { useState } from "react";
+import { usePopoverAutoClose } from "./usePopoverAutoClose";
 import { newlyFinished, type JobActivity } from "../core/workspace-ui";
 import { Hotspots } from "./Hotspots";
 import { formatApiError, api, download, Drawer, Empty } from "./ui";
@@ -109,6 +110,7 @@ const headings: Record<string, [string, string]> = {
   ],
 };
 export function Workbench() {
+  usePopoverAutoClose();
   const ws = useWorkspaceData();
   const { data, view, error, notice, busy, mobile, setMobile, selected, setSelected,
     plan, setPlan, source, setSource, discussionArtifact, setDiscussionArtifact,
