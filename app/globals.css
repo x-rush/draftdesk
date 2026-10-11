@@ -1540,6 +1540,62 @@ details.activity-import-fold > summary { font-size: 14px; }
 
 
 
+
+/* ── 研究策略 · 信号台版（完全重设计批）：策略卡 2 列网格 ── */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px 13px;
+  min-width: 0;
+}
+.plan-card:hover { border-color: #c9d8bd; }
+.plan-card-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.plan-card-head .pill { font-size: 11px; padding: 2px 9px; }
+.plan-card-head .pill.sched-on { background: #e9f0e2; border-color: #c9d8bd; color: #476537; }
+.plan-card-head .pill.sched-run { background: #fdf6e7; border-color: #eadfbd; color: #8a6d1f; }
+.plan-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.plan-name svg { flex: none; color: #658454; }
+.plan-goal {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.plan-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px dashed #e4ebda;
+}
+.plan-foot small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .plan-grid { grid-template-columns: 1fr; } }
+
+
 /* ── 审查台拍板台（完全重设计批）：可点统计卡 + 紧凑决策行 ── */
 button.stat-card.clickable { cursor: pointer; text-align: left; transition: border-color 120ms ease, background 120ms ease; }
 button.stat-card.clickable:hover { border-color: #c9d8bd; }
