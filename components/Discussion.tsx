@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { Artifact, ArtifactDraft, Conversation } from "../core/schema";
 import { api, Empty, date } from "./ui";
 import { ArtifactEditor } from "./ArtifactPanel";
@@ -10,6 +11,22 @@ type Summary = {
   updatedAt: string;
   messageCount: number;
 };
+
+// 消息气泡（用户批复重构）：头像 + 署名行 + 圆角泡。助手深绿圆头拾字、
+// 内容装浅卡（长 markdown 需要容器感）；用户右侧浅绿泡、尾角朝右上。
+function ChatMessage({ role, children, status }: { role: "user" | "assistant"; children: ReactNode; status?: string }) {
+  return (
+    <article className={"message " + role}>
+      <span className="msg-avatar" aria-hidden>{role === "user" ? "你" : "拾"}</span>
+      <div className="msg-main">
+        {role === "assistant" && (
+          <div className="msg-name">研究搭档{status && <small role="status">⚠ {status}</small>}</div>
+        )}
+        <div className="msg-body">{role === "user" ? <div className="msg-text">{children}</div> : children}</div>
+      </div>
+    </article>
+  );
+}
 export function Discussion({
   artifact,
   history,
@@ -310,27 +327,19 @@ export function Discussion({
             </Empty>
           )}
           {conversation.messages.map((m, i) => (
-            <article key={i} className={"message " + m.role}>
-              <strong>{m.role === "user" ? "你" : "研究搭档"}</strong>
-              {m.role === "assistant" ? <MessageContent text={m.content} /> : <div>{m.content}</div>}
-              {m.status && (
-                <small>
-                  未完成回复 · {m.status === "stopped" ? "已停止" : "连接中断"}
-                </small>
-              )}
-            </article>
+            <ChatMessage key={i} role={m.role} status={m.status === "stopped" ? "已停止" : m.status ? "连接中断" : undefined}>
+              {m.role === "assistant" ? <MessageContent text={m.content} /> : m.content}
+            </ChatMessage>
           ))}
           {busy && (
-            <article className="message assistant">
-              <strong>研究搭档</strong>
+            <ChatMessage role="assistant">
               <MessageContent text={stream || "正在推敲证据与方向…"} />
-            </article>
+            </ChatMessage>
           )}
           {!busy && stream && (
-            <article className="message assistant">
-              <strong>已收到的部分回复</strong>
+            <ChatMessage role="assistant" status="部分回复">
               <MessageContent text={stream} />
-            </article>
+            </ChatMessage>
           )}
           <div ref={bottom} />
         </div>

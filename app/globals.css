@@ -1235,47 +1235,70 @@ main {
   gap: 18px;
 }
 .messages .empty { padding: 48px 24px; margin: auto; }
+/* 消息气泡（用户批复重构）：头像 + 署名行 + 圆角泡三件套 */
 .message {
-  background: #fafbf7;
-  border: 1px solid #e4e9dc;
-  border-radius: 12px;
-  padding: var(--s4) var(--s5);
+  display: flex;
+  gap: 10px;
+  padding: 0;
   margin: 0;
-  max-width: 100%;
-}
-.message.user {
-  align-self: flex-end;
-  background: #edf2e6;
-  border-color: #dbe7cf;
-  border-bottom-right-radius: 4px;
-  max-width: 78%;
-}
-/* 助手消息去框：对话主体是内容不是卡片，box-in-box 是上一版挤压感的来源之一 */
-.message.assistant {
-  align-self: stretch;
-  width: 100%;
   background: transparent;
   border: 0;
-  border-radius: 0;
-  padding: 2px 4px;
+  max-width: 100%;
 }
-.message > strong {
-  display: inline-block;
+.msg-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 2px;
+  user-select: none;
+}
+.message.assistant .msg-avatar { background: #253b32; color: #dfe9d8; }
+.message.user { flex-direction: row-reverse; }
+.message.user .msg-avatar { background: #dcead0; color: #44603a; }
+.msg-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.message.user .msg-main { align-items: flex-end; }
+.msg-name {
   font-size: 11px;
-  color: #658454;
-  background: #eaf0e3;
-  border-radius: 4px;
-  padding: 2px 8px;
+  color: var(--muted);
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.message.user > strong { background: #dcead0; }
-.message > div {
+.msg-name small { color: #a05a2c; font-weight: 500; }
+.msg-body {
+  padding: 12px 16px;
+  border-radius: 4px 14px 14px 14px;
+  background: #f9fbf6;
+  border: 1px solid #e7ecdf;
+  max-width: 100%;
+  min-width: 0;
+}
+.message.user .msg-body {
+  background: #eaf1e0;
+  border-color: #d9e5c9;
+  border-radius: 14px 4px 14px 14px;
+  max-width: 82%;
+}
+.msg-body .msg-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.5;
-  margin-top: 7px;
 }
-.message > .message-markdown { white-space: normal; }
+.message-markdown { white-space: normal; }
 .message-markdown :is(h1,h2,h3,h4) { font-size: 1.16em; margin: 1.4em 0 .5em; line-height: 1.3; }
 .message-markdown :is(h1,h2,h3,h4):first-child { margin-top: 0; }
 .message-markdown p { margin: .6em 0; }
@@ -1287,6 +1310,7 @@ main {
 .message-markdown table { border-collapse: collapse; min-width: 100%; font-size: 13px; }
 .message-markdown :is(th,td) { border: 1px solid #dce3d3; padding: 8px 10px; text-align: left; vertical-align: top; }
 .message-markdown th { background: #eef2e8; }
+.message-markdown hr { border: 0; border-top: 1px dashed #d9e2cf; margin: 1.1em 0; }
 .composer {
   padding: var(--s4) 28px 20px;
   border-top: 1px solid var(--line);
