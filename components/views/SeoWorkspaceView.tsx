@@ -66,10 +66,13 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
     rising: zones?.hot?.total ?? 0,
     sustained: zones?.sustained?.total ?? 0,
   };
+  // region 筛选（58 项清单纯量批修正）：分区数据为服务端三区各 20 条，
+  // 区域筛选在客户端过滤生效（此前按钮只摆不接）。
+  const scanRegion = ws.seenRegion;
   const zoneLists: Record<string, any[]> = {
-    new: sortZone(zoneSources.new, quality),
-    rising: sortZone(zoneSources.rising, quality),
-    sustained: sortZone(zoneSources.sustained, quality),
+    new: sortZone(zoneSources.new, quality).filter((t) => !scanRegion || (t.region ?? "global") === scanRegion),
+    rising: sortZone(zoneSources.rising, quality).filter((t) => !scanRegion || (t.region ?? "global") === scanRegion),
+    sustained: sortZone(zoneSources.sustained, quality).filter((t) => !scanRegion || (t.region ?? "global") === scanRegion),
   };
 
   // 今日精选：全库强相关（新词+突增合并去重），观测降序取 6——页面的「脸」
@@ -153,15 +156,20 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         </div>
       )}
 
-      {/* ③ 分区扫描（fullMode 时切换为全量词表，不再叠加显示） */}
+      {/* ③ 词表：视图切换一级化（顶部互切，不再沉底） */}
+      <div className="radar-toolbar" style={{ marginTop: 0 }}>
+        <nav className="discovery-modes" aria-label="词表视图">
+          <button className={!fullMode ? "active" : ""} aria-current={!fullMode ? "page" : undefined} onClick={() => setFullMode(false)}><ClipboardList size={13} /> 分区扫描</button>
+          <button className={fullMode ? "active" : ""} aria-current={fullMode ? "page" : undefined} onClick={() => setFullMode(true)}><Globe size={13} /> 全量词表</button>
+        </nav>
+      </div>
       {!fullMode && <>
-      <p className="dash-label"><ClipboardList size={14} /> 分区扫描</p>
       <section className="surface" style={{ padding: "16px 18px" }}>
         <div className="radar-toolbar" style={{ marginTop: 0 }}>
           <nav className="discovery-modes" aria-label="雷达分区">
-            <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => { setRadarTab("new"); setFullMode(false); }}><Sparkles size={13} /> 新词 {zoneTotals.new}</button>
-            <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => { setRadarTab("rising"); setFullMode(false); }}><TrendingUp size={13} /> 突增 {zoneTotals.rising}</button>
-            <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => { setRadarTab("sustained"); setFullMode(false); }}><Flame size={13} /> 持续 {zoneTotals.sustained}</button>
+            <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => setRadarTab("new")}><Sparkles size={13} /> 新词 {zoneTotals.new}</button>
+            <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => setRadarTab("rising")}><TrendingUp size={13} /> 突增 {zoneTotals.rising}</button>
+            <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => setRadarTab("sustained")}><Flame size={13} /> 持续 {zoneTotals.sustained}</button>
           </nav>
           <nav className="discovery-modes" aria-label="词质筛选">
             <button className={quality === "all" ? "active" : ""} aria-current={quality === "all" ? "page" : undefined} onClick={() => setQuality("all")}>全部</button>
@@ -176,8 +184,10 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         {ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
           <p className="muted" style={{ padding: "10px 2px" }}>
             {quality === "strong"
-              ? `这一档暂无强相关词（共 ${zoneTotals[radarTab]} 条在榜，切回「全部」看原始信号）。`
-              : radarTab === "new" ? "暂无新词。" : radarTab === "rising" ? "暂无突增词。" : "暂无持续词。"}
+              ? `这一档暂无强相关词（本区共 ${zoneTotals[radarTab]} 条，切回「全部」看原始信号）。`
+              : scanRegion
+                ? `${scanRegion === "cn" ? "中文" : "海外"}区暂无${{ new: "新词", rising: "突增词", sustained: "持续词" }[radarTab]}，切回「全部区域」再看。`
+                : radarTab === "new" ? "暂无新词。" : radarTab === "rising" ? "暂无突增词。" : "暂无持续词。"}
           </p>
         ) : (
           <div className="term-list" role="list" aria-label={`${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区（前 20 条）`}>
@@ -211,7 +221,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
           ws.setSeenStatus(radarTab === "new" ? "new" : radarTab === "sustained" ? "sustained" : "");
           ws.setSeenIntent("");
           ws.setSeenPage(1);
-        }}>查看全部 {zoneTotals[radarTab] || 0} 条（区域/意图/搜索/分页）→</button>
+        }}>查看全部 {zoneTotals[radarTab] || 0} 条 →</button>
       </section>
       </>}
 
@@ -220,13 +230,13 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         <>
           <p className="dash-label" style={{ marginTop: 0 }}><ClipboardList size={14} /> 全量词表
             <span className="dash-label-sub">
-              <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}><Globe size={12} /> 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
+              区域与意图筛选：<button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>🌐 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
               <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>中文 {(ws.seenList?.regions?.cn) ?? 0}</button>
               <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部 {(ws.seenList?.regions?.all) ?? 0}</button>
               {DIG_INTENTS.map(([key, label]) => (
                 <button key={key} className={ws.seenIntent === key ? "active" : ""} onClick={() => { ws.setSeenIntent(key); ws.setSeenPage(1); }}>{label} {intentCounts[key] ?? 0}</button>
               ))}
-              <button className="text-button" onClick={() => setFullMode(false)}>← 返回信号台</button>
+              <button className="text-button" onClick={() => setFullMode(false)}>← 返回分区扫描</button>
             </span>
           </p>
           <section className="surface" style={{ padding: "16px 18px" }}>
