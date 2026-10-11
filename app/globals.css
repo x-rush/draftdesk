@@ -1702,6 +1702,14 @@ button.stat-card.active { border-color: var(--green); box-shadow: inset 3px 0 0 
 }
 
 
+
+/* 统计卡文字单行省略（运行记录批：长文案挤压修复） */
+.stat-card span, .stat-card small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 侧栏下载纵排（外部接入批） */
+.side-downloads { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
+.side-downloads > a, .side-downloads > button { width: 100%; justify-content: center; }
+
+
 /* ── 热词信号台（完全重设计批）：统计条 + 今日精选 hero 卡 + 分区标签行 ── */
 .stat-strip {
   display: grid;

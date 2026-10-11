@@ -267,7 +267,7 @@ export function Connections({
               ))}
             </Select>
           </Field>
-          <div className="card-actions" style={{ justifyContent: "flex-start" }}>
+          <div className="side-downloads">
             <a className="button button-secondary" href="/api/v1/skill-bundle" download>Skills 与提交脚本</a>
             <button onClick={() => void act(async () => download("draftdesk-intake.schema.json", await api("schema")))}>JSON Schema</button>
             <button onClick={() => void act(async () => download("draftdesk-plan.json", plans.find((p) => p.id === plan)))}>导出策略</button>
