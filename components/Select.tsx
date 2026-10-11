@@ -4,8 +4,10 @@ import type { SelectHTMLAttributes, ReactElement, ChangeEvent } from "react";
 import * as Primitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
-/** Shared, keyboard accessible picker. Portal stays inside a modal's top layer. */
-export function Select({children, value, onChange, className, ...props}: SelectHTMLAttributes<HTMLSelectElement>) {
+/** Shared, keyboard accessible picker. Portal stays inside a modal's top layer.
+ *  支持原生 select 的整体替换：onChange 保持 {target:{value}} 形状，placeholder 代替空值 option
+ *（Radix 不允许 Item value=""）。Portal 容器自动探测 dialog（抽屉内也能浮出）。 */
+export function Select({children, value, onChange, className, placeholder, ...props}: SelectHTMLAttributes<HTMLSelectElement> & {placeholder?: string}) {
   const ref = useRef<HTMLSpanElement>(null);
   const [container, setContainer] = useState<HTMLElement>();
   useEffect(() => { setContainer(ref.current?.closest("dialog") || undefined); }, []);
@@ -14,7 +16,7 @@ export function Select({children, value, onChange, className, ...props}: SelectH
     <Primitive.Root value={String(value ?? "")} name={props.name} disabled={props.disabled} required={props.required}
       onValueChange={(next) => onChange?.({target:{value:next}, currentTarget:{value:next}} as ChangeEvent<HTMLSelectElement>)}>
       <Primitive.Trigger className="select-trigger" id={props.id} aria-label={props["aria-label"]} aria-labelledby={props["aria-labelledby"]} aria-describedby={props["aria-describedby"]}>
-        <Primitive.Value placeholder="请选择" /><Primitive.Icon><ChevronDown size={16}/></Primitive.Icon>
+        <Primitive.Value placeholder={placeholder || "请选择"} /><Primitive.Icon><ChevronDown size={16}/></Primitive.Icon>
       </Primitive.Trigger>
       <Primitive.Portal container={container}>
         <Primitive.Content className="select-menu" position="popper" sideOffset={6} collisionPadding={12} onEscapeKeyDown={e => e.stopPropagation()}>

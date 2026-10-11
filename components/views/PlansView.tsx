@@ -3,7 +3,7 @@
 // ① 统计条（策略/启用调度/数据源/运行中）② 工具行（＋新建策略）
 // ③ 策略卡 2 列网格（分类/调度胶囊归一头部 + 目标钳 2 行 + 观察设计 fold + 资源脚注 + 运行右贴）。
 // 「立即整理热词」是热词页动作，不再在此页重复。
-import { ChevronDown, Layers, Play } from "lucide-react";
+import { ChevronDown, Clock, Compass, Layers, Play, RadioTower } from "lucide-react";
 import { useState } from "react";
 import { api } from "../ui";
 import { kindPlanLabels } from "../ui";
@@ -23,13 +23,13 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
       {/* ① 统计条 */}
       <div className="stat-strip">
         <div className="stat-card"><strong>{plans.length}</strong><span>研究策略</span><small>{scheduled} 个启用每日调度</small></div>
-        <div className="stat-card accent"><strong>{scheduled}</strong><span>⏰ 启用调度</span><small>每晚自动采集与分析</small></div>
-        <div className="stat-card"><strong>{enabledSources}</strong><span>📡 数据源启用</span><small>共 {(data.sources || []).length} 个可配置</small></div>
-        <div className="stat-card"><strong>{activeRuns}</strong><span>▶ 运行中</span><small>{activeRuns ? "运行记录页可查进度" : "当前无运行任务"}</small></div>
+        <div className="stat-card accent"><strong>{scheduled}</strong><span><Clock size={13} /> 启用调度</span><small>每晚自动采集与分析</small></div>
+        <div className="stat-card"><strong>{enabledSources}</strong><span><RadioTower size={13} /> 数据源启用</span><small>共 {(data.sources || []).length} 个可配置</small></div>
+        <div className="stat-card"><strong>{activeRuns}</strong><span><Play size={12} /> 运行中</span><small>{activeRuns ? "运行记录页可查进度" : "当前无运行任务"}</small></div>
       </div>
 
       {/* ② 工具行 */}
-      <p className="dash-label">🧭 策略列表<span className="dash-label-sub">目标、来源、关键词与预算共同决定每天的产出质量</span>
+      <p className="dash-label"><Compass size={14} /> 策略列表<span className="dash-label-sub">目标、来源、关键词与预算共同决定每天的产出质量</span>
         <button className="primary radar-refresh" onClick={() =>
           setPlan({
             ...plans[0],
@@ -49,9 +49,9 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
               <div className="plan-card-head">
                 <span className="pill">{kindPlanLabels[p.kind]}</span>
                 <span className={"pill" + (p.scheduleEnabled && p.kind !== "activities" ? " sched-on" : "")}>
-                  {p.kind === "activities" ? "手动采集" : p.scheduleEnabled ? `⏰ 每天 ${p.dailyTime}` : "手动运行"}
+                  {p.kind === "activities" ? "手动采集" : p.scheduleEnabled ? <><Clock size={11} /> 每天 {p.dailyTime}</> : "手动运行"}
                 </span>
-                {running && <span className="pill sched-run">▶ 运行中</span>}
+                {running && <span className="pill sched-run"><Play size={11} /> 运行中</span>}
               </div>
               <h3 className="plan-name"><Layers size={16} />{p.name}</h3>
               <p className="plan-goal">{p.goal}</p>
@@ -68,7 +68,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                 </small>
                 <div className="term-actions">
                   {p.kind === "activities" ? (
-                    <button className="primary" onClick={() => navigate("activities")}>前往活动采集</button>
+                    <button className="primary" style={{ whiteSpace: "nowrap" }} onClick={() => navigate("activities")}>前往采集</button>
                   ) : (
                     <button className="primary" disabled={busy || running} title={running ? "该策略已有任务在运行" : undefined} onClick={() =>
                       void act(async () => {

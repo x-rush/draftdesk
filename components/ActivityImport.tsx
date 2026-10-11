@@ -13,6 +13,8 @@ import {
 } from "../core/activity-batch";
 import type { ActivityTriageRecord } from "../core/activity-triage";
 import { api, Drawer, Field } from "./ui";
+import { Select } from "./Select";
+import { FileText, CheckCircle2, Database } from "lucide-react";
 
 type ActivityView = "recommend" | "materials" | "history";
 type ReceivedRow = { id: string; receivedAt: string; platform: string; count: number; hasCoverage: boolean };
@@ -345,10 +347,10 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
     <>
     {/* 统计条（完全重设计批）：当前快照/可分析/待核实/历史快照 */}
     <div className="stat-strip">
-      <div className="stat-card accent"><strong>{hasBatch ? batch.length : 0}</strong><span>📄 当前快照材料</span><small>{hasBatch ? "最新一次采集或导入的原始记录" : "还没有快照——用下方向导采集"}</small></div>
-      <div className="stat-card"><strong>{eligible.length}</strong><span>✅ 可分析</span><small>有可验证的截止年份与规则</small></div>
+      <div className="stat-card accent"><strong>{hasBatch ? batch.length : 0}</strong><span><FileText size={13} /> 当前快照材料</span><small>{hasBatch ? "最新一次采集或导入的原始记录" : "还没有快照——用下方向导采集"}</small></div>
+      <div className="stat-card"><strong>{eligible.length}</strong><span><CheckCircle2 size={13} /> 可分析</span><small>有可验证的截止年份与规则</small></div>
       <div className="stat-card"><strong>{relevantLeads.length}</strong><span>🔍 待核实线索</span><small>缺年份或规则，需人工补齐</small></div>
-      <div className="stat-card"><strong>{received.length}</strong><span>🗄 历史快照</span><small>{triage ? `AI 已入模 ${triage.selectedCount} 条` : "AI 整理尚未运行"}</small></div>
+      <div className="stat-card"><strong>{received.length}</strong><span><Database size={13} /> 历史快照</span><small>{triage ? `AI 已入模 ${triage.selectedCount} 条` : "AI 整理尚未运行"}</small></div>
     </div>
     <section className="surface activity-tools">
       <div className="radar-toolbar" style={{ marginTop: 0 }}>
@@ -359,7 +361,7 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
       <details className="fold-card activity-import-fold" open={showSetup} onToggle={(e) => setShowSetup(e.currentTarget.open)}>
         <summary>采集新活动 · 四平台官方中心 + 浏览器扩展导入（三步）</summary>
       <div className="activity-source-strip" aria-label="四个平台采集状态">{activityPlatforms.map((item) => { const snapshot = latestReceived.find((row) => row.platform === item.name); return <a key={item.name} className={snapshot ? "activity-source-chip connected" : "activity-source-chip"} href={item.url} target="_blank" rel="noopener noreferrer" title={`打开${item.name}官方活动中心`}><span className={snapshot ? "activity-dot online" : "activity-dot"} aria-label={snapshot ? "已采集" : "未采集"} /><strong>{item.name}</strong><span className="activity-source-meta">{snapshot ? `${snapshot.count} 条 · ${formatDate(snapshot.receivedAt)}` : "未采集"}</span><span className="activity-source-link">入口 ↗</span></a>; })}</div>
-        <section className="activity-step"><span className="activity-step-number">1</span><h3 style={{ display: "inline", marginLeft: 8 }}>选择平台并连接官方活动中心</h3><p className="helper-text">打开官方入口，在自己的 Chrome / Edge 完成登录。工作台不接收账号密码或 Cookie。</p><div style={{ display: "flex", gap: "var(--s3)", alignItems: "end", marginTop: "var(--s3)", flexWrap: "wrap" }}><Field label="平台"><select value={platform} onChange={(event) => setPlatform(Number(event.target.value))}>{activityPlatforms.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</select></Field><a className="button" href={activityPlatforms[platform].url} target="_blank" rel="noopener noreferrer">打开{activityPlatforms[platform].name}官方活动入口 ↗</a></div><p className="helper-text">{activityPlatforms[platform].entry}</p></section>
+        <section className="activity-step"><span className="activity-step-number">1</span><h3 style={{ display: "inline", marginLeft: 8 }}>选择平台并连接官方活动中心</h3><p className="helper-text">打开官方入口，在自己的 Chrome / Edge 完成登录。工作台不接收账号密码或 Cookie。</p><div style={{ display: "flex", gap: "var(--s3)", alignItems: "end", marginTop: "var(--s3)", flexWrap: "wrap" }}><Field label="平台"><Select value={String(platform)} onChange={(event) => setPlatform(Number(event.target.value))}>{activityPlatforms.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</Select></Field><a className="button" href={activityPlatforms[platform].url} target="_blank" rel="noopener noreferrer">打开{activityPlatforms[platform].name}官方活动入口 ↗</a></div><p className="helper-text">{activityPlatforms[platform].entry}</p></section>
         <section className="activity-step"><span className="activity-step-number">2</span><h3 style={{ display: "inline", marginLeft: 8 }}>采集后自动送入本页</h3><p className="helper-text"><a href="/activity-collector.zip" download>下载开源浏览器采集扩展</a>，检查连接后在官方活动页手动启动采集。插件默认连接本机 http://127.0.0.1:5173，失败时可重试或导出 JSON。</p><Field label="导入扩展导出的活动 JSON（最多四份）"><input type="file" accept=".json,application/json" multiple disabled={busy} onChange={(event) => { void load(event.target.files || undefined); event.target.value = ""; }} /></Field></section>
         <section className="activity-step"><span className="activity-step-number">3</span><h3 style={{ display: "inline", marginLeft: 8 }}>设定目标关键词并运行</h3><p className="helper-text">关键词同时用于初筛与正式分析的目标限定；最多 8 个。</p><Field label="目标关键词（逗号分隔）"><input value={keywordText} disabled={busy} onChange={(event) => setKeywordText(event.target.value)} /></Field><div className="card-actions" style={{ justifyContent: "flex-start" }}><button type="button" className="primary" disabled={busy || keywords.length === 0 || keywords.length > 8 || priority.length === 0 || priority.length > 12 || batchIds.length === 0} onClick={() => void runTriage()}>{busy ? "正在整理…" : "AI 初筛"}</button><button type="button" disabled={busy || active || keywords.length > 8 || eligible.length === 0 || eligible.length > 24} title={formalReason} onClick={() => void runBatch()}>{busy ? "正在导入…" : "运行正式分析"}</button>{priority.length === 0 && <span className="helper-text">还没有材料：先完成上面两步采集或导入。</span>}</div></section>
       </details>

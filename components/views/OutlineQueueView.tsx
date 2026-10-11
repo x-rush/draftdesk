@@ -4,6 +4,7 @@
 // 综合评分 = 证据数 + suggestions 评分均值（派生式，schema 预留 score 字段位待外部 Agent）。
 import { useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
+import { Select } from "../Select";
 import { ArrowUpRight } from "lucide-react";
 import { Drawer, Empty, api, date } from "../ui";
 import { useListKeyboardShortcuts } from "../useListKeyboardShortcuts";
@@ -120,15 +121,14 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                     <button disabled={busy} onClick={() => void decideGroup(group, "deferred")}>暂缓</button>
                   </div>
                   {reasonFor === o.id && (
-                    <select aria-label={"否决原因 " + o.title} defaultValue="" onChange={(e) => { const v = e.target.value; if (v) { setReasonFor(null); void decideGroup(group, "rejected", v); } }} style={{ marginTop: 6 }}>
-                      <option value="">选否决原因…</option>
+                    <Select aria-label={o.title + " 否决原因"} placeholder="选否决原因…" onChange={(e) => { const v = e.target.value; if (v) { setReasonFor(null); void decideGroup(group, "rejected", v); } }} style={{ marginTop: 6 }}>
                       <option value="off-domain">超出领域</option>
                       <option value="no-ai-signal">没有 AI 信号</option>
                       <option value="已写过">已经写过</option>
                       <option value="写不透">写不透</option>
                       <option value="不感兴趣">不感兴趣</option>
                       <option value="其他">其他</option>
-                    </select>
+                    </Select>
                   )}
                 </div>
                 {dupCount > 1 && openGroups.has(group.title) && (

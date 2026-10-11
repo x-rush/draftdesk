@@ -4,6 +4,7 @@
 // ③ Skill 卡 2 列网格（复用 plan-card 语言：分类与版本胶囊+名称+用途钳行+详情按钮）。
 // 分类按 id 归组（研究执行四条线 / 整理与审核 / 协作与提交），纯展示层。
 import { useState } from "react";
+import { Handshake, FlaskConical, Paperclip, Puzzle } from "lucide-react";
 import { ArrowUpRight } from "lucide-react";
 import type { Workspace } from "../useWorkspaceData";
 
@@ -17,7 +18,7 @@ const SKILL_CATEGORY: Record<string, string> = {
   "discussion-partner": "collab",
   "draftdesk-submit": "collab",
 };
-const CATEGORY_LABELS: Record<string, string> = { research: "🔬 研究执行", review: "🧷 整理与审核", collab: "🤝 协作与提交" };
+const CATEGORY_LABELS: Record<string, string> = { research: "研究执行", review: "整理与审核", collab: "协作与提交" };
 
 export function SkillsView({ ws }: { ws: Workspace }) {
   const { skills, setSkill } = ws;
@@ -29,14 +30,14 @@ export function SkillsView({ ws }: { ws: Workspace }) {
     <>
       {/* ① 统计条 */}
       <div className="stat-strip">
-        <div className="stat-card accent"><strong>{skills.length}</strong><span>🧩 研究 Skills</span><small>包版本 v1.1 · 参考资料随任务加载并记录版本</small></div>
-        <div className="stat-card"><strong>{count("research")}</strong><span>🔬 研究执行</span><small>选题 / 趋势 / 机会 / 活动四条研究线</small></div>
-        <div className="stat-card"><strong>{count("review")}</strong><span>🧷 整理与审核</span><small>去重核时间地域 · 拒绝大话与无据结论</small></div>
-        <div className="stat-card"><strong>{count("collab")}</strong><span>🤝 协作与提交</span><small>讨论搭档 · 外部智能体统一收件协议</small></div>
+        <div className="stat-card accent"><strong>{skills.length}</strong><span><Puzzle size={13} /> 研究 Skills</span><small>包版本 v1.1 · 参考资料随任务加载并记录版本</small></div>
+        <div className="stat-card"><strong>{count("research")}</strong><span><FlaskConical size={13} /> 研究执行</span><small>选题 / 趋势 / 机会 / 活动四条研究线</small></div>
+        <div className="stat-card"><strong>{count("review")}</strong><span><Paperclip size={13} /> 整理与审核</span><small>去重核时间地域 · 拒绝大话与无据结论</small></div>
+        <div className="stat-card"><strong>{count("collab")}</strong><span><Handshake size={13} /> 协作与提交</span><small>讨论搭档 · 外部智能体统一收件协议</small></div>
       </div>
 
       {/* ② 清单 */}
-      <p className="dash-label">🧩 Skill 清单<span className="dash-label-sub">
+      <p className="dash-label"><span style={{ flex: "none" }}>🧩 Skill 清单</span><span className="dash-label-sub">
         <button className={cat === "" ? "active" : ""} onClick={() => setCat("")}>全部 {skills.length}</button>
         {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
           <button key={key} className={cat === key ? "active" : ""} onClick={() => setCat(cat === key ? "" : key)}>{label} {count(key)}</button>

@@ -5,7 +5,9 @@
 //    → 🤖 执行方 → 🎯 内容方向 → 🗂 数据健康（全集合核对）→ ⚠️ 危险操作。
 // 全部字段与保存逻辑不动，只重排层级；测试按钮从页尾移进各自分区（就近原则）。
 import { useEffect, useState } from "react";
+import { Plug, Wallet, Search, Bot, Target, Database, TriangleAlert } from "lucide-react";
 import { api, Field } from "./ui";
+import { Select } from "./Select";
 
 export function Settings({
   config,
@@ -79,7 +81,7 @@ export function Settings({
       </div>
 
       {/* ② 模型接入 */}
-      <p className="dash-label">🔌 模型接入<span className="dash-label-sub">百炼统一用于分析与讨论；研究、审稿与讨论共用同一模型</span></p>
+      <p className="dash-label"><Plug size={14} /> 模型接入<span className="dash-label-sub">百炼统一用于分析与讨论；研究、审稿与讨论共用同一模型</span></p>
       <section className="form-section">
         <div className="form-grid-2">
           <Field label="API Base URL">
@@ -127,7 +129,7 @@ export function Settings({
       </section>
 
       {/* ③ 预算与成本看板 */}
-      <p className="dash-label">💰 预算与成本看板<span className="dash-label-sub">判断/分类记 cheap，产出记 full；今日 tokens 超昨日 150% 标黄</span></p>
+      <p className="dash-label"><Wallet size={14} /> 预算与成本看板<span className="dash-label-sub">判断/分类记 cheap，产出记 full；今日 tokens 超昨日 150% 标黄</span></p>
       <section className="form-section">
         <Field
           label="每日模型 token 预留上限"
@@ -175,13 +177,13 @@ export function Settings({
       </section>
 
       {/* ④ 搜索后端 */}
-      <p className="dash-label">🔍 搜索后端<span className="dash-label-sub">hybrid=Tavily 先行 + 本地 SearXNG 补位合并</span></p>
+      <p className="dash-label"><Search size={14} /> 搜索后端<span className="dash-label-sub">hybrid=Tavily 先行 + 本地 SearXNG 补位合并</span></p>
       <section className="form-section">
         <Field
           label="网页搜索后端"
           hint="先走 Tavily，无 Key、请求失败或相关结果不足 3 条时自动用本地 SearXNG 补位合并；仅 SearXNG 则完全不消耗 Tavily 额度。"
         >
-          <select
+          <Select
             value={value.webSearchProvider}
             onChange={(e) =>
               setValue({ ...value, webSearchProvider: e.target.value })
@@ -190,7 +192,7 @@ export function Settings({
             <option value="hybrid">Tavily 先行 + SearXNG 补位</option>
             <option value="tavily">仅 Tavily</option>
             <option value="searxng">仅 SearXNG（本地）</option>
-          </select>
+          </Select>
         </Field>
         {(value.webSearchProvider === "hybrid" || value.webSearchProvider === "searxng") && (
           <Field
@@ -231,10 +233,10 @@ export function Settings({
       </section>
 
       {/* ⑤ 执行方 */}
-      <p className="dash-label">🤖 执行方与参与方<span className="dash-label-sub">谁来干研究：内置管线或外部 Agent 二选一</span></p>
+      <p className="dash-label"><Bot size={14} /> 执行方与参与方<span className="dash-label-sub">谁来干研究：内置管线或外部 Agent 二选一</span></p>
       <section className="form-section">
         <Field label="消费执行方（保存前即时生效）">
-          <select
+          <Select
             value={config.consumerMode || "external"}
             onChange={(e) =>
               void act(async () => {
@@ -244,7 +246,7 @@ export function Settings({
           >
             <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
             <option value="builtin">内置管线（每晚自动采集与分析）</option>
-          </select>
+          </Select>
         </Field>
         <p className="helper-text" style={{ marginBottom: 0 }}>
           当前：{(config.consumerMode || "external") === "external" ? "外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。" : "内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}
@@ -253,7 +255,7 @@ export function Settings({
       </section>
 
       {/* ⑥ 内容方向 */}
-      <p className="dash-label">🎯 内容方向<span className="dash-label-sub">受众定位与兴趣类别，影响热点排序与推荐</span></p>
+      <p className="dash-label"><Target size={14} /> 内容方向<span className="dash-label-sub">受众定位与兴趣类别，影响热点排序与推荐</span></p>
       <section className="form-section">
         <Field label="受众与内容定位">
           <textarea
@@ -288,7 +290,7 @@ export function Settings({
       </section>
 
       {/* ⑦ 数据健康 */}
-      <p className="dash-label">🗂 数据健康<span className="dash-label-sub">全集合行数快照 · 异动标黄 · 保险丝快照在 data/snapshots/</span></p>
+      <p className="dash-label"><Database size={14} /> 数据健康<span className="dash-label-sub">全集合行数快照 · 异动标黄 · 保险丝快照在 data/snapshots/</span></p>
       <section className="form-section">
         {(() => {
           const todayCounts = collections?.today?.counts as Record<string, number> | undefined;
@@ -326,7 +328,7 @@ export function Settings({
       </section>
 
       {/* ⑧ 危险操作 */}
-      <p className="dash-label">⚠️ 危险操作</p>
+      <p className="dash-label"><TriangleAlert size={14} /> 危险操作</p>
       <section className="danger-zone">
         <label className="check">
           <input

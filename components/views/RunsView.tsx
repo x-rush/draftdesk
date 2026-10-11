@@ -4,6 +4,7 @@
 // ② 工具行（状态胶囊 + 隐藏空跑 + 任务过滤提示）
 // ③ 紧凑运行行（状态胶囊+策略名+meta 同列，动作右贴；错误/警告首条行内、全部日志收进 fold）。
 import { api, date, download, Empty } from "../ui";
+import { Play, XCircle, CheckCircle2 } from "lucide-react";
 import { ResearchBrief } from "../ResearchBrief";
 import { useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
@@ -34,13 +35,13 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           <small>上限 {Math.round(data.budget.limit / 1000)}k · 非账单</small>
         </button>
         <button type="button" className={"stat-card clickable" + (runFilter === "active" ? " active" : "")} onClick={() => setRunFilter(runFilter === "active" ? "all" : "active")}>
-          <strong>{activeCount}</strong><span>▶ 进行中</span><small>排队与运行中的任务</small>
+          <strong>{activeCount}</strong><span><Play size={12} /> 进行中</span><small>排队与运行中的任务</small>
         </button>
         <button type="button" className={"stat-card clickable" + (runFilter === "failed" ? " active" : "")} onClick={() => setRunFilter(runFilter === "failed" ? "all" : "failed")}>
-          <strong>{failedCount}</strong><span>✕ 失败</span><small>保留证据可一键重试</small>
+          <strong>{failedCount}</strong><span><XCircle size={12} /> 失败</span><small>保留证据可一键重试</small>
         </button>
         <button type="button" className={"stat-card clickable" + (runFilter === "completed" ? " active" : "")} onClick={() => setRunFilter(runFilter === "completed" ? "all" : "completed")}>
-          <strong>{completedCount}</strong><span>✓ 完成有效</span><small>空跑 {emptyCount} 条{hideNoFindings ? "已隐藏" : "显示中"}</small>
+          <strong>{completedCount}</strong><span><CheckCircle2 size={12} /> 完成有效</span><small>空跑 {emptyCount} 条{hideNoFindings ? "已隐藏" : "显示中"}</small>
         </button>
       </div>
 

@@ -3,16 +3,17 @@
 // 统计条 + 分类 chips + 停用显示开关 + 紧凑源行（状态点+名称+说明钳 1 行+端点，检测/配置右贴）。
 // 分类只做展示层归组，不改 sources.type 采集机制。
 import { useMemo, useState } from "react";
+import { CheckCircle2, PauseCircle, RefreshCw } from "lucide-react";
 import { api, date } from "../ui";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 
 const TYPE_LABELS: Record<string, string> = { rss: "RSS", github: "GitHub", hotlist: "热榜官方", aggregated: "聚合榜单", trends: "Trends", web: "网页搜索", suggest: "搜索联想" };
 const CATEGORY_OF: Record<string, string> = { trends: "search", suggest: "search", hotlist: "hotlist", aggregated: "hotlist", rss: "community", github: "community", web: "web" };
 const CATEGORIES: Array<[string, string, string]> = [
-  ["search", "🔍 搜索与趋势", "Google Trends 七国地域榜 + 搜索联想需求雷达"],
-  ["hotlist", "🔥 热榜", "官方热榜接口与本地聚合榜单（聚合可逐个检测连接）"],
-  ["community", "🏛 社区与官方", "官方博客与产品声明、社区讨论、仓库与新产品动态"],
-  ["web", "🌐 网页搜索", "Tavily 按策略关键词搜索"],
+  ["search", "搜索与趋势", "Google Trends 七国地域榜 + 搜索联想需求雷达"],
+  ["hotlist", "热榜", "官方热榜接口与本地聚合榜单（聚合可逐个检测连接）"],
+  ["community", "社区与官方", "官方博客与产品声明、社区讨论、仓库与新产品动态"],
+  ["web", "网页搜索", "Tavily 按策略关键词搜索"],
 ];
 
 export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
@@ -79,9 +80,9 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
       {/* ① 统计条 */}
       <div className="stat-strip">
         <div className="stat-card"><strong>{sources.length}</strong><span>数据源</span><small>分 4 类管理，点下方分类筛选</small></div>
-        <div className="stat-card accent"><strong>{enabledCount}</strong><span>✅ 已启用</span><small>进入策略调度与热词挖掘</small></div>
-        <div className="stat-card"><strong>{disabledCount}</strong><span>⏸ 已停用</span><small>{showDisabled ? "列表中灰点显示，可在配置里启用" : "当前已隐藏"}</small></div>
-        <div className="stat-card"><strong>{aggregatedCount}</strong><span>🔁 聚合可检测</span><small>本地 DailyHotApi，逐个检测连接</small></div>
+        <div className="stat-card accent"><strong>{enabledCount}</strong><span><CheckCircle2 size={13} /> 已启用</span><small>进入策略调度与热词挖掘</small></div>
+        <div className="stat-card"><strong>{disabledCount}</strong><span><PauseCircle size={13} /> 已停用</span><small>{showDisabled ? "列表中灰点显示，可在配置里启用" : "当前已隐藏"}</small></div>
+        <div className="stat-card"><strong>{aggregatedCount}</strong><span><RefreshCw size={13} /> 聚合可检测</span><small>本地 DailyHotApi，逐个检测连接</small></div>
       </div>
 
       {/* ② 分类 chips + 工具 */}

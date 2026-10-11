@@ -8,24 +8,30 @@
 import { useMemo, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Empty, api, Skeleton } from "../ui";
+import { Ban, CheckCircle2, Circle, ClipboardList, Crosshair, Flame, Gem, Globe, Sparkles, Star, TrendingUp, XCircle } from "lucide-react";
 import { Pagination } from "../Pagination";
 import { isLongTail } from "../../core/seen-terms";
 
 const DIG_INTENTS: [string, string][] = [["question", "问题类"], ["comparison", "比价类"], ["informational", "教程类"], ["commercial", "商业类"]];
-const RELEVANCE_LABELS: Record<string, string> = { strong: "💎 强相关", weak: "○ 弱相关", off: "🚫 圈外" };
+const RELEVANCE_LABELS: Record<string, string> = { strong: "强相关", weak: "弱相关", off: "圈外" };
 function RelevanceBadge({ relevance }: { relevance?: string }) {
   const label = relevance ? RELEVANCE_LABELS[relevance] : "";
-  return label ? <span className="pill">{label}</span> : null;
+  if (!label) return null;
+  const icon = relevance === "strong" ? <Gem size={11} /> : relevance === "off" ? <Ban size={11} /> : <Circle size={8} />;
+  return <span className="pill">{icon} {label}</span>;
 }
 function RegionBadge({ region }: { region?: string }) {
-  if (region === "global") return <span className="pill">🌐 海外</span>;
-  if (region === "cn") return <span className="pill">🇨🇳 中文</span>;
+  if (region === "global") return <span className="pill"><Globe size={11} /> 海外</span>;
+  if (region === "cn") return <span className="pill">中文</span>;
   return null;
 }
-const VERDICT_LABELS: Record<string, string> = { "推荐": "✅ 推荐", "可以试试": "🟦 可以试试", "不值得做": "⛔ 不值得做" };
+const VERDICT_LABELS: Record<string, string> = { "推荐": "推荐", "可以试试": "可以试试", "不值得做": "不值得做" };
+function VerdictIcon({ verdict }: { verdict: string }) {
+  return verdict === "推荐" ? <CheckCircle2 size={11} /> : verdict === "不值得做" ? <XCircle size={11} /> : <Circle size={8} />;
+}
 function VerdictBadge({ verdict, reason }: { verdict?: string; reason?: string }) {
   if (!verdict || verdict === "竞争度待查") return null;
-  return <span className="pill" title={reason}>{VERDICT_LABELS[verdict] || verdict}</span>;
+  return <span className="pill" title={reason}><VerdictIcon verdict={verdict} /> {VERDICT_LABELS[verdict] || verdict}</span>;
 }
 function ObsBadge({ obsRatio }: { obsRatio?: number }) {
   return typeof obsRatio === "number" ? <span title="近2天日均÷前7天日均">obs {obsRatio.toFixed(2)}</span> : null;
@@ -112,17 +118,17 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
       {/* ① 统计条 */}
       <div className="stat-strip">
         <div className="stat-card"><strong>{regions.all ?? 0}</strong><span>词库总量</span><small>弱相关 {relevances.weak ?? 0} · 未判定 {(relevances.all ?? 0) - (relevances.strong ?? 0) - (relevances.weak ?? 0) - (relevances.off ?? 0)}</small></div>
-        <div className="stat-card accent"><strong>{relevances.strong ?? 0}</strong><span>💎 强相关</span><small>只有这些会进挖掘种子</small></div>
-        <div className="stat-card"><strong>{zoneTotals.rising}</strong><span>📈 突增</span><small>观测 ≥3 且 7 天内首见</small></div>
-        <div className="stat-card"><strong>{zoneTotals.sustained}</strong><span>🔥 持续</span><small>连续 3 天在榜</small></div>
+        <div className="stat-card accent"><strong>{relevances.strong ?? 0}</strong><span><Gem size={13} /> 强相关</span><small>只有这些会进挖掘种子</small></div>
+        <div className="stat-card"><strong>{zoneTotals.rising}</strong><span><TrendingUp size={13} /> 突增</span><small>观测 ≥3 且 7 天内首见</small></div>
+        <div className="stat-card"><strong>{zoneTotals.sustained}</strong><span><Flame size={13} /> 持续</span><small>连续 3 天在榜</small></div>
       </div>
 
       {/* ② 今日精选 */}
-      <p className="dash-label">⭐ 今日精选<span className="dash-label-sub">强相关优先 · 点词名去 Google 验证</span>
+      <p className="dash-label"><Star size={14} /> 今日精选<span className="dash-label-sub">强相关优先 · 点词名去 Google 验证</span>
         <button className="radar-refresh" disabled={radarBusy} onClick={() => void triggerExtract()}>{radarBusy ? "刷新中…" : "刷新雷达"}</button>
       </p>
       {heroes.length === 0 ? (
-        <section className="surface"><p className="muted" style={{ padding: "14px 18px" }}>还没有 💎 强相关词——AI 判定是种子闸的前提，点「刷新雷达」跑一轮提取判定；已有的弱相关词在下方分区里。</p></section>
+        <section className="surface"><p className="muted" style={{ padding: "14px 18px" }}>还没有强相关词——AI 判定是种子闸的前提，点「刷新雷达」跑一轮提取判定；已有的弱相关词在下方分区里。</p></section>
       ) : (
         <div className="hero-grid">
           {heroes.map((t) => (
@@ -130,7 +136,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
               <button className="hero-term" onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
               <div className="hero-badges">
                 <RegionBadge region={t.region} />
-                {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
+                {isLongTail(t.term) && <span className="pill"><Crosshair size={11} /> 长尾</span>}
                 <VerdictBadge verdict={t.verdict} reason={t.verdictReason} />
                 <ObsBadge obsRatio={t.obsRatio} />
                 <span>×{t.observations}</span>
@@ -149,23 +155,23 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
 
       {/* ③ 分区扫描（fullMode 时切换为全量词表，不再叠加显示） */}
       {!fullMode && <>
-      <p className="dash-label">🗂 分区扫描</p>
+      <p className="dash-label"><ClipboardList size={14} /> 分区扫描</p>
       <section className="surface" style={{ padding: "16px 18px" }}>
         <div className="radar-toolbar" style={{ marginTop: 0 }}>
           <nav className="discovery-modes" aria-label="雷达分区">
-            <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => { setRadarTab("new"); setFullMode(false); }}>🆕 新词 {zoneTotals.new}</button>
-            <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => { setRadarTab("rising"); setFullMode(false); }}>📈 突增 {zoneTotals.rising}</button>
-            <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => { setRadarTab("sustained"); setFullMode(false); }}>🔥 持续 {zoneTotals.sustained}</button>
+            <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => { setRadarTab("new"); setFullMode(false); }}><Sparkles size={13} /> 新词 {zoneTotals.new}</button>
+            <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => { setRadarTab("rising"); setFullMode(false); }}><TrendingUp size={13} /> 突增 {zoneTotals.rising}</button>
+            <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => { setRadarTab("sustained"); setFullMode(false); }}><Flame size={13} /> 持续 {zoneTotals.sustained}</button>
           </nav>
           <nav className="discovery-modes" aria-label="词质筛选">
             <button className={quality === "all" ? "active" : ""} aria-current={quality === "all" ? "page" : undefined} onClick={() => setQuality("all")}>全部</button>
-            <button className={quality === "strong" ? "active" : ""} aria-current={quality === "strong" ? "page" : undefined} onClick={() => setQuality("strong")}>💎 强相关</button>
+            <button className={quality === "strong" ? "active" : ""} aria-current={quality === "strong" ? "page" : undefined} onClick={() => setQuality("strong")}>强相关</button>
           </nav>
         </div>
         {ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
           <p className="muted" style={{ padding: "10px 2px" }}>
             {quality === "strong"
-              ? `这一档暂无 💎 强相关词（共 ${zoneTotals[radarTab]} 条在榜，切回「全部」看原始信号）。`
+              ? `这一档暂无强相关词（共 ${zoneTotals[radarTab]} 条在榜，切回「全部」看原始信号）。`
               : radarTab === "new" ? "暂无新词。" : radarTab === "rising" ? "暂无突增词。" : "暂无持续词。"}
           </p>
         ) : (
@@ -177,7 +183,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                   <span className="term-meta">
                     <RelevanceBadge relevance={t.relevance} />
                     <RegionBadge region={t.region} />
-                    {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
+                    {isLongTail(t.term) && <span className="pill"><Crosshair size={11} /> 长尾</span>}
                     <VerdictBadge verdict={t.verdict} reason={t.verdictReason} />
                     <ObsBadge obsRatio={t.obsRatio} />
                     <span>×{t.observations}</span>
@@ -207,10 +213,10 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
       {/* ④ 全量词表 */}
       {fullMode && (
         <>
-          <p className="dash-label" style={{ marginTop: 0 }}>📋 全量词表
+          <p className="dash-label" style={{ marginTop: 0 }}><ClipboardList size={14} /> 全量词表
             <span className="dash-label-sub">
               <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>🌐 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
-              <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>🇨🇳 中文 {(ws.seenList?.regions?.cn) ?? 0}</button>
+              <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>中文 {(ws.seenList?.regions?.cn) ?? 0}</button>
               <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部 {(ws.seenList?.regions?.all) ?? 0}</button>
               {DIG_INTENTS.map(([key, label]) => (
                 <button key={key} className={ws.seenIntent === key ? "active" : ""} onClick={() => { ws.setSeenIntent(key); ws.setSeenPage(1); }}>{label} {intentCounts[key] ?? 0}</button>
@@ -234,7 +240,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                           <VerdictBadge verdict={t.verdict} reason={t.verdictReason} />
                           <ObsBadge obsRatio={t.obsRatio} />
                           {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
-                          {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
+                          {isLongTail(t.term) && <span className="pill"><Crosshair size={11} /> 长尾</span>}
                           {t.seed && <span>血缘：{t.seed}</span>}
                           <span>观测 {t.observations} 次</span>
                         </div>

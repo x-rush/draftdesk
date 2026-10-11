@@ -4,6 +4,8 @@
 // [讨论][推进=立项建站（site-projects, pending）]；忽略为会话级隐藏。
 // 站点发现 tab（海外定位批 6）：site-discoveries 独立站卡片（host/命中词/首次发现/它做的是什么）。
 import { useMemo, useState } from "react";
+import { Ban, CheckCircle2, Globe } from "lucide-react";
+import { Select } from "../Select";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Empty, api, date } from "../ui";
 
@@ -24,7 +26,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
     <>
       <nav className="discovery-modes" aria-label="应用机会板块">
         <button className={tab === "candidates" ? "active" : ""} aria-current={tab === "candidates" ? "page" : undefined} onClick={() => setTab("candidates")}>站群候选 {candidates.length}</button>
-        <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}>🌐 站点发现 {discoveries.length}</button>
+        <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}><Globe size={13} /> 站点发现 {discoveries.length}</button>
       </nav>
       {tab === "sites" && (
         discoveries.length === 0 ? (
@@ -39,7 +41,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
                 <div className="row-content">
                   <div className="row-meta">
                     <span className="pill">{s.platform}</span>
-                    {s.brand ? <span className="pill">🚫 不建议做</span> : <span className="pill">✅ 候选</span>}
+                    {s.brand ? <span className="pill"><Ban size={11} /> 不建议做</span> : <span className="pill"><CheckCircle2 size={11} /> 候选</span>}
                     {s.brandReason && <span>原因：{s.brandReason}</span>}
                     <span>首次发现 {s.firstFoundAt ? date(s.firstFoundAt) : ""}</span>
                     <span>DDG 最低排名 {s.bestRank}</span>
@@ -60,11 +62,11 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
       {tab === "candidates" && (
       <>
       <div className="filter-row">
-        <select aria-label="按站型筛选" value={siteType} onChange={(e) => setSiteType(e.target.value)}>
+        <Select aria-label="按站型筛选" value={siteType} onChange={(e) => setSiteType(e.target.value)}>
           <option value="all">全部站型</option>
           <option value="资讯站">资讯站（广告变现）</option>
           <option value="工具站">工具站（订阅变现）</option>
-        </select>
+        </Select>
         <span className="muted">已立项 {projects.length} 个 · 候选 {candidates.length} 个</span>
       </div>
       {filtered.length === 0 ? (

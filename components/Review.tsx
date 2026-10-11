@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Field, formatApiError, date } from "./ui";
 import { OutlineDrawer } from "./views/OutlineQueueView";
+import { Select } from "./Select";
 import { creationLabels } from "../core/workspace-ui";
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
@@ -214,17 +215,17 @@ export function Review() {
           <summary className="button" aria-label="筛选与批量操作" style={{ marginLeft: "auto" }}>来源与批量（已选 {selected.size}）</summary>
           <div className="popover-panel">
             <Field label="来源筛选">
-              <select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+              <Select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
                 <option value="all">全部来源</option>
                 <option value="artifact">内置产物</option>
                 <option value="outline">大纲</option>
                 <option value="manual">手动</option>
-              </select>
+              </Select>
             </Field>
             <Field label="批量否决原因">
-              <select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
+              <Select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
                 {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              </Select>
             </Field>
             <div className="card-actions">
               <button className="primary" disabled={busy || !selected.size} onClick={() => void batch("approved")}>批量通过</button>
@@ -332,10 +333,9 @@ export function Review() {
                   <button className="button-secondary" disabled={busy} onClick={() => void decideGroup(group, "deferred")}>暂缓</button>
                   {reasonOpen.has(row.id) ? (
                     <>
-                      <select aria-label={`否决原因 ${row.title}`} value={rowReason[row.id] || ""} onChange={(e) => setRowReason({ ...rowReason, [row.id]: e.target.value })}>
-                        <option value="">否决原因…</option>
+                      <Select aria-label={`否决原因 ${row.title}`} placeholder="否决原因…" value={rowReason[row.id] || undefined} onChange={(e) => setRowReason({ ...rowReason, [row.id]: e.target.value })}>
                         {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      </Select>
                       <button disabled={busy || !rowReason[row.id]} onClick={() => { void decideGroup(group, "rejected", rowReason[row.id]); setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id))); }}>确认否决</button>
                       <button className="button-secondary" onClick={() => setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id)))}>取消</button>
                     </>
@@ -385,10 +385,9 @@ export function Review() {
         <p className="muted">多条同类资讯合并为一个簇；一个簇可产出多份不同平台的大纲，各自独立拍板。AI 自动聚合即将上线，当前支持手动登记。</p>
         <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）").join("、") : ""}</p>
         <Field label="簇 ID">
-          <select value={outlineForm.clusterId} onChange={(e) => setOutlineForm({ ...outlineForm, clusterId: e.target.value })}>
-            <option value="">选择内容簇…</option>
+          <Select placeholder="选择内容簇…" value={outlineForm.clusterId || undefined} onChange={(e) => setOutlineForm({ ...outlineForm, clusterId: e.target.value })}>
             {clusters.map((c) => <option key={c.id} value={c.id}>{c.topic}（{c.memberCount} 条）</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="平台">
           <input value={outlineForm.platform} onChange={(e) => setOutlineForm({ ...outlineForm, platform: e.target.value })} />
@@ -409,24 +408,24 @@ export function Review() {
         {aiPolicy && (
           <div className="toolbar">
             <Field label="初筛 / 打标 / 聚合分类">
-              <select value={aiPolicy.triage} onChange={(e) => void saveAiPolicy({ ...aiPolicy, triage: e.target.value })}>
+              <Select aria-label="triage 档位" value={aiPolicy.triage} onChange={(e) => void saveAiPolicy({ ...aiPolicy, triage: e.target.value })}>
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="多平台大纲生成">
-              <select value={aiPolicy.outline} onChange={(e) => void saveAiPolicy({ ...aiPolicy, outline: e.target.value })}>
+              <Select aria-label="outline 档位" value={aiPolicy.outline} onChange={(e) => void saveAiPolicy({ ...aiPolicy, outline: e.target.value })}>
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="草稿正文">
-              <select value={aiPolicy.draft} onChange={(e) => void saveAiPolicy({ ...aiPolicy, draft: e.target.value })}>
+              <Select aria-label="draft 档位" value={aiPolicy.draft} onChange={(e) => void saveAiPolicy({ ...aiPolicy, draft: e.target.value })}>
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="写作方">
-              <select value={aiPolicy.aiWriter} onChange={(e) => void saveAiPolicy({ ...aiPolicy, aiWriter: e.target.value })}>
-                {["builtin", "external", "both"].map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
+              <Select aria-label="aiWriter 档位" value={aiPolicy.aiWriter} onChange={(e) => void saveAiPolicy({ ...aiPolicy, aiWriter: e.target.value })}>
+                {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
+              </Select>
             </Field>
           </div>
         )}
