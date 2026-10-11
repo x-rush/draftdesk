@@ -138,8 +138,8 @@ export function Connections({
                 <span className="token-name">{c.name}</span>
                 <span className="token-scopes">{c.revokedAt ? "撤销于 " + date(c.revokedAt) : "已撤销"}</span>
               </div>
-</div>
             ))}
+            </div>
           </details>
         )}
       </section>
