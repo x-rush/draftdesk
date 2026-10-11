@@ -279,7 +279,7 @@ export function Workbench() {
                 </nav>
               )}
               {view === "discover" && ws.discoveryMode === "queue" && <OutlineQueueView ws={ws} data={data} />}
-              {view === "activities" && <p className="dash-label">📋 活动列表<span className="dash-label-sub">搜索、筛选与核验状态 · 通过核验的活动可推进为选题</span></p>}
+              {view === "activities" && <p className="dash-label">🧭 采集与整理<span className="dash-label-sub">四平台来源 → 三步向导 → AI 初筛 → 活动列表（通过核验可推进为选题）</span></p>}
               {(["library", "activities"].includes(view) || (view === "discover" && ws.discoveryMode !== "queue")) && <DiscoverView ws={ws} data={data} />}
               {view === "trends" && <SeoWorkspaceView ws={ws} data={data} />}
               {view === "ideas" && <SiteEvaluatorView ws={ws} data={data} />}
