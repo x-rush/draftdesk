@@ -1102,26 +1102,44 @@ main {
 }
 .discussion-layout {
   display: grid;
-  grid-template-columns: 218px minmax(0, 1fr);
+  grid-template-columns: 264px minmax(0, 1fr);
   gap: var(--s5);
+  align-items: start;
 }
+/* 研究讨论（重做）：应用式聊天布局——侧栏独立卡，主面板锁定高度，消息流内部滚动 */
 .history {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
-  align-items: stretch;
-  max-height: 730px;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: var(--s3);
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 350px);
+  min-height: 480px;
   overflow: auto;
 }
-.history > button:not(:first-child) {
+.history > .new-chat {
+  border-radius: 8px;
+  margin-bottom: 4px;
+  flex: none;
+}
+.history > button:not(.new-chat) {
   display: block;
   text-align: left;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
-  padding: 14px;
+  padding: 10px 12px;
+}
+.history > button:not(.new-chat):hover {
+  background: #f2f5ee;
 }
 .history > button.active {
-  background: #e6edde;
+  background: #e9f0e2;
+  border-color: #c9d8bd;
   box-shadow: inset 3px 0 0 var(--green);
 }
 .history strong {
@@ -1129,60 +1147,74 @@ main {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 1.5;
+  line-height: 1.45;
+  word-break: break-word;
 }
 .history small {
   display: block;
-  font-size: 10px;
-  margin-top: 5px;
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--muted);
 }
 .chat-panel {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   background: white;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 350px);
+  min-height: 560px;
   overflow: hidden;
 }
 .chat-panel > header {
-  padding: 23px;
+  padding: var(--s4) var(--s5);
   border-bottom: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: none;
 }
-.chat-panel > header .pill { align-self: flex-start; }
+.chat-head { display: flex; align-items: center; gap: var(--s3); }
+.chat-head h2 { margin: 0; font-size: 18px; }
+.chat-head .pill { margin-left: auto; flex: none; }
 .chat-panel > header .discussion-context { align-self: stretch; }
-.chat-panel > header .toolbar { margin: 0; justify-content: flex-start; }
+.chat-panel > header .toolbar { margin: 0; justify-content: flex-start; flex-wrap: wrap; }
 .chat-panel > header p {
   font-size: 12px;
   color: var(--muted);
-}
-.chat-panel > .toolbar {
-  padding: 0 17px;
-  font-size: 12px;
-}
-.chat-panel > .toolbar button {
-  font-size: 11px;
-  padding: 8px 10px;
+  margin: 0;
 }
 .messages {
-  padding: 0 22px;
-  max-height: 55vh;
-  overflow: auto;
-  min-height: 200px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
 }
 .message {
   background: #fafbf7;
   border: 1px solid #e4e9dc;
-  border-radius: 7px;
-  padding: var(--s4);
-  margin: var(--s4) 0;
+  border-radius: 12px;
+  padding: var(--s4) var(--s5);
+  margin: 0;
+  max-width: 880px;
 }
 .message.user {
+  align-self: flex-end;
   background: #edf2e6;
-  margin-left: 30px;
+  border-color: #dbe7cf;
+  border-bottom-right-radius: 4px;
+  max-width: 78%;
+}
+.message.assistant {
+  align-self: flex-start;
+  width: 100%;
+  border-bottom-left-radius: 4px;
 }
 .message > strong {
   display: inline-block;
@@ -1192,25 +1224,13 @@ main {
   border-radius: 4px;
   padding: 2px 8px;
 }
-.message { margin: var(--s4) 0; }
-.history > button:not(:first-child) {
-  display: block;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  padding: var(--s4);
-}
+.message.user > strong { background: #dcead0; }
 .message > div {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.5;
   margin-top: 7px;
-}
-.composer {
-  padding: 18px;
-  border-top: 1px solid var(--line);
-  background: white;
 }
 .message > .message-markdown { white-space: normal; }
 .message-markdown :is(h1,h2,h3,h4) { font-size: 1.16em; margin: 1.4em 0 .5em; line-height: 1.3; }
@@ -1224,8 +1244,15 @@ main {
 .message-markdown table { border-collapse: collapse; min-width: 100%; font-size: 13px; }
 .message-markdown :is(th,td) { border: 1px solid #dce3d3; padding: 8px 10px; text-align: left; vertical-align: top; }
 .message-markdown th { background: #eef2e8; }
+.composer {
+  padding: var(--s3) var(--s5) var(--s4);
+  border-top: 1px solid var(--line);
+  background: #fafbf7;
+  flex: none;
+}
 .composer textarea {
-  min-height: 95px;
+  min-height: 64px;
+  max-height: 180px;
 }
 .composer > div {
   display: flex;
@@ -1236,6 +1263,12 @@ main {
 }
 .composer small {
   font-size: 10px;
+}
+@media (max-width: 760px) {
+  .discussion-layout { grid-template-columns: 1fr; }
+  .history { position: static; max-height: 220px; min-height: 0; }
+  .chat-panel { height: auto; min-height: 0; }
+  .messages { max-height: 52vh; flex: none; }
 }
 .page-footer {
   padding: 20px 42px;

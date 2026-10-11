@@ -198,6 +198,7 @@ export function Discussion({
       </details>}
       <aside className="history">
         <button
+          className="new-chat primary"
           disabled={busy || working}
           onClick={() => {
             setDraft(null);setSavedNotice("");
@@ -237,14 +238,16 @@ export function Discussion({
       </aside>
       <section className="chat-panel">
         <header>
-          <h2>{conversation.title}</h2>
+          <div className="chat-head">
+            <h2>{conversation.title}</h2>
+            <span className="pill">私人讨论 · 不自动联网</span>
+          </div>
           <p>
             {conversation.artifactId
               ? "已关联研究产物与原始证据"
               : "自由讨论；从一条发现进入可带入证据"}
           </p>
           {context&&<details className="discussion-context"><summary>本次讨论的材料：{context.title} · {context.evidenceIds.length} 条证据</summary><p>{context.summary}</p><p>面向：{context.audience}</p><p>带入内容结构、事实结论、待核实问题与关联证据。没有关联的资料不会自动加入。</p></details>}
-          <span className="pill">私人讨论 · 不自动联网</span>
         <div className="toolbar">
           <button
             disabled={
