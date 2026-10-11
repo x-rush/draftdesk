@@ -55,8 +55,16 @@ button:hover,
   border-color: #c2cebf;
 }
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
+  background: #f0f2ec;
+  border-color: #dde2d8;
+  color: #7d8a7c;
+}
+button.primary:disabled {
+  background: #a8bfa5;
+  border-color: #a8bfa5;
+  color: #f2f6ef;
 }
 .primary {
   background: var(--green);
@@ -1307,6 +1315,12 @@ main {
 .hotspot-health > summary::before { margin-right: 8px; }
 .hotspot-health > :not(summary) { padding-left: 16px; }
 .hotspot-health .hotspot-actions { margin: var(--s2) 0; }
+/* 词表 chips 网格（全量审查批）：词清单=紧凑 chip 云，词名+x观测+标记 */
+.term-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.term-chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 13px; font-size: 13px; cursor: pointer; color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
+.term-chip:hover { border-color: #9db69b; background: #f4f8f1; }
+.term-chip small { color: var(--muted); font-size: 11px; }
+
 /* 热词雷达三区摘要 chips（用户批复③：雷达是导航摘要，词表才是完整列表） */
 .radar-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: var(--s2) 0 var(--s3); }
 .radar-chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; color: var(--ink); }
@@ -1340,7 +1354,7 @@ main {
 .page-header .page-subtitle { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
 .page-toolbar { display: flex; gap: var(--s2); align-items: center; justify-content: flex-end; flex-wrap: wrap; margin: var(--s3) 0; }
 .form-section {
-  background: #fbfcf9; border: 1px solid #d6ddd1; border-radius: 10px;
+  background: #f7f9f4; border: 1px solid #cfd8cb; border-radius: 10px;
   padding: var(--s4) var(--s5); margin-bottom: var(--s4);
 }
 /* 分区头（创作活动等长页面分区） */

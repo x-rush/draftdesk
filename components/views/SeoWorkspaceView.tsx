@@ -115,8 +115,8 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         <div id="seen-terms-list" style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
           <div className="filter-row">
             <input aria-label="搜索热词" placeholder="搜索热词…" value={ws.seenQ} onChange={(e) => { ws.setSeenQ(e.target.value); ws.setSeenPage(1); }} style={{ maxWidth: 320 }} />
-            <Select aria-label="状态筛选" value={ws.seenStatus} onChange={(e) => { ws.setSeenStatus(e.target.value); ws.setSeenPage(1); }}>
-              <option value="">全部状态</option>
+            <Select aria-label="状态筛选" value={ws.seenStatus || "all"} onChange={(e) => { ws.setSeenStatus(e.target.value === "all" ? "" : e.target.value); ws.setSeenPage(1); }}>
+              <option value="all">全部状态</option>
               {["new", "rising", "sustained", "archived"].map((st) => <option key={st} value={st}>{st}</option>)}
             </Select>
           </div>
@@ -124,20 +124,14 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
             <p className="muted">没有匹配的热词。</p>
           ) : (
             <>
-              <div className="discovery-list" role="list" aria-label="热词全量词表">
+              <div className="term-chips" role="list" aria-label="热词全量词表">
                 {ws.seenList.items.map((t: any) => (
-                  <article className="discovery-row" key={t.id} role="listitem" style={{ padding: "13px 4px" }}
-                    aria-label={`热词 ${t.term}，状态：${t.status}${t.intent ? `，意图：${DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}` : ""}`}>
-                    <div className="row-content">
-                      <div className="row-meta">
-                        <span className="pill">{t.status}</span>
-                        {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
-                        {t.seed && <span>血缘：{t.seed}</span>}
-                        <span>观测 {t.observations} 次</span>
-                      </div>
-                      <strong>{t.term}</strong>
-                    </div>
-                  </article>
+                  <button className="term-chip" key={t.id} role="listitem"
+                    aria-label={`热词 ${t.term}，观测 ${t.observations} 次${t.intent ? `，${DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}` : ""}`}
+                    onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>
+                    {t.term}
+                    <small>×{t.observations}{isLongTail(t.term) ? " 🎯" : ""}{t.seed ? " ◌" : ""}</small>
+                  </button>
                 ))}
               </div>
               <Pagination info={{ page: ws.seenPage, pages: Math.max(1, Math.ceil(ws.seenList.total / 50)), pageSize: 50, total: ws.seenList.total }} onChange={ws.setSeenPage} disabled={ws.seenLoading} />

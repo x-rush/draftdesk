@@ -185,16 +185,7 @@ export function Settings({
           onChange={(e) => setValue({ ...value, tavilyKey: e.target.value })}
         />
       </Field>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={value.clearTavilyKey}
-            onChange={(e) =>
-              setValue({ ...value, clearTavilyKey: e.target.checked })
-            }
-          />
-          清除已保存的搜索密钥
-        </label>
+
       <Field label="受众与内容定位">
         <textarea
           required
@@ -230,6 +221,16 @@ export function Settings({
             }
           />
           清除已保存的百炼密钥（保存后生效，需重新配置才能调用模型）
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={value.clearTavilyKey}
+            onChange={(e) =>
+              setValue({ ...value, clearTavilyKey: e.target.checked })
+            }
+          />
+          清除已保存的搜索密钥（Tavily 网页搜索将不可用）
         </label>
       </section>
       {error && (

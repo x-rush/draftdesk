@@ -25,7 +25,18 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
         </button>
       </div>
       <div className="source-list">
-        {data.sources.map((s) => (
+        {(() => {
+          const typeLabels = { rss: "RSS 订阅", github: "订阅与社区", hotlist: "热榜官方", aggregated: "聚合榜单", trends: "Google Trends", web: "搜索与网页", suggest: "搜索联想" } as Record<string, string>;
+          const groups: Array<[string, any[]]> = [];
+          for (const src of data.sources) {
+            const label = typeLabels[src.type] || src.type;
+            const last = groups[groups.length - 1];
+            if (last && last[0] === label) last[1].push(src);
+            else groups.push([label, [src]]);
+          }
+          return groups.flatMap(([label, items]) => [
+            <div className="section-head" key={"h-" + label}><h3>{label}</h3><span className="card-meta">{items.length} 个</span></div>,
+            ...items.map((s) => (
           <article className="source-row" key={s.id}>
             <div>
               <span className="pill">{s.type.toUpperCase()}</span>
@@ -49,7 +60,9 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
               {sourceChecks[s.id] && <small role="status">{sourceChecks[s.id]}</small>}
             </div>
           </article>
-        ))}
+            )),
+          ]);
+        })()}
       </div>
       <p className="context-note">
         百度热搜、Google Trends 地域榜、GitHub Trending 与 Hacker News Top 已接入。B站热门与微博热搜走官方公开接口（内置、匿名可用）；本地 DailyHotApi 聚合已验证知乎、抖音、头条、贴吧和掘金，快手上游仍失败、默认停用。可逐个检测连接后启用。聚合榜单显示获取方式和更新时间，只作线索，需核对原平台内容。登录后的创作者活动须走活动采集流程。

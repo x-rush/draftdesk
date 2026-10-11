@@ -21,8 +21,37 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
   const pending = outlines
     .filter((o) => o.decision === "pending")
     .sort((a, b) => outlineScore(b) - outlineScore(a) || b.createdAt.localeCompare(a.createdAt));
+  // 数据治理：同题聚合（与审查台同方案）——同题 pending 只显示最新一条，
+  // 徽章「同题 ×N」展开组明细；拍板=全组批量。
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const groups = (() => {
+    const byTitle = new Map<string, any[]>();
+    for (const o of pending) {
+      const key = o.title.trim();
+      const bucket = byTitle.get(key);
+      if (bucket) bucket.push(o);
+      else byTitle.set(key, [o]);
+    }
+    return [...byTitle.values()].map((members) => ({
+      title: members[0].title.trim(),
+      members,
+      primary: members[0],
+    }));
+  })();
+  async function decideGroup(group: { members: any[] }, decision: string, rejectReason?: string) {
+    if (group.members.length === 1) return decide(group.members[0], decision, rejectReason);
+    return ws.act(
+      async () => {
+        for (const m of group.members) await api("outlines/" + m.id + "/decision", { decision, ...(rejectReason ? { rejectReason } : {}) });
+      },
+      {
+        apply: () => ws.mutateOutlines((list) => list.map((x) => (group.members.some((m) => m.id === x.id) ? { ...x, decision } : x))),
+        undo: () => ws.mutateOutlines((list) => list.map((x) => (group.members.some((m) => m.id === x.id) ? { ...x, decision: "pending" } : x))),
+      },
+    );
+  }
   const clusterOf = (o: any) => clusters.find((c) => c.id === o.clusterId);
-  useListKeyboardShortcuts(".discovery-row", { approve: () => pending[0] && decide(pending[0], "approved"), archive: () => pending[0] && decide(pending[0], "rejected", "其他"), discuss: () => pending[0] && setDetail(pending[0]) }, pending.length > 0);
+  useListKeyboardShortcuts(".discovery-row", { approve: () => groups[0] && decideGroup(groups[0], "approved"), archive: () => groups[0] && decideGroup(groups[0], "rejected", "其他"), discuss: () => groups[0] && setDetail(groups[0].primary) }, groups.length > 0);
 
   // P2③ 乐观拍板：本地先移出待拍队列（<50ms），失败回滚并提示，成功后台 refresh 对账。
   function decide(o: any, decision: string, rejectReason?: string) {
@@ -49,7 +78,9 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
         </Empty>
       ) : (
         <div className="discovery-list">
-          {pending.map((o) => {
+          {groups.map((group) => {
+            const o = group.primary;
+            const dupCount = group.members.length;
             const cluster = clusterOf(o);
             return (
               <article className="discovery-row" key={o.id}>
@@ -58,6 +89,11 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                 </div>
                 <div className="row-content">
                   <div className="row-meta">
+                    {dupCount > 1 && (
+                      <button className="pill" style={{ cursor: "pointer" }} onClick={() => setOpenGroups((prev) => { const next = new Set(prev); if (next.has(group.title)) next.delete(group.title); else next.add(group.title); return next; })}>
+                        同题 ×{dupCount}
+                      </button>
+                    )}
                     <span>{o.platform}</span>
                     {cluster && cluster.id !== "clu-inbox" && <span>{cluster.topic}</span>}
                     {cluster && cluster.id === "clu-inbox" && <span>选题收集箱</span>}
@@ -79,12 +115,12 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                 <div className="row-side">
                   <small>{o.evidenceRefs?.length || 0} 条数据源</small>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={busy} onClick={() => void decide(o, "approved").then(() => setNotice("已通过，进入选题库。"))}>通过</button>
+                    <button disabled={busy} onClick={() => void decideGroup(group, "approved").then(() => setNotice(dupCount > 1 ? `已通过 ${dupCount} 条（含同题）。` : "已通过，进入选题库。"))}>通过{dupCount > 1 ? ` ×${dupCount}` : ""}</button>
                     <button disabled={busy} onClick={() => setReasonFor(reasonFor === o.id ? null : o.id)}>否决</button>
-                    <button disabled={busy} onClick={() => void decide(o, "deferred")}>暂缓</button>
+                    <button disabled={busy} onClick={() => void decideGroup(group, "deferred")}>暂缓</button>
                   </div>
                   {reasonFor === o.id && (
-                    <select aria-label={"否决原因 " + o.title} defaultValue="" onChange={(e) => { const v = e.target.value; if (v) { setReasonFor(null); void decide(o, "rejected", v); } }} style={{ marginTop: 6 }}>
+                    <select aria-label={"否决原因 " + o.title} defaultValue="" onChange={(e) => { const v = e.target.value; if (v) { setReasonFor(null); void decideGroup(group, "rejected", v); } }} style={{ marginTop: 6 }}>
                       <option value="">选否决原因…</option>
                       <option value="off-domain">超出领域</option>
                       <option value="no-ai-signal">没有 AI 信号</option>
@@ -95,6 +131,23 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                     </select>
                   )}
                 </div>
+                {dupCount > 1 && openGroups.has(group.title) && (
+                  <div style={{ width: "100%", borderTop: "1px dashed var(--line)", paddingTop: 8, display: "grid", gap: 8 }}>
+                    {group.members.map((m) => (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span className="card-meta" style={{ flex: 1 }}>{date(m.createdAt)} · {(m.evidenceRefs || []).length} 条数据源</span>
+                        {m.decision === "pending" ? (
+                          <span style={{ display: "flex", gap: 6 }}>
+                            <button disabled={busy} onClick={() => void decide(m, "approved")}>通过</button>
+                            <button disabled={busy} onClick={() => void decide(m, "rejected", "重复条目")}>否决</button>
+                          </span>
+                        ) : (
+                          <span className="card-meta">{m.decision}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </article>
             );
           })}
@@ -110,7 +163,7 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outl
   return (
     <Drawer
       title={o.title}
-      subtitle={`${o.platform} · ${cluster ? cluster.topic : "选题收集箱"} · ${date(o.createdAt)}`}
+      subtitle={[o.platform, cluster ? cluster.topic : "选题收集箱", date(o.createdAt)].filter(Boolean).join(" · ")}
       onClose={onClose}
       wide
     >
@@ -119,7 +172,7 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outl
         <button disabled={busy} onClick={() => void onDecide("deferred").then(onClose)}>暂缓</button>
         <button disabled={busy} onClick={() => void onDecide("rejected", "其他").then(onClose)}>否决</button>
       </div>
-      <p className="lead">{o.keyPoints?.length ? o.keyPoints.join("；") : "暂无要点。"}</p>
+      {o.keyPoints?.length ? <p className="lead">{o.keyPoints.join("；")}</p> : <p className="lead muted">暂无写作要点。可在研究讨论里补齐角度，或直接拍板进入选题库。</p>}
       {o.draftBody && <div className="draft-preview"><h3>草稿正文</h3><pre style={{ whiteSpace: "pre-wrap" }}>{o.draftBody}</pre></div>}
       <section>
         <h3>数据源（{o.evidenceRefs?.length || 0}）</h3>
