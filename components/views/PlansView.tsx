@@ -70,30 +70,30 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                   {p.kind === "activities" ? (
                     <button className="primary" style={{ whiteSpace: "nowrap" }} onClick={() => navigate("activities")}>前往采集</button>
                   ) : (
-                    <button className="primary" disabled={busy || running} title={running ? "该策略已有任务在运行" : undefined} onClick={() =>
-                      void act(async () => {
-                        await api("jobs", { planId: p.id });
-                        navigate("runs");
-                        setNotice("研究任务已入队。");
-                      })
-                    }>
-                      <Play size={15} />
-                      运行
-                    </button>
+                    <>
+                      <button disabled={busy || analyzeBusy === p.id} onClick={() => void (async () => {
+                        setAnalyzeBusy(p.id);
+                        try {
+                          const r = await api<{ triggered: boolean; running: boolean }>("plans/" + p.id + "/analyze", {});
+                          setNotice(r.triggered ? "内置分析已入队（整理→提词→审核）。" : "该策略已有分析在运行。");
+                          await ws.refresh();
+                        } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
+                      })()}>{analyzeBusy === p.id ? "分析入队中…" : "立即分析"}</button>
+                      <button className="primary" disabled={busy || running} title={running ? "该策略已有任务在运行" : undefined} onClick={() =>
+                        void act(async () => {
+                          await api("jobs", { planId: p.id });
+                          navigate("runs");
+                          setNotice("研究任务已入队。");
+                        })
+                      }>
+                        <Play size={15} />
+                        运行
+                      </button>
+                    </>
                   )}
                   <details className="more-menu" data-popover>
-                    <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}>更多 <ChevronDown size={13} /></summary>
+                    <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}><ChevronDown size={13} /></summary>
                     <span className="menu-pop">
-                      {p.kind !== "activities" && (
-                        <button disabled={busy || analyzeBusy === p.id} onClick={() => void (async () => {
-                          setAnalyzeBusy(p.id);
-                          try {
-                            const r = await api<{ triggered: boolean; running: boolean }>("plans/" + p.id + "/analyze", {});
-                            setNotice(r.triggered ? "内置分析已入队（整理→提词→审核）。" : "该策略已有分析在运行。");
-                            await ws.refresh();
-                          } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
-                        })()}>{analyzeBusy === p.id ? "分析入队中…" : "立即分析"}</button>
-                      )}
                       <button onClick={() => setPlan(p)}>调整策略</button>
                     </span>
                   </details>

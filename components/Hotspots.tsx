@@ -27,7 +27,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
       <Select aria-label="热点状态" value={status} onChange={e=>onStatus(e.target.value)}><option value="all">全部线索</option><option value="watch">待观察</option><option value="selected">进入过分析</option><option value="filtered">被策略筛除</option></Select>
       <Select aria-label="排序方式" value={hotspotSort||"interested"} onChange={e=>onSort(e.target.value)}><option value="interested">感兴趣分类置顶</option><option value="time">纯时间序</option></Select>
       <Select aria-label="采集策略" value={plan} onChange={e=>onPlan(e.target.value)}><option value="all">全部采集批次</option>{feed?.planOptions.map(name=><option value={name} key={name}>{name}</option>)}</Select>
-      <label className="check" style={{ margin: 0, whiteSpace: "nowrap" }}><input type="checkbox" checked={!!consumed} onChange={e=>onConsumed?.(e.target.checked)} />查看已消费</label>
+      <label className="check" style={{ margin: "0 0 0 auto", whiteSpace: "nowrap" }}><input type="checkbox" checked={!!consumed} onChange={e=>onConsumed?.(e.target.checked)} />查看已消费</label>
     </div>
     <details className="hotspot-health fold-card">
       <summary>采集状态{feed?.lastCollectedAt?` · 最近采集 ${date(feed.lastCollectedAt)}`:""}{feed?.sourceHealth.some(s=>s.status==="failed")?` · ${feed.sourceHealth.filter(s=>s.status==="failed").length} 个来源读取失败`:""}</summary>

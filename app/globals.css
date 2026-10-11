@@ -1722,6 +1722,10 @@ button:disabled, .button:disabled {
 }
 button:disabled:hover { filter: none; }
 
+
+/* D1 发现页评分列收敛（58 项清单批三） */
+.row-number { font-size: 13px !important; font-weight: 600; color: var(--muted); min-width: 34px; }
+
 /* 统计卡文字单行省略（运行记录批：长文案挤压修复） */
 .stat-card span, .stat-card small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 侧栏下载纵排（外部接入批） */
