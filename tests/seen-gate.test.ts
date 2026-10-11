@@ -108,8 +108,8 @@ test("手动触发：请求后 tick 立即提取（跳过 24h 等待与闸门）
     let calls = 0;
     const mockRunner = async () => { calls++; return { text: JSON.stringify([{ term: "手动触发词", offTopic: false }]) }; };
     seenTermsTick(db, mockRunner);
-    await new Promise((r) => setTimeout(r, 50));
-    assert.equal(calls, 1, "手动请求应触发提取");
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(calls, 2, "手动请求应触发提取 + 未判定词回填判定两次调用");
     assert.ok(db.get<any>("seen-terms", "手动触发词"), "提取结果应入库");
     // 完成标记后再次请求 → alreadyDone
     const again = requestSeenTermsExtraction(db);

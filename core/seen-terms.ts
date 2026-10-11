@@ -8,6 +8,11 @@ type TermStore = { get<T>(collection: string, id: string): T | undefined; put<T>
 export type SeenTermStatus = "new" | "rising" | "sustained" | "archived";
 const RANK: Record<SeenTermStatus, number> = { new: 0, rising: 1, sustained: 2, archived: 3 };
 
+// persona 相关性三档（种子池污染清洗批）：LLM 对每个词给一档，
+// strong = AI 全谱系 top 级需求；weak = 沾边非主航道；off = 圈外。
+// 种子回流闸只放 strong（seen-dig.collectSeeds）；off 同时置 offTopic=true。
+export type PersonaRelevance = "strong" | "weak" | "off";
+
 // 搜索意图（热词掘金 v3）：规则判定先行，供词表筛选与选题匹配。
 // 判定顺序按需求清单：教程/方法 → 对比/替代 → 价格/商业 → 疑问句式兜底。
 export type SeenTermIntent = "informational" | "comparison" | "commercial" | "question";
@@ -54,6 +59,7 @@ export function getSeenTerm(kv: TermStore, term: string): any | undefined {
 // 外部 Agent upsert（批复 D 合并语义）
 export function mergeSeenTerm(kv: TermStore, input: {
   term: string; sources?: string[]; relatedSearches?: string[]; offTopic?: boolean;
+  relevance?: PersonaRelevance;
   status?: SeenTermStatus; frequency?: number; observations?: number; lastSeenAt?: string;
   seed?: string; intent?: SeenTermIntent;
 }, by: string) {
@@ -70,6 +76,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
     observations: Math.max(prev?.observations ?? 0, input.observations ?? 0, input.frequency ?? 0),
     status,
     offTopic: input.offTopic ?? prev?.offTopic,
+    relevance: input.relevance ?? prev?.relevance,
     // 血缘（seed）只记首见种子；intent 显式传入优先，否则保留旧值
     seed: prev?.seed ?? input.seed,
     intent: input.intent ?? prev?.intent,
@@ -84,7 +91,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
 }
 
 // 内置提取/晋级（每日一次）：observations+1、daysSeen 记日期、按阈值晋级
-export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; day?: string } = {}) {
+export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; day?: string } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   const day = opts.day ?? today();
@@ -107,6 +114,7 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     status,
     daysSeen,
     offTopic: opts.offTopic ?? prev?.offTopic,
+    relevance: opts.relevance ?? prev?.relevance,
     seed: prev?.seed,
     intent: prev?.intent ?? classifyIntent(term),
     producedBy: prev?.producedBy ?? "builtin-extract/1.0.0",
@@ -152,9 +160,32 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
     seed,
     intent: opts.intent ?? classifyIntent(term),
     offTopic: undefined,
+    // 联想展开词默认未判定（relevance 缺失）：过不了种子闸，等 LLM 判定 strong 后才回流
+    relevance: undefined,
     producedBy: "suggest-expansion/1.0.0",
     updatedAt: now,
     createdAt: now,
+  };
+  kv.put("seen-terms", id, doc);
+  bumpSeenTermsVersion(kv);
+  return doc;
+}
+
+// LLM 判定写入（种子池污染清洗批）：只改 relevance 与 offTopic 联动，
+// 不动 observations/lastSeenAt/status——判定是分类不是观测，不得虚增热度。
+// 优先级 off > strong > weak：off 可随时覆盖（安全优先），strong 只升不降（不被 weak 打回）。
+const RELEVANCE_RANK: Record<PersonaRelevance, number> = { weak: 0, strong: 1, off: 2 };
+export function judgeSeenTerm(kv: TermStore, term: string, relevance: PersonaRelevance) {
+  const id = termId(term);
+  const prev = kv.get<any>("seen-terms", id);
+  if (!prev || prev.status === "archived") return undefined;
+  const old = prev.relevance as PersonaRelevance | undefined;
+  if (old && RELEVANCE_RANK[relevance] <= RELEVANCE_RANK[old]) return prev;
+  const doc = {
+    ...prev,
+    relevance,
+    offTopic: relevance === "off" ? true : prev.offTopic,
+    updatedAt: now0(),
   };
   kv.put("seen-terms", id, doc);
   bumpSeenTermsVersion(kv);

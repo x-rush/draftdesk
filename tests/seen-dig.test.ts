@@ -12,11 +12,13 @@ function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
 }
 
-function seedTerm(db: Store, term: string, status: string, opts: { offTopic?: boolean; lastSeenAt?: string } = {}) {
+function seedTerm(db: Store, term: string, status: string, opts: { offTopic?: boolean; relevance?: string; lastSeenAt?: string } = {}) {
   db.put("seen-terms", term.toLowerCase(), {
     id: term.toLowerCase(), term, status, observations: 2, sources: ["rss"], relatedSearches: [],
     firstSeenAt: new Date().toISOString(), lastSeenAt: opts.lastSeenAt ?? new Date().toISOString(),
     daysSeen: [], offTopic: opts.offTopic,
+    // 显式传 relevance: undefined 表示「未判定」，不传默认 strong
+    relevance: "relevance" in opts ? opts.relevance : "strong",
   });
 }
 
@@ -91,7 +93,7 @@ test("种子收集：rising/sustained 优先、圈外排除、24h 新词补位�
     for (let i = 0; i < 8; i++) seedTerm(db, `rising${i}`, "rising");
     seedTerm(db, "圈外词", "rising", { offTopic: true });
     seedTerm(db, "archived词", "sustained");
-    db.put("seen-terms", "archived词", { id: "archived词", term: "archived词", status: "archived", observations: 5, sources: [], relatedSearches: [], firstSeenAt: "", lastSeenAt: new Date().toISOString(), daysSeen: [] });
+    db.put("seen-terms", "archived词", { id: "archived词", term: "archived词", status: "archived", observations: 5, sources: [], relatedSearches: [], firstSeenAt: "", lastSeenAt: new Date().toISOString(), daysSeen: [], relevance: "strong" });
     seedTerm(db, "昨天的新词", "new", { lastSeenAt: new Date(Date.now() - 25 * 3600000).toISOString() });
     seedTerm(db, "今天的新词", "new");
     const seeds = collectSeeds(db);
@@ -99,6 +101,27 @@ test("种子收集：rising/sustained 优先、圈外排除、24h 新词补位�
     assert.ok(seeds.every((s) => s.term !== "圈外词" && s.term !== "archived词"));
     assert.ok(seeds.some((s) => s.term === "今天的新词"), "24h 新词应补位");
     assert.ok(!seeds.some((s) => s.term === "昨天的新词"), "超 24h 新词不补位");
+  } finally { cleanup(dir); }
+});
+
+test("三档闸（清洗批①）：只有 relevance=strong 可回流种子池，off/weak/未判定全挡", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-dig-gate-"));
+  try {
+    const db = new Store(dir);
+    seedTerm(db, "强相关词", "rising");
+    seedTerm(db, "误标圈外词", "rising", { offTopic: false, relevance: "off" });
+    seedTerm(db, "弱相关词", "rising", { relevance: "weak" });
+    seedTerm(db, "未判定词", "rising", { relevance: undefined });
+    seedTerm(db, "强相关新词", "new");
+    const seeds = collectSeeds(db);
+    assert.deepEqual(seeds.map((s) => s.term).sort(), ["强相关新词", "强相关词"].sort());
+    // PAA 引擎同一道闸：rising 且 strong 才发起 SERP 请求（5 个 rising 中只应打 1 个）
+    seedTerm(db, "弱相关词2", "rising", { relevance: "weak" });
+    let paaCalls = 0;
+    const stats = await runPaa(db, (async () => { paaCalls++; throw new Error("boom"); }) as unknown as typeof fetch);
+    assert.equal(stats.rising, 1);
+    assert.equal(paaCalls, 1, "PAA 只对 strong 词发起请求");
+    assert.equal(stats.skipped, 1);
   } finally { cleanup(dir); }
 });
 

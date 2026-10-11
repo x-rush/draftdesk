@@ -4,6 +4,7 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy, defaultConsumerMode } from "../defaults";
 import { now } from "./helpers";
+import { cleanSeedPollution } from "../seen-clean";
 import type { KV } from "./kv";
 
 interface MigrationCtx {
@@ -256,6 +257,16 @@ export const migrations: Migration[] = [
       const cols = kv.db.prepare("PRAGMA table_info(budgets)").all() as Array<{ name: string }>;
       if (!cols.some((c) => c.name === "used"))
         kv.db.exec("ALTER TABLE budgets ADD COLUMN used INTEGER NOT NULL DEFAULT 0");
+    },
+  },
+  {
+    id: "seed-pollution-clean-v1",
+    // 种子池污染清洗（2026-10-10 用户批复）：11 个跑题种子（自动驾驶/自動駕駛/点击器家族/
+    // tesla/uber/toyota/台湾法规等）按 seed 血缘反查全部家族词归档出库（不删，备查）；
+    // AI 短剧/版权/无血缘提词等白名单全保留（见 core/seen-clean.ts）。
+    run: ({ kv }) => {
+      const report = cleanSeedPollution(kv);
+      console.log(`[migration] seed-pollution-clean-v1：种子 ${report.roots} / 家族词 ${report.family} / 归档 ${report.archived}`);
     },
   },
 ];

@@ -17,9 +17,11 @@ const HLS = ["zh-CN", "en"];
 type DoFetch = typeof fetch;
 
 // 种子词库：rising/sustained 优先（观测次数降序），缺口由 24h 内新词补齐
-//（=AI 提词日报与外部双写的当日产出）。圈外词与 archived 不做种子。
+//（=AI 提词日报与外部双写的当日产出）。
+// 三档闸（种子池污染清洗批 ①）：只有 relevance=strong 的词可回流种子池——
+// off 词（含历史误标）绝不回流，未判定词（联想展开天然缺档）过不了闸，等 LLM 判 strong。
 export function collectSeeds(db: Store, limit = SEED_LIMIT): { term: string; status: string }[] {
-  const terms = db.list<any>("seen-terms").filter((t) => t.status !== "archived" && !t.offTopic);
+  const terms = db.list<any>("seen-terms").filter((t) => t.status !== "archived" && !t.offTopic && t.relevance === "strong");
   const now = Date.now();
   const priority = terms.filter((t) => t.status === "rising" || t.status === "sustained")
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0));
@@ -184,12 +186,12 @@ export async function fetchPaa(q: string, doFetch: DoFetch, outer?: AbortSignal)
   return parsePaa(html);
 }
 
-// 引擎 B 主流程：rising 词（上限 8，观测降序）逐个查 PAA，问题词入 seen-terms
-// （intent=question，seed=rising 词）。单词失败跳过，300ms 间隔防限流。
+// 引擎 B 主流程：rising 且 relevance=strong 的词（上限 8，观测降序）逐个查 PAA，
+// 问题词入 seen-terms（intent=question，seed=rising 词）。单词失败跳过，300ms 间隔防限流。
 export async function runPaa(db: Store, doFetch: DoFetch = fetch): Promise<{ rising: number; questions: number; skipped: number }> {
   const stats = { rising: 0, questions: 0, skipped: 0 };
   const rising = db.list<any>("seen-terms")
-    .filter((t) => t.status === "rising" && !t.offTopic)
+    .filter((t) => t.status === "rising" && !t.offTopic && t.relevance === "strong")
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, 8);
   const outer = AbortSignal.timeout(8 * 60000);

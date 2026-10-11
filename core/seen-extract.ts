@@ -4,7 +4,8 @@
 // 兜底 = 闸门置位 24h 仍无写入时，worker 降级执行一次内置提取（保证不断流）。
 // 手动 = UI「立即整理/刷新雷达」写 seen-terms-manual 请求，tick 立即执行（跳过 24h 等待）。
 import type { Store } from "./store";
-import { observeSeenTerm } from "./seen-terms";
+import { judgeSeenTerm, observeSeenTerm, termId } from "./seen-terms";
+import type { PersonaRelevance } from "./seen-terms";
 
 const GATE_KEY = "seen-terms-gate";
 const DAY_MS = 86400000;
@@ -75,8 +76,13 @@ async function runExtraction(db: Store, runModel: ModelRunner, dateKey: string, 
   console.log(`[seen-terms] 提取开始（触发：${trigger}，日期：${dateKey}）`);
   try {
     const extracted = await extractTerms(db, runModel);
-    console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条`);
-    db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted });
+    // 回填判定：让联想展开词尽快拿到 relevance（过种子闸的前提）；空池零成本跳过
+    const judged = await judgeUnjudgedTerms(db, runModel).catch((e) => {
+      console.error("[seen-terms] 回填判定失败（不阻塞主流程）:", e instanceof Error ? e.message : e);
+      return 0;
+    });
+    console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条，回填判定 ${judged} 条`);
+    db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted, judged });
   } catch (e) {
     console.error(`[seen-terms] 提取失败（触发：${trigger}）:`, e instanceof Error ? e.message : e);
   } finally {
@@ -93,9 +99,10 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
       if ((c.observedAt || record.at) >= cutoff && c.title) entries.push({ title: c.title, source: c.sourceName || "" });
   if (entries.length > 400) entries.length = 400;
   if (!entries.length) return 0;
-  const prompt = "以下是最多 400 条今天采集的资讯条目，每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），" +
-    "过滤纯娱乐八卦（影视明星、综艺、体育赛事）。与 AI/开发/软件工具领域相关的词 offTopic=false，圈外热词也保留但 offTopic=true。" +
-    '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"offTopic":false}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources。不要输出其他文字。\n\n' +
+  const prompt = PERSONA_RUBRIC +
+    "以下是最多 400 条今天采集的资讯条目，每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），" +
+    "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
+    '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
     entries.map((x, i) => (i + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
   const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(120000) });
   const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
@@ -103,8 +110,59 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   let count = 0;
   for (const item of parsed)
     if (item && typeof item.term === "string" && item.term.trim()) {
-      observeSeenTerm(db, item.term.trim().slice(0, 80), { sources: Array.isArray(item.sources) ? item.sources.map(String).slice(0, 5) : [], offTopic: item.offTopic === true });
+      const relevance = normalizeRelevance(item.relevance);
+      observeSeenTerm(db, item.term.trim().slice(0, 80), {
+        sources: Array.isArray(item.sources) ? item.sources.map(String).slice(0, 5) : [],
+        offTopic: relevance === "off" || item.offTopic === true,
+        relevance,
+      });
       count++;
     }
   return count;
+}
+
+// persona 判定标尺（种子池污染清洗批 ②）：提取与回填判定共用同一段，
+// 混合词按动态内容判定（汽车词=off），正反例给足防误标。
+const PERSONA_RUBRIC = [
+  "## 我们做什么（persona，相关性判断的唯一基准）",
+  "AI 工作流 / 内容创作 / 独立开发 / 出海工具站——即 AI 全谱系：技术、工具、模型、AI 名人动态、AI 政策与版权、AI 内容赛道。",
+  "",
+  "## relevance 三档标准",
+  "- strong：AI 全谱系 top 级需求。正例：AI 技术/工具/模型发布与突破信息（gpt-5、claude 新版、开源模型）；AI 名人动态（Sam Altman、黄仁勋、Dario Amodei、Ilya 等 OpenAI/Anthropic/xAI/英伟达关键人物）；AI 政策与版权（AI生成内容版权）；AI 短剧与内容赛道（AI短剧、skyreels）；独立开发与自动化（indie hacking、n8n、自动化工作流）。",
+  "- weak：沾科技边但非我们主航道（通用互联网产品动态、非 AI 的编程八卦），保留观察。",
+  "- off：明确圈外。反例：自动驾驶/自動駕駛=汽车行业词；自动点击器/自动连点器/自动精灵=灰产工具；影视明星（如 Alexandra Daddario）=娱乐八卦非 AI 名人；「elon musk 自動駕駛」这类混合词按动态内容判定——主体是汽车词就判 off。",
+  "",
+].join("\n");
+
+function normalizeRelevance(value: unknown): PersonaRelevance | undefined {
+  return value === "strong" || value === "weak" || value === "off" ? value : undefined;
+}
+
+// 回填判定（清洗批 ②）：词库里 relevance 尚未判定的非 archived 词（联想展开词天然缺档），
+// 按观测数取前 200 一次 LLM 判定。判定只写 relevance，不虚增观测。空池直接跳过（零成本）。
+const BACKFILL_LIMIT = 200;
+
+export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Promise<number> {
+  if (!db.config().apiKey) return 0;
+  const pending = db.list<any>("seen-terms")
+    .filter((t) => t.status !== "archived" && t.relevance !== "strong" && t.relevance !== "weak" && t.relevance !== "off")
+    .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
+    .slice(0, BACKFILL_LIMIT);
+  if (!pending.length) return 0;
+  const prompt = PERSONA_RUBRIC +
+    "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off。" +
+    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong"}]。不要输出其他文字。\n\n' +
+    pending.map((t, i) => (i + 1) + ". " + t.term).join("\n");
+  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(120000) });
+  const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
+  if (!Array.isArray(parsed)) return 0;
+  // 只认 pending 集合内的词：模型回显清单外的词（含 archived）一律忽略
+  const pendingIds = new Set(pending.map((t) => String(t.id)));
+  let judged = 0;
+  for (const item of parsed) {
+    const relevance = normalizeRelevance(item?.relevance);
+    if (!relevance || typeof item?.term !== "string" || !pendingIds.has(termId(item.term))) continue;
+    if (judgeSeenTerm(db, item.term, relevance)) judged++;
+  }
+  return judged;
 }

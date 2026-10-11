@@ -13,6 +13,12 @@ import { isLongTail } from "../../core/seen-terms";
 const INTENTS = ["怎么选型", "怎么装", "怎么修", "免费替代", "价格对比", "其他"] as const;
 // 热词掘金 v3：seen-terms 搜索意图四类筛选与中文标签
 const DIG_INTENTS: [string, string][] = [["question", "问题类"], ["comparison", "比价类"], ["informational", "教程类"], ["commercial", "商业类"]];
+// persona 相关性三档徽章（种子池污染清洗批）：未判定不显示，避免新词噪音
+const RELEVANCE_LABELS: Record<string, string> = { strong: "💎 强相关", weak: "○ 弱相关", off: "🚫 圈外" };
+function RelevanceBadge({ relevance }: { relevance?: string }) {
+  const label = relevance ? RELEVANCE_LABELS[relevance] : "";
+  return label ? <span className="pill">{label}</span> : null;
+}
 
 export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { seoTerms, busy, act, setNotice, navigate, setDiscussionContext, refresh } = ws;
@@ -105,6 +111,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                     <div className="row-content">
                       <div className="row-meta">
                         <span className="pill">{t.status}</span>
+                        <RelevanceBadge relevance={t.relevance} />
                         {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
                         {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                         {t.seed && <span>血缘：{t.seed}</span>}
@@ -131,6 +138,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                     <div className="row-content">
                       <div className="row-meta">
                         <span className="pill">{t.status === "new" ? "🆕 新词" : t.status === "rising" ? "📈 突增" : "🔥 持续"}</span>
+                        <RelevanceBadge relevance={t.relevance} />
                         {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
                         {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                         {t.seed && <span>血缘：{t.seed}</span>}
