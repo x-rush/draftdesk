@@ -147,7 +147,8 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         </div>
       )}
 
-      {/* ③ 分区扫描 */}
+      {/* ③ 分区扫描（fullMode 时切换为全量词表，不再叠加显示） */}
+      {!fullMode && <>
       <p className="dash-label">🗂 分区扫描</p>
       <section className="surface" style={{ padding: "16px 18px" }}>
         <div className="radar-toolbar" style={{ marginTop: 0 }}>
@@ -201,11 +202,12 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
           ws.setSeenPage(1);
         }}>查看全部 {zoneTotals[radarTab] || 0} 条（区域/意图/搜索/分页）→</button>
       </section>
+      </>}
 
       {/* ④ 全量词表 */}
       {fullMode && (
         <>
-          <p className="dash-label">📋 全量词表
+          <p className="dash-label" style={{ marginTop: 0 }}>📋 全量词表
             <span className="dash-label-sub">
               <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>🌐 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
               <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>🇨🇳 中文 {(ws.seenList?.regions?.cn) ?? 0}</button>

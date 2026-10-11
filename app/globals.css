@@ -1140,8 +1140,9 @@ main {
   padding: 12px;
   position: sticky;
   top: 90px;
-  max-height: calc(100vh - 350px);
-  min-height: 480px;
+  /* 与 .chat-panel 同一高度公式，左右底边对齐（信号台批改了面板高度后历史卡没跟上） */
+  height: calc(100vh - 205px);
+  min-height: 560px;
   overflow: auto;
 }
 .history > .new-chat {
@@ -1333,7 +1334,7 @@ main {
 }
 @media (max-width: 760px) {
   .discussion-layout { grid-template-columns: 1fr; }
-  .history { position: static; max-height: 220px; min-height: 0; }
+  .history { position: static; height: auto; max-height: 240px; min-height: 0; }
   .chat-panel { height: auto; min-height: 0; }
   .messages { max-height: 52vh; flex: none; }
   .chat-subline { flex-wrap: wrap; }
