@@ -104,7 +104,7 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
     "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
     '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
     entries.map((x, i) => (i + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
-  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(120000), plan: "cheap" });
+  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
   const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
   if (!Array.isArray(parsed)) return 0;
   let count = 0;
@@ -153,7 +153,7 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off。" +
     '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong"}]。不要输出其他文字。\n\n' +
     pending.map((t, i) => (i + 1) + ". " + t.term).join("\n");
-  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(120000), plan: "cheap" });
+  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
   const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
   if (!Array.isArray(parsed)) return 0;
   // 只认 pending 集合内的词：模型回显清单外的词（含 archived）一律忽略
