@@ -39,21 +39,17 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
       <div className="hotspot-row-main">
         <span className={row.status==="selected"?"coverage-dot ok":"coverage-dot"} title={row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"} />
         <a className="hotspot-row-title" href={row.url} target="_blank" rel="noopener noreferrer" title={row.title}>{row.title}</a>
+        {row.metric&&<span className="pill">{row.metric.name} {row.metric.value}{row.metric.unit}</span>}
         <span className="hotspot-row-meta">{row.sourceNames[0]} · {date(row.lastSeen)}{row.observations>1?` · 观察 ${row.observations} 次`:""}</span>
       </div>
-      <div className="hotspot-row-side">
-        {row.category&&<span className="pill">{row.category}</span>}
-        {row.metric&&<span className="hotspot-row-meta">{row.metric.name} {row.metric.value}{row.metric.unit}</span>}
-        <button aria-label={`讨论：${row.title}`} onClick={()=>onDiscuss(row)}>讨论</button>
-        <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
-        <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
+      <div className="hotspot-row-sub">
+        <span className="hotspot-row-reason">{row.reason||"待观察线索"}</span>
+        <div className="hotspot-row-side">
+          <button aria-label={`讨论：${row.title}`} onClick={()=>onDiscuss(row)}>讨论</button>
+          <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
+          <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
+        </div>
       </div>
-      <details className="hotspot-row-detail">
-        <summary>筛选原因与关联采集</summary>
-        <span>状态：{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"} · 地域：{row.region||"未知"}{row.category?` · ${row.category}`:""}</span>
-        <span>筛选原因：{row.reason||"-"}</span>
-        <span>关联采集：{row.planNames.join("、")}</span>
-      </details>
       {promoting===row.url&&<div style={{display:"grid",gap:6,marginTop:6,padding:9,border:"1px solid var(--line)",borderRadius:9}}>
         <Select aria-label="适配平台" value={promotePlatform} onChange={e=>setPromotePlatform(e.target.value)}>{["公众号","小红书","哔哩哔哩","抖音","知乎"].map(p=><option key={p} value={p}>{p}</option>)}</Select>
         <Select aria-label="目标簇" value={promoteCluster} onChange={e=>setPromoteCluster(e.target.value)}><option value="clu-inbox">选题收集箱</option>{clusters.filter(c=>c.id!=="clu-inbox").map(c=><option key={c.id} value={c.id}>{c.topic}</option>)}</Select>
