@@ -20,6 +20,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
   const [category, setCategory] = useState("all");
   const [intent, setIntent] = useState("all");
   const [source, setSource] = useState("all");
+  const [fullMode, setFullMode] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
@@ -72,9 +73,9 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         <p className="muted">三层雷达：新词（48h 内首见）→ 突增（观测晋级）→ 持续（连续 3 天在榜）。数据来自全源标题流的每日提取与外部 Agent 双写。</p>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <nav className="discovery-modes" aria-label="雷达分区" style={{ marginTop: 8 }}>
-          <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => setRadarTab("new")}>🆕 新词 {zoneTotals.new}</button>
-          <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => setRadarTab("rising")}>📈 突增 {zoneTotals.rising}</button>
-          <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => setRadarTab("sustained")}>🔥 持续 {zoneTotals.sustained}</button>
+          <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => { setRadarTab("new"); setFullMode(false); }}>🆕 新词 {zoneTotals.new}</button>
+          <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => { setRadarTab("rising"); setFullMode(false); }}>📈 突增 {zoneTotals.rising}</button>
+          <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => { setRadarTab("sustained"); setFullMode(false); }}>🔥 持续 {zoneTotals.sustained}</button>
         </nav>
         <button disabled={radarBusy} onClick={() => void (async () => {
           setRadarBusy(true);
@@ -85,42 +86,17 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
           } catch (e) { setNotice((e as Error).message); } finally { setRadarBusy(false); }
         })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
         </div>
-        <nav className="discovery-modes" aria-label="搜索意图筛选（作用于下方词表）" style={{ marginTop: 8 }}>
+        {/* 单一列表区：三区 tab 显示各区前 20 条；「查看全部」或搜索/意图筛选切到全量模式 */}
+        {fullMode && (
+        <nav className="discovery-modes" aria-label="搜索意图筛选" style={{ marginTop: 8 }}>
           <button className={!ws.seenIntent ? "active" : ""} aria-current={!ws.seenIntent ? "page" : undefined} onClick={() => { ws.setSeenIntent(""); ws.setSeenPage(1); }}>全部 {intentCounts.all ?? 0}</button>
           {DIG_INTENTS.map(([key, label]) => (
             <button key={key} className={ws.seenIntent === key ? "active" : ""} aria-current={ws.seenIntent === key ? "page" : undefined} onClick={() => { ws.setSeenIntent(key); ws.setSeenPage(1); }}>{label} {intentCounts[key] ?? 0}</button>
           ))}
         </nav>
-        {ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
-          <p className="muted">{radarTab === "new" ? "今日无爆发级新词，完整词表见下方。" : radarTab === "rising" ? "暂无突增词（观测 ≥3 次且 7 天内首见）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
-        ) : (
-          <div className="radar-chips" role="list" aria-label={`${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区摘要（前 8 条，点击复制）`}>
-            {zoneLists[radarTab].slice(0, 8).map((t) => (
-              <button className="radar-chip" key={t.id} role="listitem"
-                aria-label={`热词 ${t.term}，观测 ${t.observations} 次${t.intent ? `，${DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}` : ""}${isLongTail(t.term) ? "，长尾词" : ""}`}
-                onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>
-                {t.term}
-                <small>×{t.observations}{isLongTail(t.term) ? " 🎯" : ""}</small>
-              </button>
-            ))}
-          </div>
         )}
-        {zoneTotals[radarTab] > 20 && (
-          <button className="text-button" onClick={() => {
-            ws.setSeenStatus(radarTab === "new" ? "new" : radarTab === "sustained" ? "sustained" : "");
-            ws.setSeenPage(1);
-            document.getElementById("seen-terms-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}>查看全部 {zoneTotals[radarTab]} 条 →</button>
-        )}
-        <div id="seen-terms-list" style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-          <div className="filter-row">
-            <input aria-label="搜索热词" placeholder="搜索热词…" value={ws.seenQ} onChange={(e) => { ws.setSeenQ(e.target.value); ws.setSeenPage(1); }} style={{ maxWidth: 320 }} />
-            <Select aria-label="状态筛选" value={ws.seenStatus || "all"} onChange={(e) => { ws.setSeenStatus(e.target.value === "all" ? "" : e.target.value); ws.setSeenPage(1); }}>
-              <option value="all">全部状态</option>
-              {["new", "rising", "sustained", "archived"].map((st) => <option key={st} value={st}>{st}</option>)}
-            </Select>
-          </div>
-          {ws.seenLoading && !ws.seenList.items.length ? <Skeleton rows={3} label="词表加载中" /> : ws.seenList.items.length === 0 ? (
+        {fullMode ? (
+          ws.seenLoading && !ws.seenList.items.length ? <Skeleton rows={3} label="词表加载中" /> : ws.seenList.items.length === 0 ? (
             <p className="muted">没有匹配的热词。</p>
           ) : (
             <>
@@ -145,8 +121,42 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
               </div>
               <Pagination info={{ page: ws.seenPage, pages: Math.max(1, Math.ceil(ws.seenList.total / 50)), pageSize: 50, total: ws.seenList.total }} onChange={ws.setSeenPage} disabled={ws.seenLoading} />
             </>
-          )}
-        </div>
+          )
+        ) : (
+          ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
+            <p className="muted">{radarTab === "new" ? "今日无爆发级新词。" : radarTab === "rising" ? "暂无突增词（观测 ≥3 次且 7 天内首见）。" : "暂无持续词（连续 3 天在榜即晋级）。"}</p>
+          ) : (
+            <div className="discovery-list" role="list" aria-label={`${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区（前 20 条）`}>
+              {zoneLists[radarTab].map((t) => (
+                  <article className="discovery-row" key={t.id} role="listitem" style={{ padding: "18px 4px" }}>
+                    <div className="row-content">
+                      <div className="row-meta">
+                        <span className="pill">{t.status === "new" ? "🆕 新词" : t.status === "rising" ? "📈 突增" : "🔥 持续"}</span>
+                        {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
+                        {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
+                        {t.seed && <span>血缘：{t.seed}</span>}
+                        <span>观测 {t.observations} 次</span>
+                      </div>
+                      <button className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>{t.term}</button>
+                    </div>
+                    <div className="row-side">
+                      <button onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>复制</button>
+                    </div>
+                  </article>
+              ))}
+            </div>
+          )
+        )}
+        {fullMode ? (
+          <button className="text-button" onClick={() => setFullMode(false)}>← 返回雷达分区视图</button>
+        ) : (
+          <button className="text-button" onClick={() => {
+            setFullMode(true);
+            ws.setSeenStatus(radarTab === "new" ? "new" : radarTab === "sustained" ? "sustained" : "");
+            ws.setSeenIntent("");
+            ws.setSeenPage(1);
+          }}>查看全部 {zoneTotals[radarTab] || 0} 条（搜索/筛选/分页）→</button>
+        )}
       </section>
       <nav className="discovery-modes" aria-label="SEO 板块">
         {[["terms", "全量热词"], ["matched", "选题×搜索词"], ["intent", "意图分层"]].map(([id, label]) => (

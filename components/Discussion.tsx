@@ -46,7 +46,16 @@ export function Discussion({
     [outlineBusy, setOutlineBusy] = useState(false);
   useEffect(()=>{
     let alive=true;setContext(undefined);
-    if(conversation.artifactId)void api<Artifact>("artifacts/"+conversation.artifactId).then(a=>{if(alive)setContext(a)}).catch(()=>{if(alive)setError("关联内容读取失败，暂不能整理或更新原内容。")});
+    if(conversation.artifactId)void api<Artifact>("artifacts/"+conversation.artifactId).then(a=>{if(alive)setContext(a)}).catch((e)=>{
+      if(!alive)return;
+      // 关联产物已不存在（数据事故丢失/被清理）时自动解除关联，会话继续可用；
+      // 只有真实网络/服务错误才持续报错。
+      const msg=String((e as Error).message||e);
+      if(/不存在|404|NOT_FOUND/i.test(msg)){
+        setConversation(prev=>({...prev,artifactId:undefined}));
+        setError("原关联内容已不存在，已解除关联；讨论与历史不受影响。");
+      } else setError("关联内容读取失败，暂不能整理或更新原内容。");
+    });
     return()=>{alive=false};
   },[conversation.artifactId]);
   const abort = useRef<AbortController | null>(null),

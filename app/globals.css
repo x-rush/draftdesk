@@ -1122,11 +1122,11 @@ main {
 .history {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: var(--s3);
+  border-radius: 12px;
+  padding: 12px;
   position: sticky;
   top: 90px;
   max-height: calc(100vh - 350px);
@@ -1142,9 +1142,9 @@ main {
   display: block;
   text-align: left;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 .history > button:not(.new-chat):hover {
   background: #f2f5ee;
@@ -1182,11 +1182,11 @@ main {
   overflow: hidden;
 }
 .chat-panel > header {
-  padding: var(--s4) var(--s5);
+  padding: var(--s5) 28px;
   border-bottom: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex: none;
 }
 .chat-head { display: flex; align-items: center; gap: var(--s3); }
@@ -1203,11 +1203,12 @@ main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--s5);
+  padding: 28px 32px;
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: 20px;
 }
+.messages .empty { padding: 48px 24px; margin: auto; }
 .message {
   background: #fafbf7;
   border: 1px solid #e4e9dc;
@@ -1257,7 +1258,7 @@ main {
 .message-markdown :is(th,td) { border: 1px solid #dce3d3; padding: 8px 10px; text-align: left; vertical-align: top; }
 .message-markdown th { background: #eef2e8; }
 .composer {
-  padding: var(--s3) var(--s5) var(--s4);
+  padding: var(--s4) 28px 20px;
   border-top: 1px solid var(--line);
   background: #fafbf7;
   flex: none;
@@ -1738,7 +1739,7 @@ legend {
 .activity-archive-list{display:flex;flex-wrap:wrap;gap:var(--s2);margin:10px 0}.activity-archive-list button,.activity-triage-results details button{border:1px solid #b9d1bd;border-radius:8px;background:#fff;color:#28523a;padding:7px 10px;margin:3px;cursor:pointer}.activity-coverage{padding:9px 12px;border-left:3px solid #d6a65a;background:#fffcf4;line-height:1.5}.activity-actions{display:flex;flex-wrap:wrap;gap:var(--s3);margin:16px 0}.activity-actions button{padding:10px 14px;border-radius:9px;cursor:pointer}.activity-actions button:disabled{cursor:not-allowed;opacity:.55}.activity-triage-results{margin:24px 0;padding:18px;border:1px solid #d8e5d8;border-radius:14px;background:#f8fbf7}.activity-triage-card{padding:14px 16px;margin:12px 0;background:#fff;border:1px solid #e1e9e1;border-radius:10px}.activity-triage-card h4{margin:0 0 8px}.activity-triage-card p{line-height:1.5}.activity-triage-card li{margin:8px 0}.activity-tools li details{margin:5px 0 10px}.activity-tools li details p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}
 .activity-filter-bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:14px 0 4px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:#fbfcfa}.activity-chip-group{display:flex;gap:5px;align-items:center;flex-wrap:wrap}.activity-chip-label{font-size:11px;color:var(--muted);margin-right:2px}.activity-chip{border:1px solid #d5ddd2;background:#fff;border-radius:999px;padding:4px 11px;font-size:12px;color:#44523f;cursor:pointer}.activity-chip:hover{border-color:#9db69b}.activity-chip.active{background:#2e5e3b;border-color:#2e5e3b;color:#fff}.activity-chip span{opacity:.72;margin-left:4px;font-size:11px}.activity-raw-search{min-width:150px;flex:0 1 190px;border:1px solid #d5ddd2;border-radius:999px;padding:5px 12px;font-size:12.5px;background:#fff}.activity-platform-section-head{display:flex;align-items:baseline;gap:9px;margin:20px 0 2px;padding-bottom:6px;border-bottom:1px solid #e2e9de}.activity-platform-section-head strong{font-size:14px;color:#2e4a36}.activity-platform-section-head span{font-size:12px;color:var(--muted)}.activity-status-tag.live{background:#e4f1e3;color:#32633c}.activity-status-tag.expired{background:#f3e6e4;color:#8a4a3d}.activity-status-tag.unknown{background:#eef0ec;color:#75806f}.activity-pending-banner{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #e3d9bd;background:#fdf7e8;border-radius:10px;margin:14px 0}.activity-pending-actions{display:flex;gap:var(--s2);flex-wrap:wrap}.activity-pending-actions button{padding:8px 13px;border-radius:8px;border:1px solid #d2ddd1;background:#fff;font-size:13px;cursor:pointer}.activity-pending-actions .primary{background:#2e5e3b;border-color:#2e5e3b;color:#fff}.activity-relevance-head{margin:18px 0 4px;font-size:12px;color:var(--muted);font-weight:600}.activity-command-keywords{display:flex;flex-direction:column;gap:3px}.activity-command-keywords label{font-size:11px;color:var(--muted)}.activity-command-keywords input{border:1px solid #d2ddd1;border-radius:8px;padding:7px 10px;font-size:13px;min-width:230px}
 @media(max-width:620px){.activity-filter-bar{align-items:flex-start;flex-direction:column}.activity-command-keywords input{min-width:0;width:100%}}
-.activity-coverage-details{margin:12px 0 4px;border:1px solid var(--line);border-radius:9px;background:#fbfcfa;padding:0 12px}.activity-coverage-details summary{cursor:pointer;padding:9px 0;font-size:12px;color:var(--muted);display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;list-style:none}.activity-coverage-details summary::-webkit-details-marker{display:none}.activity-coverage-details summary::before{content:"▸";transition:transform .15s;color:#9db69b}.activity-coverage-details[open] summary::before{transform:rotate(90deg)}.activity-coverage-details summary strong{color:#44523f;font-weight:600}.activity-coverage-count{margin-left:auto;border:1px solid #d5ddd2;border-radius:999px;padding:1px 9px;font-size:11px}.activity-coverage-details[open] summary{border-bottom:1px dashed var(--line)}.activity-coverage-body{padding:10px 2px;font-size:13px;color:var(--muted);display:grid;gap:6px}.activity-coverage-body p{margin:0;line-height:1.5}
+.activity-coverage-details{margin:12px 0 4px;border:1px solid var(--line);border-radius:9px;background:#fbfcfa;padding:0 12px}.activity-coverage-details summary{cursor:pointer;padding:9px 0;font-size:12px;color:var(--muted);display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;list-style:none}.activity-coverage-details summary::-webkit-details-marker{display:none}.activity-coverage-details summary::before{content:"";width:7px;height:7px;border:solid #9db69b;border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s;flex:none}.activity-coverage-details[open] summary::before{transform:rotate(45deg)}.activity-coverage-details summary strong{color:#44523f;font-weight:600}.activity-coverage-count{margin-left:auto;border:1px solid #d5ddd2;border-radius:999px;padding:1px 9px;font-size:11px}.activity-coverage-details[open] summary{border-bottom:1px dashed var(--line)}.activity-coverage-body{padding:10px 2px;font-size:13px;color:var(--muted);display:grid;gap:6px}.activity-coverage-body p{margin:0;line-height:1.5}
 
 /* 信息架构 v2-9a：移动端底部导航（选题/素材/设置/更多）与内置折叠组 */
 .bottom-tabs { display: none; }
