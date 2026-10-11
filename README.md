@@ -16,9 +16,9 @@ docker compose up -d --build
 
 正式本机地址 http://127.0.0.1:5173 。`start.cmd` 启动，`stop.cmd` 停止，`verify.cmd` 运行校验。宿主机无需 Node、Python、数据库或全局环境变量。需要换本机端口时，把项目根目录 `.env.example` 复制为 `.env` 修改 `DRAFTDESK_PORT`。
 
-**升级**：`git pull` 后执行 `docker compose up -d --build`，数据库在 `data/` 目录不受重建影响；重大版本有数据迁移时会随启动自动完成，升级前建议按「数据与边界」先备份 `data/`。
+**升级**：`git pull` 后执行 `docker compose up -d --build`，数据库在 named volume `draftdesk-data` 中不受重建影响；有数据迁移时会随启动自动完成，且**任何待执行迁移前会自动留保险丝快照**（`data/snapshots/`，保留 3 份）。日常备份已自动化：janitor 每日 `VACUUM INTO` 快照到 `backups/`（保留 14 份），恢复即用最新快照替换 volume 中的 `draftdesk.sqlite`。
 
-Next.js App Router / React / TypeScript 提供同源网页与 API；独立 Node Worker 运行长任务，SQLite WAL 保存任务、证据、结果与会话。数据库在 `data/draftdesk.sqlite`，不会随着容器重建丢失。电脑和 Docker 关闭时不采集，重启后只补当天到期任务。
+Next.js App Router / React / TypeScript 提供同源网页与 API；研究任务循环并入应用进程（单进程单 SQLite 连接，2026-10 起 worker 容器已移除），SQLite WAL 保存任务、证据、结果与会话。数据库在 Docker named volume `draftdesk-data` 中，容器重建不丢数据；每日自动快照到 `backups/`（保留 14 份），大版本迁移前自动留保险丝快照到 `data/snapshots/`（保留 3 份）。电脑和 Docker 关闭时不采集，重启后只补当天到期任务。
 
 ## 首次使用
 
@@ -73,6 +73,14 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 同机运行外部 Agent 时，推荐让 Agent 只返回严格 JSON 证据包，由用户在宿主机用提交令牌直接调用 `POST /api/v1/intake` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 
+## 热词掘金与站点发现
+
+「热词趋势」是独立的海外选题信号台：每日从全源标题流提取实体词（AI 判 💎强相关/○弱相关/🚫圈外三档），再用四路搜索联想展开（Google/YouTube/Amazon/百度/B站）补长尾，按 region 分层（🌐海外词双职责=英文内容选题+站群候选；🇨🇳中文词=纯内容创作线）。只有 💎强相关词回流挖掘种子（off 词绝不回流）。
+
+判定层每天对强相关海外词按热度取 TOP100 查询 SERP 竞争度（vercel/github.io/pages.dev/netlify 四类静态平台上有没有同题独立站），结合 obsRatio（近 2 天观测增速÷前 7 天基线）给出三档判定：✅推荐 / 🟦可以试试 / ⛔不值得做；竞争度查询顺便产出「站点发现」集合（对标独立站卡片，品牌词自动标不建议做）。成本纪律：判断/分类走 cheap 档、产出走 full，cheap 连续两次不过合同自动升 full 重试一次，全部调用按日记录在「设置→每日成本看板」。
+
+种子池污染有双层防线：LLM 提词按 persona 标尺给三档，历史污染可按 seed 血缘一键清洗（`core/seen-clean.ts`，白名单保护 AI 短剧等内容赛道）。热词历史、词表与统计口径见「热词趋势」页内说明。
+
 ## 决策层（审查台）
 
 搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目；手动添加选题、多平台大纲、人设配置（AI 个性化判断输入，可编辑）与内置 AI 参与开关 aiPolicy（triage/outline/draft 三档 off|cheap|full；off 的环节产出留空，由外部 Agent 经 suggest scope 令牌经 /api/v1/agent/clusters|outlines 写回，不出现「关了没人做」）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
@@ -82,7 +90,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 - 应用机会、会话与外部原始证据始终私有。公开接口只返回显式公开且通过检查的资讯与选题投影。
 - 本版只绑定 127.0.0.1，没有多用户登录、支付和公网租户隔离。不能直接作为多租户 SaaS 上线。
 - 不自动爬取受登录/验证码/付费墙保护的公众号及国内平台。可用已授权外部工具、RSS 或手动证据导入补充。
-- JSON 工作数据导出不含密钥；完整备份需先 `docker compose stop`，复制整个 `data` 目录（敏感），再启动。恢复时停止服务再替换该目录。不要在写入中直接复制单个 sqlite 文件。
+- JSON 工作数据导出不含密钥。备份已自动化：每日快照在 `backups/`（14 份）、迁移前保险丝在 `data/snapshots/`（3 份）。手动备份需先 `docker compose stop`，再复制 volume 中的 `draftdesk.sqlite`；不要在写入中直接复制单个 sqlite 文件（含 WAL 时只拷主库会丢数据）。
 - 旧版浏览器选题在首次访问同一地址时自动导入“我的选题库 / 旧版选题”，保留原字段，不删除旧浏览器存储。模型配置通过迁移脚本转入新数据库。
 - 模型调用前按输入 UTF-8 字节和最大输出保守预留；成功返回用量后按回传 token 加缓冲结算并释放未用预留。没有可靠用量、调用失败或取消时保留预留，防止重试绕预算。搜索次数另有限额。这是运行限额，不是人民币账单。
 - 搜索与模型请求无自动无限重试；进程中断任务会在租约过期后标失败，而不是自动重复扣费。所有运行版本与中间分析可导出。
@@ -92,8 +100,8 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 首次部署、30 个逻辑日调度、Worker 恢复与冷备恢复的模拟验收见 [发布模拟记录](docs/release-simulation-2026-09-23.md)。逻辑日期模拟不等于真实连续运行天数；新增回归位于 `tests/lifecycle.test.ts`。
 
 ```sh
-docker compose run --rm worker npm test
-docker compose run --rm worker npm run check
+npm test        # 全量测试（自动注入隔离数据目录，切勿直连活库）
+npm run check   # 类型检查
 docker compose build
 ```
 

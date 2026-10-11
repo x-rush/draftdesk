@@ -146,3 +146,21 @@ participants 配置（config 集合 participants 字段）按来源控制读写�
 | 404 | NOT_FOUND | 路径或产物 ID 不存在 |
 | 409 | CONFLICT | 同 ID 不同内容（回传幂等冲突）|
 | 410 | GONE | unconsume 超过 30 天撤销窗口 |
+
+
+## 热词链路回传（seen-terms）
+
+除证据包外，Agent 还可以把每天看到的热词/新词回传到热词雷达，与内置提取共用一个词库：
+
+```sh
+curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer $DRAFTDESK_TOKEN"   -H "content-type: application/json"   -d '{"items":[{"term":"claude skills","sources":["reddit"],"observations":3,"relevance":"strong","region":"global"}]}'
+```
+
+字段语义（全部可选除 term）：
+
+- `relevance`：`strong | weak | off` 三档。strong=AI 全谱系 top 级需求（工具/模型发布、AI 名人动态、AI 政策版权、AI 短剧、独立开发自动化）；weak=沾边非主航道；off=圈外（自动驾驶、点击器类灰产、影视明星）。**只有 strong 词会回流挖掘种子**，off 同时置 offTopic。
+- `region`：`global | cn`。海外词=英文内容选题+站群候选；中文词=纯内容创作线。不传时按 sources 自动推断（百度/B站/微博/掘金/知乎等→cn，其余→global）。
+- `observations`：观测次数（整数）；重复回传取 max，不叠加。
+- `seed`：首见血缘标记；`status`：new/rising/sustained（只升不降）。
+
+判定由工作台内置 AI 兜底：未判定词会在每日整理时按 persona 标尺回填三档（只写档位，不虚增观测）。词表与统计在「热词趋势」页；同题重复回传按 termId 归一（trim+小写+去内部空格）。

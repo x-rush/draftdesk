@@ -1,3 +1,15 @@
+# 数据库与存储
+
+## 当前存储形态（2026-10-11 起）
+
+- 库在 Docker named volume `draftdesk-data`（compose `name:` 钉死字面名，防止项目前缀分叉），**不再使用仓库 `data/` bind mount**；`data/draftdesk.sqlite` 只是截断事故前的本地残留副本。
+- 单进程：研究任务循环并入 app 进程（instrumentation.ts 注册），worker 容器已移除——消除双进程跨 Windows 挂载的 WAL 竞争。
+- 自动备份两道：janitor 每日 `VACUUM INTO` 到 `backups/`（保留 14 份）；任何待执行迁移前保险丝快照到 `data/snapshots/`（保留 3 份）。每日 `PRAGMA integrity_check` 与全集合行数快照（collections-report，保留 14 天）随 janitor 执行，异常会告警。
+- 设置页「数据健康」可看「昨日 vs 今日」全集合行数异动；模型调用台账（model-metrics，35 天）与毒标题台账（toxic-samples，30 天）随 janitor 清理。
+- 本文件其余部分为 2026-10-01 挂载事故的完整复盘与恢复手册，处置手法仍适用。
+
+---
+
 # DraftDesk 数据库运维手册
 
 存储：`data/draftdesk.sqlite`（SQLite，WAL 模式），`app` 与 `worker` 容器以 bind mount（`./data:/app/data`）同时使用。
