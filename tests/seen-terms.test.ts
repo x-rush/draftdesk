@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
-import { observeSeenTerm, has3Consecutive } from "../core/seen-terms";
+import { observeSeenTerm, has3Consecutive, mergeSeenTerm, mergeSpaceVariants, termId } from "../core/seen-terms";
 
 function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
@@ -134,6 +134,68 @@ test("observations 语义（复验序列）：PUT obs=1→读回1；不带 obs�
   } finally {
     if (previous === undefined) delete process.env.DRAFTDESK_DATA_DIR;
     else process.env.DRAFTDESK_DATA_DIR = previous;
+    cleanup(dir);
+  }
+});
+
+test("termId 归一化（清洗批 2）：trim + 小写 + 去全部内部空格", () => {
+  assert.equal(termId("  Notion AI  "), "notionai");
+  assert.equal(termId("爱 奇 艺 收益"), termId("爱奇艺收益"));
+  assert.equal(termId("elon musk 自動駕駛"), termId("elonmusk自動駕駛"));
+  assert.equal(termId("a\tb\nc"), "abc");
+});
+
+test("mergeSpaceVariants（清洗批 2）：obs max/并集/状态只升不降/白名单字段保留，幂等", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-space-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const base = { firstSeenAt: "2026-10-01T00:00:00Z", lastSeenAt: "2026-10-02T00:00:00Z" };
+    db.put("seen-terms", "爱 奇 艺 收益", { ...base, id: "爱 奇 艺 收益", term: "爱 奇 艺 收益", status: "rising", observations: 5, sources: ["weibo-hotsearch"], relatedSearches: ["a"], daysSeen: ["2026-10-01"] });
+    db.put("seen-terms", "爱奇艺收益", { ...base, id: "爱奇艺收益", term: "爱奇艺收益", status: "new", observations: 2, sources: ["baidu-hot"], relatedSearches: ["b"], daysSeen: ["2026-10-02"] });
+    // 三份变体含 archived：活档存在时状态不得落到 archived
+    db.put("seen-terms", "ai短剧 授权", { ...base, id: "ai短剧 授权", term: "ai短剧 授权", status: "sustained", observations: 4, sources: ["bili"], relatedSearches: [], daysSeen: [] });
+    db.put("seen-terms", "ai短剧授权", { ...base, id: "ai短剧授权", term: "ai短剧授权", status: "archived", observations: 1, sources: [], relatedSearches: [], daysSeen: [] });
+    db.put("seen-terms", "不相关词", { ...base, id: "不相关词", term: "不相关词", status: "new", observations: 1, sources: [], relatedSearches: [], daysSeen: [] });
+    const report = mergeSpaceVariants(db);
+    assert.equal(report.merged, 2);
+    assert.equal(report.removed, 2, "两组各移除一条重复文档");
+    const iq = db.get<any>("seen-terms", "爱奇艺收益");
+    assert.equal(iq.observations, 5, "obs 取 max");
+    assert.equal(iq.status, "rising");
+    assert.deepEqual(iq.sources.sort(), ["baidu-hot", "weibo-hotsearch"], "sources 并集");
+    assert.deepEqual(iq.daysSeen, ["2026-10-01", "2026-10-02"], "daysSeen 并集");
+    assert.equal(iq.term, "爱 奇 艺 收益", "展示词取观测最高那份");
+    const drama = db.get<any>("seen-terms", "ai短剧授权");
+    assert.equal(drama.status, "sustained", "活档存在时不落 archived");
+    assert.equal(db.get<any>("seen-terms", "爱 奇 艺 收益"), undefined, "旧 id 文档应被移除");
+    assert.notEqual(db.get<any>("seen-terms", "不相关词"), undefined, "无变体词不动");
+    // 幂等
+    const again = mergeSpaceVariants(db);
+    assert.equal(again.merged, 0);
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("mergeSeenTerm relevance 透传（清洗批①）", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-rel-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    mergeSeenTerm(db, { term: "某工具", relevance: "strong", status: "rising" }, "agent:test");
+    assert.equal(db.get<any>("seen-terms", "某工具").relevance, "strong");
+    // 不带 relevance 的更新不清掉已有判定
+    mergeSeenTerm(db, { term: "某工具", observations: 9 }, "agent:test");
+    const doc = db.get<any>("seen-terms", "某工具");
+    assert.equal(doc.relevance, "strong");
+    assert.equal(doc.observations, 9);
+    // off 覆盖 + offTopic 联动由调用方/判定层负责，merge 只透传
+    mergeSeenTerm(db, { term: "某工具", relevance: "off" }, "agent:test");
+    assert.equal(db.get<any>("seen-terms", "某工具").relevance, "off");
+  } finally {
+    db?.close();
     cleanup(dir);
   }
 });

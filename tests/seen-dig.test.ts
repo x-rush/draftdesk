@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
 import { collectSeeds, expansionQueries, parseSuggestPayload, parsePaa, parseRelatedRising, Limiter, runPaa, runSuggestExpansion, runTrendsRising, seenDiggingTick } from "../core/seen-dig";
+import { termId } from "../core/seen-terms";
 
 function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
@@ -73,16 +74,16 @@ test("引擎 A 首跑：新词带 seed 入库，二跑只推进 observations；�
     assert.ok(stats.failed > 0, "应有失败请求被静默计数");
     assert.equal(stats.newTerms, 3);
     for (const term of ["notion 替代", "notion 教程", "notion 怎么用"]) {
-      const doc = db.get<any>("seen-terms", term.toLowerCase());
+      const doc = db.get<any>("seen-terms", termId(term));
       assert.equal(doc.seed, "notion");
       assert.equal(doc.status, "new");
       assert.equal(doc.producedBy, "suggest-expansion/1.0.0");
     }
-    assert.equal(db.get<any>("seen-terms", "notion 教程").intent, "informational");
+    assert.equal(db.get<any>("seen-terms", termId("notion 教程")).intent, "informational");
     const again = await runSuggestExpansion(db, fakeFetch, { intervalMs: 1 });
     assert.equal(again.newTerms, 0);
     assert.equal(again.updated, 3);
-    assert.equal(db.get<any>("seen-terms", "notion 教程").observations, 2);
+    assert.equal(db.get<any>("seen-terms", termId("notion 教程")).observations, 2);
   } finally { cleanup(dir); }
 });
 
@@ -133,11 +134,11 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     const fakeFetch = (async () => new Response(JSON.stringify(["seed", [["notion tools", 0]]]), { status: 200 })) as unknown as typeof fetch;
     seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));
-    assert.equal(db.get("seen-terms", "notion tools"), undefined, "无手动标记且无闸门不应触发");
+    assert.equal(db.get("seen-terms", termId("notion tools")), undefined, "无手动标记且无闸门不应触发");
     db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
     seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
     await new Promise((r) => setTimeout(r, 3500));
-    assert.ok(db.get("seen-terms", "notion tools"), "手动标记应触发挖掘");
+    assert.ok(db.get("seen-terms", termId("notion tools")), "手动标记应触发挖掘");
     const done = db.get<any>("meta", "seen-dig-done:" + new Date().toISOString().slice(0, 10));
     assert.ok(done, "完成键应写入");
     db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
@@ -145,7 +146,7 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     seedTerm(db, "another", "rising");
     seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));
-    assert.equal(db.get("seen-terms", "another tools"), undefined, "完成键当日应幂等跳过");
+    assert.equal(db.get("seen-terms", termId("another tools")), undefined, "完成键当日应幂等跳过");
   } finally { cleanup(dir); }
 });
 
@@ -174,7 +175,7 @@ test("引擎 B：rising 词查 PAA，问题词入库 intent=question；被封静
     assert.equal(stats.rising, 2);
     assert.equal(stats.questions, 3);
     assert.equal(stats.skipped, 1);
-    const q = db.get<any>("seen-terms", "notion 怎么导出 pdf 文件");
+    const q = db.get<any>("seen-terms", termId("notion 怎么导出 pdf 文件"));
     assert.equal(q.seed, "notion");
     assert.equal(q.intent, "question");
     assert.deepEqual(q.sources, ["paa"]);
@@ -210,10 +211,10 @@ test("引擎 C：explore 换 token 后取 Rising 列表，入库带 seed", async
     const stats = await runTrendsRising(db, fakeFetch);
     assert.equal(stats.keywords, 2);
     assert.equal(stats.rising, 2);
-    const doc = db.get<any>("seen-terms", "ai notebook free");
+    const doc = db.get<any>("seen-terms", termId("ai notebook free"));
     assert.equal(doc.seed, "AI Notebook");
     assert.equal(doc.status, "new");
     assert.deepEqual(doc.sources, ["trends-rising"]);
-    assert.equal(db.get("seen-terms", "top 关键词不应出现"), undefined, "Top 列表不入库");
+    assert.equal(db.get("seen-terms", termId("top 关键词不应出现")), undefined, "Top 列表不入库");
   } finally { cleanup(dir); }
 });

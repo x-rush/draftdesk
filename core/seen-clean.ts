@@ -29,12 +29,13 @@ export function cleanSeedPollution(kv: CleanStore): { roots: number; family: num
   // BFS 血缘反查：doc.seed ∈ 已污染集合 → 该词属于家族。seed 只记首见，
   // 所以家族词的首见种子就是污染根源（或它的后代），单链回溯即可覆盖全族。
   // 污染源 = 清单内全部种子 id（含库中已不存在的）∪ 找到的根文档。
-  const polluted = new Set<string>([...seedSet, ...roots.map((d) => String(d.id))]);
+  // 历史文档 id 是旧口径（空格未去除），两侧统一过 termId 再比较。
+  const polluted = new Set<string>([...seedSet, ...roots.map((d) => termId(String(d.id)))]);
   let grew = true;
   while (grew) {
     grew = false;
     for (const doc of byId.values()) {
-      const id = String(doc.id);
+      const id = termId(String(doc.id));
       if (polluted.has(id) || WHITELIST.test(doc.term)) continue;
       if (doc.seed && polluted.has(termId(String(doc.seed)))) {
         polluted.add(id);
@@ -46,9 +47,9 @@ export function cleanSeedPollution(kv: CleanStore): { roots: number; family: num
   const today = new Date().toISOString();
   let archived = 0;
   for (const doc of [...byId.values()]) {
-    const id = String(doc.id);
-    if (!polluted.has(id) || doc.status === "archived") continue;
-    kv.put("seen-terms", id, {
+    if (!polluted.has(termId(String(doc.id))) || doc.status === "archived") continue;
+    // 原位归档：保留历史 id 作为 key（不迁移 id，避免触碰其他集合的引用）
+    kv.put("seen-terms", String(doc.id), {
       ...doc,
       status: "archived",
       relevance: "off",

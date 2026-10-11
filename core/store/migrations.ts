@@ -5,6 +5,7 @@ import path from "node:path";
 import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy, defaultConsumerMode } from "../defaults";
 import { now } from "./helpers";
 import { cleanSeedPollution } from "../seen-clean";
+import { mergeSpaceVariants } from "../seen-terms";
 import type { KV } from "./kv";
 
 interface MigrationCtx {
@@ -267,6 +268,15 @@ export const migrations: Migration[] = [
     run: ({ kv }) => {
       const report = cleanSeedPollution(kv);
       console.log(`[migration] seed-pollution-clean-v1：种子 ${report.roots} / 家族词 ${report.family} / 归档 ${report.archived}`);
+    },
+  },
+  {
+    id: "seen-term-space-merge-v1",
+    // termId 归一化收紧（清洗批 2）：去全部内部空格后，历史库「爱 奇 艺 收益」与
+    // 「爱奇艺收益」这类空格变体是两份文档，一次性合并（obs max/并集/状态只升不降）。
+    run: ({ kv }) => {
+      const report = mergeSpaceVariants(kv);
+      if (report.merged) console.log(`[migration] seen-term-space-merge-v1：合并 ${report.merged} 组，移除重复文档 ${report.removed} 条`);
     },
   },
 ];

@@ -38,8 +38,10 @@ export function isLongTail(term: string): boolean {
   return term.trim().split(/\s+/).length >= 3;
 }
 
+// 归一化（空格变体合并批）：trim + 小写 + 去全部内部空格——
+// 「爱 奇 艺 收益」与「爱奇艺收益」、"elon musk" 与 "elonmusk" 归并同档。
 export function termId(term: string): string {
-  return term.trim().toLowerCase();
+  return term.trim().toLowerCase().replace(/\s+/g, "");
 }
 
 function today(): string {
@@ -209,6 +211,58 @@ function now0() { return new Date().toISOString(); }
 // 主路径写入标记：外部 Agent PUT 成功后调用，供 worker 兜底闸门判断「今日已有数据」。
 export function markSeenTermsWrite(kv: TermStore) {
   kv.put("meta", "seen-terms-last-write", { at: new Date().toISOString() });
+}
+
+// ---- 空格变体合并（清洗批 2）：termId 归一化收紧后，历史库中仅空格不同的
+// 同词是两份文档。一次性合并：observations 取 max、sources/relatedSearches/daysSeen
+// 并集、status 取最高非 archived（全 archived 才 archived）、offTopic 任一为真、
+// relevance 沿用 off>strong>weak、seed/intent 取首个非空；展示词取观测最高那份。
+type MergeStore = TermStore & { list<T>(collection: string): T[]; del(collection: string, id: string): void };
+
+export function mergeSpaceVariants(kv: MergeStore): { merged: number; removed: number } {
+  const groups = new Map<string, any[]>();
+  for (const doc of kv.list<any>("seen-terms")) {
+    const id = termId(String(doc.term ?? doc.id));
+    const bucket = groups.get(id) || [];
+    bucket.push(doc);
+    groups.set(id, bucket);
+  }
+  let merged = 0, removed = 0;
+  for (const [id, docs] of groups) {
+    if (docs.length < 2) continue;
+    const sorted = [...docs].sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0) || String(a.firstSeenAt ?? "").localeCompare(String(b.firstSeenAt ?? "")));
+    const top = sorted[0];
+    const liveStatuses = docs.map((d) => d.status).filter((s): s is SeenTermStatus => s !== "archived");
+    const status: SeenTermStatus = liveStatuses.length
+      ? liveStatuses.reduce((a, b) => (RANK[b] > RANK[a] ? b : a))
+      : "archived";
+    const relevance = docs.some((d) => d.relevance === "off") ? "off" : docs.some((d) => d.relevance === "strong") ? "strong" : docs.some((d) => d.relevance === "weak") ? "weak" : top.relevance;
+    const doc = {
+      ...top,
+      id,
+      observations: Math.max(...docs.map((d) => d.observations ?? 0)),
+      sources: [...new Set(docs.flatMap((d) => d.sources || []))],
+      relatedSearches: [...new Set(docs.flatMap((d) => d.relatedSearches || []))],
+      daysSeen: [...new Set(docs.flatMap((d) => d.daysSeen || []))].sort(),
+      firstSeenAt: docs.map((d) => d.firstSeenAt).filter(Boolean).sort()[0] ?? top.firstSeenAt,
+      lastSeenAt: docs.map((d) => d.lastSeenAt).filter(Boolean).sort().at(-1) ?? top.lastSeenAt,
+      status,
+      offTopic: docs.some((d) => d.offTopic) || undefined,
+      relevance,
+      seed: docs.map((d) => d.seed).find(Boolean),
+      intent: docs.map((d) => d.intent).find(Boolean),
+      updatedAt: now0(),
+    };
+    kv.put("seen-terms", id, doc);
+    merged++;
+    for (const d of docs) {
+      if (String(d.id) === id) continue;
+      kv.del("seen-terms", String(d.id));
+      removed++;
+    }
+  }
+  if (merged) bumpSeenTermsVersion(kv);
+  return { merged, removed };
 }
 
 // ---- 规模化查询（热词掘金 v3 + 词表分页批）：全部经 kv.sqlRows 在 SQLite C 层完成，
