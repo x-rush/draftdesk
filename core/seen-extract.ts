@@ -97,17 +97,19 @@ async function runExtraction(db: Store, runModel: ModelRunner, dateKey: string, 
 async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   if (!db.config().apiKey) return 0;
   const cutoff = new Date(Date.now() - 2 * DAY_MS).toISOString();
-  const entries: { title: string; source: string }[] = [];
+  const entries: { title: string; source: string; observedAt: string }[] = [];
   for (const record of db.list<any>("discovery"))
     for (const c of record.candidates || [])
-      if ((c.observedAt || record.at) >= cutoff && c.title) entries.push({ title: c.title, source: c.sourceName || "" });
-  if (entries.length > 400) entries.length = 400;
-  if (!entries.length) return 0;
+      if ((c.observedAt || record.at) >= cutoff && c.title) entries.push({ title: c.title, source: c.sourceName || "", observedAt: c.observedAt || record.at });
+  // 提词轻量化（2026-10-11 实测）：400 条大提示词在百炼上 240s 都跑不完，
+  // 按观测时间取最新 180 条——热词提取要的是当日信号，不需要全量回溯。
+  const latest = entries.sort((a, b) => b.observedAt.localeCompare(a.observedAt)).slice(0, 180);
+  if (!latest.length) return 0;
   const prompt = PERSONA_RUBRIC +
-    "以下是最多 400 条今天采集的资讯条目，每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），" +
+    "以下是最多 180 条最近采集的资讯条目，每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），" +
     "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
     '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
-    entries.map((x, i) => (i + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
+    latest.map((x, i) => (i + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
   const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
   const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
   if (!Array.isArray(parsed)) return 0;
