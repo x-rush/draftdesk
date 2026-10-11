@@ -183,7 +183,7 @@ export function Review() {
   const statusCards: Array<[string, string, number, boolean]> = [
     ["pending", "待决策", stats.pending || 0, true],
     ["approved", "已通过", stats.approved || 0, false],
-    ["drafting", "写作中", (stats.drafting || 0) + (stats.published || 0), false],
+    ["drafting", "进行中", (stats.drafting || 0) + (stats.published || 0), false],
     ["rejected", "已否决·暂缓", (stats.rejected || 0) + (stats.deferred || 0), false],
   ];
   return (
@@ -198,7 +198,7 @@ export function Review() {
             aria-pressed={status === key}
             onClick={() => setStatus(status === key ? "all" : key)}>
             <strong>{count}</strong><span>{label}</span>
-            <small>{key === "pending" ? "点卡片只看这一档，再点回全部" : key === "drafting" ? "含已发布 " + (stats.published || 0) + " 条" : key === "rejected" ? "暂缓 " + (stats.deferred || 0) + " 条" : "进入写作与发布流转"}</small>
+            <small>{key === "pending" ? "点卡片只看这一档，再点回全部" : key === "drafting" ? "写作中 " + (stats.drafting || 0) + " · 已发布 " + (stats.published || 0) + " 条" : key === "rejected" ? "暂缓 " + (stats.deferred || 0) + " 条" : "进入写作与发布流转"}</small>
           </button>
         ))}
       </div>
@@ -276,17 +276,15 @@ export function Review() {
                 {row.quality && <span className="creation-badge">可信度 {qualityLabels[row.quality] || row.quality}</span>}
                 {row.rejectReason && <span className="creation-badge">否决：{row.rejectReason}</span>}
               </div>
-              {row.summary && <p className="decision-summary">{row.summary.slice(0, 200)}</p>}
+              {row.summary && <p className="decision-summary" style={{ cursor: "pointer" }} title="点击展开/收起全文" onClick={(e) => { (e.currentTarget as HTMLElement).classList.toggle("open"); }}>{row.summary.slice(0, 400)}</p>}
               <div className="decision-meta">
                 <span className="creation-badge" style={{ background: "transparent", padding: 0 }}>{statusLabels[row.decision]}</span>
                 <span>{sourceFilterLabels[row.sourceType] || row.sourceType}</span>
-                {row.kind && <span>{row.kind}</span>}
                 {row.createdAt && <span>{date(row.createdAt)}</span>}
                 {row.evidenceCount !== undefined && <span>证据 {row.evidenceCount} 条</span>}
                 {row.producedBy && <span>{producedByLabel(row.producedBy)}</span>}
                 {cluster && <span>簇：{cluster.topic}</span>}
-                {row.creationStatus && row.creationStatus !== "inbox" && <span>{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
-                {row.suggestions?.length ? <span>{row.suggestions.map((x) => `${x.by} ${x.score ? x.score + "分" : statusLabels[x.verdict] || x.verdict}`).join(" / ")}</span> : null}
+                {row.suggestions?.length ? <span title={row.suggestions.map((x) => `${x.by} ${x.score ? x.score + "分" : statusLabels[x.verdict] || x.verdict}`).join("；")}>建议 {row.suggestions.length} 条</span> : null}
               </div>
               {row.decision === "published" && row.publishedRef && (
                 <div className="decision-meta"><a href={row.publishedRef} target="_blank" rel="noreferrer">{row.publishedRef}</a></div>

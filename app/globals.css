@@ -1689,6 +1689,7 @@ button.stat-card.active { border-color: var(--green); box-shadow: inset 3px 0 0 
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.decision-summary.open { display: block; -webkit-line-clamp: unset; color: var(--ink); }
 .decision-meta {
   display: flex;
   align-items: center;

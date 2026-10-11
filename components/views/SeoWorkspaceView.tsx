@@ -167,6 +167,11 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
             <button className={quality === "all" ? "active" : ""} aria-current={quality === "all" ? "page" : undefined} onClick={() => setQuality("all")}>全部</button>
             <button className={quality === "strong" ? "active" : ""} aria-current={quality === "strong" ? "page" : undefined} onClick={() => setQuality("strong")}>强相关</button>
           </nav>
+          <nav className="discovery-modes" aria-label="分区区域筛选">
+            <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>海外</button>
+            <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>中文</button>
+            <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部</button>
+          </nav>
         </div>
         {ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
           <p className="muted" style={{ padding: "10px 2px" }}>
@@ -186,7 +191,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                     {isLongTail(t.term) && <span className="pill"><Crosshair size={11} /> 长尾</span>}
                     <VerdictBadge verdict={t.verdict} reason={t.verdictReason} />
                     <ObsBadge obsRatio={t.obsRatio} />
-                    <span>×{t.observations}</span>
+                    <span title="累计观测次数">×{t.observations}</span>
                     {t.seed && <span title="首见血缘">{t.seed}</span>}
                   </span>
                 </div>
