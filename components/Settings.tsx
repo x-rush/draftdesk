@@ -72,7 +72,9 @@ export function Settings({
         });
       }}
     >
-      {/* ① 统计条（模型台账） */}
+      {error && <p role="alert" className="error" style={{ marginTop: 0 }}>{error}</p>}
+      {notice && <p role="status" className="notice" style={{ marginTop: 0 }}>{notice}</p>}
+            {/* ① 统计条（模型台账） */}
       <div className="stat-strip">
         <div className="stat-card accent"><strong>{(today?.tokens ?? 0).toLocaleString()}</strong><span>今日 tokens{spike ? " 🔶 较昨日 +150%+" : ""}</span><small>{today?.calls ?? 0} 次调用 · 占每日上限 {config.dailyTokenLimit ? Math.round(((today?.tokens ?? 0) / config.dailyTokenLimit) * 100) + "%" : "—"}</small></div>
         <div className="stat-card"><strong>{(yesterday?.tokens ?? 0).toLocaleString()}</strong><span>昨日 tokens</span><small>{yesterday?.calls ?? 0} 次调用 · 占上限 {config.dailyTokenLimit ? Math.round(((yesterday?.tokens ?? 0) / config.dailyTokenLimit) * 100) + "%" : "—"}</small></div>
@@ -351,16 +353,6 @@ export function Settings({
           清除已保存的搜索密钥（Tavily 网页搜索将不可用）
         </label>
       </section>
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="notice">
-          {notice}
-        </p>
-      )}
       <footer className="form-actions">
         <button className="primary" disabled={busy}>
           {busy ? "处理中…" : "保存设置"}

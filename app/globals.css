@@ -146,7 +146,7 @@ input[role="switch"]::after, input[role="switch"]:checked::after { content: ""; 
 input[role="switch"]:checked::after { left: 17px; }
 details > summary { list-style: none; display: flex; align-items: center; gap: var(--s3); }
 details > summary::-webkit-details-marker { display: none; }
-details > summary::before { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform 150ms ease; flex: none; opacity: 0.65; }
+details > summary::before { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform 150ms ease; flex: none; opacity: 1; }
 details[open] > summary::before { transform: rotate(45deg); }
 /* 弹层类 summary 是按钮不是折叠：不显示折叠箭头 */
 details.help-bubble > summary::before, details.filters-popover > summary::before, details.more-menu > summary::before { display: none; }
@@ -736,12 +736,14 @@ main {
 }
 .pill {
   display: inline-block;
-  font-size: 11px;
+  font-size: 12px;
   background: #eaf0e3;
   color: #637d52;
   padding: 3px 8px;
   border-radius: 4px;
 }
+.pill-sm { font-size: 11px !important; padding: 1px 8px !important; }
+
 .source-row {
   display: flex;
   justify-content: space-between;
@@ -1457,7 +1459,7 @@ main {
 .help-bubble { position: relative; display: inline-flex; }
 .help-bubble > .help-pop {
   position: absolute; z-index: 30; top: calc(100% + 8px); right: 0;
-  width: 320px;
+  width: 320px; max-width: calc(100vw - 32px);
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
   padding: var(--s3) var(--s4); box-shadow: 0 12px 36px #233b3226;
   font-size: 12px; line-height: 1.55; color: var(--ink);
@@ -1707,6 +1709,18 @@ button.stat-card.active { border-color: var(--green); box-shadow: inset 3px 0 0 
 
 
 
+
+
+/* G6 表格表头分隔（通用件批） */
+table th { border-bottom: 1px solid var(--line); }
+
+/* G5 disabled 语义（通用件批）：不可点要看得出来 */
+button:disabled, .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+button:disabled:hover { filter: none; }
+
 /* 统计卡文字单行省略（运行记录批：长文案挤压修复） */
 .stat-card span, .stat-card small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 侧栏下载纵排（外部接入批） */
@@ -1876,8 +1890,8 @@ details.fold-card > summary::before {
   flex: none;
   width: 6px;
   height: 6px;
-  border-right: 1.6px solid #97a68b;
-  border-bottom: 1.6px solid #97a68b;
+  border-right: 1.6px solid #6f8560;
+  border-bottom: 1.6px solid #6f8560;
   transform: rotate(-45deg);
   transition: transform 150ms ease;
 }
@@ -1897,7 +1911,7 @@ details.fold-card > :last-child:not(summary) { padding-bottom: 12px; }
   list-style: none; display: inline-flex; align-items: center; gap: 7px;
 }
 .row-fold summary::-webkit-details-marker { display: none; }
-.row-fold summary::before { content: ""; width: 6px; height: 6px; border-right: 1.6px solid #97a68b; border-bottom: 1.6px solid #97a68b; transform: rotate(-45deg); transition: transform 150ms ease; }
+.row-fold summary::before { content: ""; width: 6px; height: 6px; border-right: 1.6px solid #6f8560; border-bottom: 1.6px solid #6f8560; transform: rotate(-45deg); transition: transform 150ms ease; }
 .row-fold[open] > summary::before { transform: rotate(45deg); }
 .row-fold summary:hover { color: var(--ink); }
 .row-fold[open] { padding-bottom: var(--s4); }
