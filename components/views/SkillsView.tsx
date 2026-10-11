@@ -37,7 +37,7 @@ export function SkillsView({ ws }: { ws: Workspace }) {
       </div>
 
       {/* ② 清单 */}
-      <p className="dash-label"><span style={{ flex: "none" }}>🧩 Skill 清单</span><span className="dash-label-sub">
+      <p className="dash-label"><span style={{ flex: "none" }}><Puzzle size={14} /> Skill 清单</span><span className="dash-label-sub">
         <button className={cat === "" ? "active" : ""} onClick={() => setCat("")}>全部 {skills.length}</button>
         {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
           <button key={key} className={cat === key ? "active" : ""} onClick={() => setCat(cat === key ? "" : key)}>{label} {count(key)}</button>

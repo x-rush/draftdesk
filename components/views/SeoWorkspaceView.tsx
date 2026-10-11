@@ -215,7 +215,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         <>
           <p className="dash-label" style={{ marginTop: 0 }}><ClipboardList size={14} /> 全量词表
             <span className="dash-label-sub">
-              <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>🌐 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
+              <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}><Globe size={12} /> 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
               <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>中文 {(ws.seenList?.regions?.cn) ?? 0}</button>
               <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部 {(ws.seenList?.regions?.all) ?? 0}</button>
               {DIG_INTENTS.map(([key, label]) => (

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { TriangleAlert } from "lucide-react";
 import type { Artifact, ArtifactDraft, Conversation } from "../core/schema";
 import { api, Empty, date } from "./ui";
 import { ArtifactEditor } from "./ArtifactPanel";
@@ -20,7 +21,7 @@ function ChatMessage({ role, children, status }: { role: "user" | "assistant"; c
       <span className="msg-avatar" aria-hidden>{role === "user" ? "你" : "拾"}</span>
       <div className="msg-main">
         {role === "assistant" && (
-          <div className="msg-name">研究搭档{status && <small role="status">⚠ {status}</small>}</div>
+          <div className="msg-name">研究搭档{status && <small role="status"><TriangleAlert size={11} /> {status}</small>}</div>
         )}
         <div className="msg-body">{role === "user" ? <div className="msg-text">{children}</div> : children}</div>
       </div>

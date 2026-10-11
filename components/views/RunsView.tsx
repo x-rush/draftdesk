@@ -4,6 +4,7 @@
 // ② 工具行（状态胶囊 + 隐藏空跑 + 任务过滤提示）
 // ③ 紧凑运行行（状态胶囊+策略名+meta 同列，动作右贴；错误/警告首条行内、全部日志收进 fold）。
 import { api, date, download, Empty } from "../ui";
+import { X } from "lucide-react";
 import { Play, XCircle, CheckCircle2 } from "lucide-react";
 import { ResearchBrief } from "../ResearchBrief";
 import { useState } from "react";
@@ -57,7 +58,7 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           隐藏空跑（无新增推荐）
         </label>
         {runId && (
-          <button className="text-button" onClick={() => setRunId("")}>清除单任务过滤 ✕</button>
+          <button className="text-button" onClick={() => setRunId("")}><X size={12} /> 清除单任务过滤</button>
         )}
       </div>
 
