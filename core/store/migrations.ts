@@ -5,7 +5,7 @@ import path from "node:path";
 import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy, defaultConsumerMode } from "../defaults";
 import { now } from "./helpers";
 import { cleanSeedPollution } from "../seen-clean";
-import { mergeSpaceVariants } from "../seen-terms";
+import { backfillSeenTermRegions, mergeSpaceVariants } from "../seen-terms";
 import type { KV } from "./kv";
 
 interface MigrationCtx {
@@ -277,6 +277,15 @@ export const migrations: Migration[] = [
     run: ({ kv }) => {
       const report = mergeSpaceVariants(kv);
       if (report.merged) console.log(`[migration] seen-term-space-merge-v1：合并 ${report.merged} 组，移除重复文档 ${report.removed} 条`);
+    },
+  },
+  {
+    id: "seen-term-region-backfill-v1",
+    // region 分层（海外定位批）：存量按来源映射回填（inferRegion），无来源可判兜底
+    // global（管线海外优先定位）。cn 词纯内容创作线，global 词双职责（内容选题+站群候选）。
+    run: ({ kv }) => {
+      const backfilled = backfillSeenTermRegions(kv);
+      if (backfilled) console.log(`[migration] seen-term-region-backfill-v1：回填 region ${backfilled} 条`);
     },
   },
 ];

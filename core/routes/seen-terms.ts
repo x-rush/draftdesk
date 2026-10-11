@@ -3,12 +3,13 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts } from "../seen-terms";
+import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const intentEnum = z.enum(["informational", "comparison", "commercial", "question"]);
 const relevanceEnum = z.enum(["strong", "weak", "off"]);
+const regionEnum = z.enum(["global", "cn"]);
 const upsertSchema = z.object({
   items: z.array(z.object({
     term: z.string().trim().min(1).max(80),
@@ -17,6 +18,7 @@ const upsertSchema = z.object({
     relatedSearches: z.array(z.string().max(80)).max(20).optional(),
     offTopic: z.boolean().optional(),
     relevance: relevanceEnum.optional(),
+    region: regionEnum.optional(),
     status: statusEnum.optional(),
     frequency: z.number().int().min(0).optional(),
     lastSeenAt: z.string().datetime().optional(),
@@ -68,20 +70,23 @@ export const routes: RouteDef[] = [
   },
 ];
 
-// 列表 + 三区 + 意图计数一次出（SQLite 下推，3 万条量级 <100ms）。
+// 列表 + 三区 + 计数一次出（SQLite 下推，3 万条量级 <100ms）。
+// region 筛选（海外定位批）：?region=global|cn|（空=全部）。
 function seenListPayload(db: any, query: URLSearchParams) {
   const limit = Math.min(200, Math.max(1, Number(query.get("limit")) || 50));
   const offset = Math.max(0, Number(query.get("offset")) || 0);
   const status = query.get("status") || "";
   const intent = query.get("intent") || "";
+  const region = query.get("region") || "";
   const q = query.get("q") || "";
-  const list = querySeenTerms(db.kv, { limit, offset, status, intent, q });
+  const list = querySeenTerms(db.kv, { limit, offset, status, intent, region, q });
   return {
     items: list.items,
     total: list.total,
     limit,
     offset,
     counts: seenIntentCounts(db.kv),
+    regions: seenRegionCounts(db.kv),
     zones: seenTermZones(db.kv),
   };
 }

@@ -19,6 +19,12 @@ function RelevanceBadge({ relevance }: { relevance?: string }) {
   const label = relevance ? RELEVANCE_LABELS[relevance] : "";
   return label ? <span className="pill">{label}</span> : null;
 }
+// region 徽章（海外定位批）
+function RegionBadge({ region }: { region?: string }) {
+  if (region === "global") return <span className="pill">🌐 海外</span>;
+  if (region === "cn") return <span className="pill">🇨🇳 中文</span>;
+  return null;
+}
 
 export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { seoTerms, busy, act, setNotice, navigate, setDiscussionContext, refresh } = ws;
@@ -92,6 +98,14 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
         </div>
         {/* 单一列表区：三区 tab 显示各区前 20 条；「查看全部」或搜索/意图筛选切到全量模式 */}
+        {/* region 分层（海外定位批）：global=海外（默认，双职责：内容选题+站群候选）；cn=中文内容线 */}
+        {fullMode && (
+        <nav className="discovery-modes" aria-label="区域筛选" style={{ marginTop: 8 }}>
+          <button className={(ws.seenRegion || "") === "global" ? "active" : ""} aria-current={ws.seenRegion === "global" ? "page" : undefined} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>🌐 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
+          <button className={ws.seenRegion === "cn" ? "active" : ""} aria-current={ws.seenRegion === "cn" ? "page" : undefined} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>🇨🇳 中文 {(ws.seenList?.regions?.cn) ?? 0}</button>
+          <button className={ws.seenRegion === "" ? "active" : ""} aria-current={ws.seenRegion === "" ? "page" : undefined} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部 {(ws.seenList?.regions?.all) ?? 0}</button>
+        </nav>
+        )}
         {fullMode && (
         <nav className="discovery-modes" aria-label="搜索意图筛选" style={{ marginTop: 8 }}>
           <button className={!ws.seenIntent ? "active" : ""} aria-current={!ws.seenIntent ? "page" : undefined} onClick={() => { ws.setSeenIntent(""); ws.setSeenPage(1); }}>全部 {intentCounts.all ?? 0}</button>
@@ -112,6 +126,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                       <div className="row-meta">
                         <span className="pill">{t.status}</span>
                         <RelevanceBadge relevance={t.relevance} />
+                        <RegionBadge region={t.region} />
                         {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
                         {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                         {t.seed && <span>血缘：{t.seed}</span>}

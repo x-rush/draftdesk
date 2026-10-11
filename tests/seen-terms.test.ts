@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
-import { observeSeenTerm, has3Consecutive, mergeSeenTerm, mergeSpaceVariants, termId } from "../core/seen-terms";
+import { observeSeenTerm, observeSuggestion, has3Consecutive, mergeSeenTerm, mergeSpaceVariants, termId, inferRegion, backfillSeenTermRegions, querySeenTerms } from "../core/seen-terms";
 
 function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
@@ -194,6 +194,45 @@ test("mergeSeenTerm relevance 透传（清洗批①）", () => {
     // off 覆盖 + offTopic 联动由调用方/判定层负责，merge 只透传
     mergeSeenTerm(db, { term: "某工具", relevance: "off" }, "agent:test");
     assert.equal(db.get<any>("seen-terms", "某工具").relevance, "off");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("region 分层（海外定位批）：来源映射、写入路径与存量回填", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-region-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    // 来源映射：cn 平台 → cn；自有挖掘源/海外平台 → global；无来源 → undefined
+    assert.equal(inferRegion(["weibo-hotsearch", "baidu-hot"]), "cn");
+    assert.equal(inferRegion(["bilibili-popular"]), "cn");
+    assert.equal(inferRegion(["hn-algolia"]), "global");
+    assert.equal(inferRegion(["suggest-expansion", "paa", "trends-rising"]), "global");
+    assert.equal(inferRegion(["youtube-suggest"]), "global");
+    assert.equal(inferRegion(["baidu-suggest", "bili-suggest"]), "cn");
+    assert.equal(inferRegion([]), undefined);
+    // 写入路径：observeSeenTerm / observeSuggestion 自动带 region
+    const cn = observeSeenTerm(db, "中文热搜词", { sources: ["weibo-hotsearch"] });
+    assert.equal(cn.region, "cn");
+    const g1 = observeSuggestion(db, "some ai tool", "seed", { source: "youtube-suggest" });
+    assert.equal(g1.region, "global");
+    const g2 = observeSuggestion(db, "百度工具词", "seed", { source: "baidu-suggest" });
+    assert.equal(g2.region, "cn");
+    // merge 显式 region 优先
+    mergeSeenTerm(db, { term: "显式词", region: "cn", sources: ["hn-algolia"] }, "agent:t");
+    assert.equal(db.get<any>("seen-terms", termId("显式词")).region, "cn");
+    // 存量回填：无 region 按来源；无来源兜底 global
+    db.put("seen-terms", "legacy-cn", { id: "legacy-cn", term: "legacy-cn", status: "new", observations: 1, sources: ["juejin"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "" });
+    db.put("seen-terms", "legacy-none", { id: "legacy-none", term: "legacy-none", status: "new", observations: 1, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "" });
+    assert.equal(backfillSeenTermRegions(db), 2);
+    assert.equal(db.get<any>("seen-terms", "legacy-cn").region, "cn");
+    assert.equal(db.get<any>("seen-terms", "legacy-none").region, "global", "无来源兜底 global");
+    // 查询过滤：region=cn 只回 cn 词
+    const cnList = querySeenTerms((db as any).kv, { limit: 50, offset: 0, region: "cn" });
+    assert.ok(cnList.items.length >= 2);
+    assert.ok(cnList.items.every((t: any) => t.region === "cn"));
   } finally {
     db?.close();
     cleanup(dir);

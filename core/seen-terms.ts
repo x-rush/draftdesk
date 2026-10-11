@@ -13,6 +13,20 @@ const RANK: Record<SeenTermStatus, number> = { new: 0, rising: 1, sustained: 2, 
 // 种子回流闸只放 strong（seen-dig.collectSeeds）；off 同时置 offTopic=true。
 export type PersonaRelevance = "strong" | "weak" | "off";
 
+// region 分层（海外定位批）：global=海外词（英文内容选题 + 站群候选 siteCandidate 只标 global），
+// cn=中文词（纯内容创作线：公众号/小红书选题）。两条内容线数据不混。
+export type TermRegion = "global" | "cn";
+
+// 来源→区域映射：百度/B站/微博/掘金/知乎/抖音/小红书/V2EX/热榜聚合 → cn；
+// Google/YouTube/Amazon/HN/Reddit/Trends/GitHub/ProductHunt 及自有挖掘源 → global。
+// 无来源可判 → undefined（迁移回填时兜底 global，本管线海外优先定位）。
+const CN_SOURCE = /baidu|百度|bili|B站|weibo|微博|juejin|掘金|zhihu|知乎|douyin|抖音|xiaohongshu|小红书|v2ex|hotlist|热榜|dailyhot/i;
+export function inferRegion(sources: unknown): TermRegion | undefined {
+  const list = Array.isArray(sources) ? sources.map(String) : [];
+  if (!list.length) return undefined;
+  return list.some((s) => CN_SOURCE.test(s)) ? "cn" : "global";
+}
+
 // 搜索意图（热词掘金 v3）：规则判定先行，供词表筛选与选题匹配。
 // 判定顺序按需求清单：教程/方法 → 对比/替代 → 价格/商业 → 疑问句式兜底。
 export type SeenTermIntent = "informational" | "comparison" | "commercial" | "question";
@@ -61,24 +75,26 @@ export function getSeenTerm(kv: TermStore, term: string): any | undefined {
 // 外部 Agent upsert（批复 D 合并语义）
 export function mergeSeenTerm(kv: TermStore, input: {
   term: string; sources?: string[]; relatedSearches?: string[]; offTopic?: boolean;
-  relevance?: PersonaRelevance;
+  relevance?: PersonaRelevance; region?: TermRegion;
   status?: SeenTermStatus; frequency?: number; observations?: number; lastSeenAt?: string;
   seed?: string; intent?: SeenTermIntent;
 }, by: string) {
   const id = termId(input.term);
   const prev = kv.get<any>("seen-terms", id);
   const status = input.status && input.status !== "archived" ? upgradeStatus(prev?.status, input.status) : prev?.status ?? "new";
+  const mergedSources = [...new Set([...(prev?.sources || []), ...(input.sources || [])])];
   const doc = {
     id,
     term: prev?.term ?? input.term.trim(),
     firstSeenAt: prev?.firstSeenAt ?? input.lastSeenAt ?? now0(),
     lastSeenAt: [input.lastSeenAt, prev?.lastSeenAt].filter(Boolean).sort().at(-1),
-    sources: [...new Set([...(prev?.sources || []), ...(input.sources || [])])],
+    sources: mergedSources,
     relatedSearches: [...new Set([...(prev?.relatedSearches || []), ...(input.relatedSearches || [])])],
     observations: Math.max(prev?.observations ?? 0, input.observations ?? 0, input.frequency ?? 0),
     status,
     offTopic: input.offTopic ?? prev?.offTopic,
     relevance: input.relevance ?? prev?.relevance,
+    region: input.region ?? inferRegion(mergedSources) ?? prev?.region,
     // 血缘（seed）只记首见种子；intent 显式传入优先，否则保留旧值
     seed: prev?.seed ?? input.seed,
     intent: input.intent ?? prev?.intent,
@@ -93,7 +109,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
 }
 
 // 内置提取/晋级（每日一次）：observations+1、daysSeen 记日期、按阈值晋级
-export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; day?: string } = {}) {
+export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; region?: TermRegion; day?: string } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   const day = opts.day ?? today();
@@ -105,18 +121,20 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     if (status === "new" && observations >= 2) status = "rising";
     if (status === "rising" && has3Consecutive(daysSeen)) status = "sustained";
   }
+  const mergedSources = [...new Set([...(prev?.sources || []), ...(opts.sources || [])])];
   const doc = {
     id,
     term: prev?.term ?? term.trim(),
     firstSeenAt: prev?.firstSeenAt ?? new Date().toISOString(),
     lastSeenAt: new Date().toISOString(),
-    sources: [...new Set([...(prev?.sources || []), ...(opts.sources || [])])],
+    sources: mergedSources,
     relatedSearches: prev?.relatedSearches || [],
     observations,
     status,
     daysSeen,
     offTopic: opts.offTopic ?? prev?.offTopic,
     relevance: opts.relevance ?? prev?.relevance,
+    region: opts.region ?? inferRegion(mergedSources) ?? prev?.region,
     seed: prev?.seed,
     intent: prev?.intent ?? classifyIntent(term),
     producedBy: prev?.producedBy ?? "builtin-extract/1.0.0",
@@ -135,11 +153,13 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   if (prev) {
+    const mergedSources = [...new Set([...(prev.sources || []), ...(opts.source ? [opts.source] : [])])];
     const doc = {
       ...prev,
       lastSeenAt: new Date().toISOString(),
       observations: (prev.observations ?? 0) + 1,
-      sources: [...new Set([...(prev.sources || []), ...(opts.source ? [opts.source] : [])])],
+      sources: mergedSources,
+      region: prev.region ?? inferRegion(mergedSources),
       seed: prev.seed ?? seed,
       intent: opts.intent ?? prev.intent ?? classifyIntent(term),
       updatedAt: now0(),
@@ -149,12 +169,13 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
     return doc;
   }
   const now = new Date().toISOString();
+  const sourceName = opts.source || "suggest-expansion";
   const doc = {
     id,
     term: term.trim(),
     firstSeenAt: now,
     lastSeenAt: now,
-    sources: [opts.source || "suggest-expansion"],
+    sources: [sourceName],
     relatedSearches: [],
     observations: 1,
     status: "new" as SeenTermStatus,
@@ -164,6 +185,8 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
     offTopic: undefined,
     // 联想展开词默认未判定（relevance 缺失）：过不了种子闸，等 LLM 判定 strong 后才回流
     relevance: undefined,
+    // region 按来源端点判定（youtube-suggest→global、baidu-suggest→cn…）
+    region: inferRegion([sourceName]),
     producedBy: "suggest-expansion/1.0.0",
     updatedAt: now,
     createdAt: now,
@@ -277,20 +300,22 @@ export function bumpSeenTermsVersion(kv: TermStore) {
   kv.put("meta", "seen-terms-version", { n: (prev?.n ?? 0) + 1 });
 }
 
-export type SeenListQuery = { limit: number; offset: number; status?: string; intent?: string; q?: string };
+export type SeenListQuery = { limit: number; offset: number; status?: string; intent?: string; region?: string; q?: string };
 const STATUS_ORDER = `CASE json_extract(body,'$.status') WHEN 'sustained' THEN 0 WHEN 'rising' THEN 1 WHEN 'new' THEN 2 ELSE 3 END`;
 
 export function querySeenTerms(kv: SqlStore, query: SeenListQuery): { items: any[]; total: number } {
   const status = query.status || "";
   const intent = query.intent || "";
+  const region = query.region || "";
   const q = (query.q || "").trim().toLowerCase().slice(0, 80);
   const where = [
     "collection='seen-terms'",
     "(?='' OR json_extract(body,'$.status')=?)",
     "(?='' OR json_extract(body,'$.intent')=?)",
+    "(?='' OR json_extract(body,'$.region')=?)",
     "(?='' OR json_extract(body,'$.id') LIKE '%'||?||'%')",
   ].join(" AND ");
-  const params = [status, status, intent, intent, q, q];
+  const params = [status, status, intent, intent, region, region, q, q];
   const total = (kv.sqlRows(`SELECT COUNT(*) c FROM documents WHERE ${where}`, ...params)[0] as { c: number }).c;
   const rows = kv.sqlRows(
     `SELECT body FROM documents WHERE ${where} ORDER BY ${STATUS_ORDER}, json_extract(body,'$.lastSeenAt') DESC LIMIT ? OFFSET ?`,
@@ -351,4 +376,31 @@ export function seenIntentCounts(kv: SqlStore): Record<string, number> {
     if (key in counts) counts[key] = Number(row.c);
   }
   return counts;
+}
+
+// region 计数（海外定位批）：词表筛选 tab 角标（海外/中文/全部）。
+export function seenRegionCounts(kv: SqlStore): Record<string, number> {
+  const rows = kv.sqlRows(
+    `SELECT json_extract(body,'$.region') region, COUNT(*) c FROM documents WHERE collection='seen-terms' GROUP BY 1`,
+  );
+  const counts: Record<string, number> = { all: 0, global: 0, cn: 0 };
+  for (const row of rows) {
+    counts.all += Number(row.c);
+    const key = String(row.region || "");
+    if (key in counts) counts[key] = Number(row.c);
+  }
+  return counts;
+}
+
+// 存量 region 回填（迁移 seen-term-region-backfill-v1 调用）：按来源映射；
+// 无来源可判兜底 global（管线海外优先定位）。已带 region 的词不动。
+export function backfillSeenTermRegions(kv: MergeStore): number {
+  let backfilled = 0;
+  for (const doc of kv.list<any>("seen-terms")) {
+    if (doc.region) continue;
+    kv.put("seen-terms", String(doc.id), { ...doc, region: inferRegion(doc.sources) ?? "global" });
+    backfilled++;
+  }
+  if (backfilled) bumpSeenTermsVersion(kv);
+  return backfilled;
 }
