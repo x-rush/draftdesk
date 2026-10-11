@@ -144,7 +144,7 @@ input[role="switch"]::after, input[role="switch"]:checked::after { content: ""; 
 input[role="switch"]:checked::after { left: 17px; }
 details > summary { list-style: none; display: flex; align-items: center; gap: var(--s3); }
 details > summary::-webkit-details-marker { display: none; }
-details > summary::before { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); }
+details > summary::before { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform 150ms ease; flex: none; opacity: 0.65; }
 details[open] > summary::before { transform: rotate(45deg); }
 summary:focus-visible, .button:focus-within { outline: 2px solid #507757; outline-offset: 3px; }
 a {
@@ -1316,7 +1316,8 @@ main {
 .hotspot-controls.hotspot-controls-wide > * { min-width: 0; width: 100%; }}
 .hotspot-health { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px var(--s5); margin-bottom: var(--s3); font-size: 13px; }
 .hotspot-health > summary { cursor: pointer; color: var(--muted); padding: 4px 0; gap: 10px; }
-.hotspot-health > summary::before { margin-right: 8px; }
+.hotspot-health > summary::before { margin-right: 6px; }
+.hotspot-health > summary:hover { color: var(--ink); }
 .hotspot-health > :not(summary) { padding-left: 16px; }
 .hotspot-health .hotspot-actions { margin: var(--s2) 0; }
 /* 词表 chips 网格（全量审查批）：词清单=紧凑 chip 云，词名+x观测+标记 */
