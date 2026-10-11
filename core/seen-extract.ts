@@ -78,21 +78,26 @@ async function runExtraction(db: Store, runModel: ModelRunner, dateKey: string, 
   if (running && Date.now() - Date.parse(running.at) < 10 * 60000) return;
   db.put("meta", runningKey, { at: new Date().toISOString() });
   console.log(`[seen-terms] 提取开始（触发：${trigger}，日期：${dateKey}）`);
+  // 提取与判定各自隔离（2026-10-11 实测）：标题流提取会被安全敏感新闻挂死，
+  // 但判定（词表输入，内容安全）必须照常落地——两段互不连坐；判定在提取之后，
+  // 让本轮新词当轮就拿到 relevance（过种子闸的前提）。
+  let extracted = 0;
   try {
-    const extracted = await extractTerms(db, runModel);
-    // 回填判定：让联想展开词尽快拿到 relevance（过种子闸的前提）；空池零成本跳过
-    const judged = await judgeUnjudgedTerms(db, runModel).catch((e) => {
-      console.error("[seen-terms] 回填判定失败（不阻塞主流程）:", e instanceof Error ? e.message : e);
-      return 0;
-    });
-    console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条，回填判定 ${judged} 条`);
-    db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted, judged });
+    extracted = await extractTerms(db, runModel);
   } catch (e) {
-    console.error(`[seen-terms] 提取失败（触发：${trigger}）:`, e instanceof Error ? e.message : e);
-  } finally {
-    db.del("meta", runningKey);
+    console.error(`[seen-terms] 标题流提取失败（判定不受影响）:`, e instanceof Error ? e.message : e);
   }
+  const judged = await judgeUnjudgedTerms(db, runModel).catch((e) => {
+    console.error("[seen-terms] 回填判定失败:", e instanceof Error ? e.message : e);
+    return 0;
+  });
+  console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条，回填判定 ${judged} 条`);
+  db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted, judged });
+  db.del("meta", runningKey);
 }
+
+const EXTRACT_CHUNK = 60;
+const EXTRACT_CHUNK_TIMEOUT_MS = 180000;
 
 async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   if (!db.config().apiKey) return 0;
@@ -101,17 +106,31 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   for (const record of db.list<any>("discovery"))
     for (const c of record.candidates || [])
       if ((c.observedAt || record.at) >= cutoff && c.title) entries.push({ title: c.title, source: c.sourceName || "", observedAt: c.observedAt || record.at });
-  // 提词轻量化（2026-10-11 实测）：400 条大提示词在百炼上 240s 都跑不完，
-  // 按观测时间取最新 180 条——热词提取要的是当日信号，不需要全量回溯。
+  // 提词轻量化（2026-10-11 实测）：按观测时间取最新 180 条——热词提取要的是当日信号。
+  // 再按 60 条分块：安全敏感标题（智能体逃逸/凶案类）会把 omni 模型安全路由挂死，
+  // 分块后毒块只烧自己的 180s，其余块照常落地（实测整包 240s 全灭）。
   const latest = entries.sort((a, b) => b.observedAt.localeCompare(a.observedAt)).slice(0, 180);
   if (!latest.length) return 0;
-  const prompt = PERSONA_RUBRIC +
-    "以下是最多 180 条最近采集的资讯条目，每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），" +
-    "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
-    '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
-    latest.map((x, i) => (i + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
-  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
-  const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
+  let count = 0;
+  for (let i = 0; i < latest.length; i += EXTRACT_CHUNK) {
+    const chunk = latest.slice(i, i + EXTRACT_CHUNK);
+    const prompt = PERSONA_RUBRIC +
+      `以下是最近采集的资讯条目（第 ${i / EXTRACT_CHUNK + 1} 批），每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），` +
+      "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
+      '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
+      chunk.map((x, j) => (j + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
+    try {
+      const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(EXTRACT_CHUNK_TIMEOUT_MS), plan: "cheap" });
+      count += applyExtractedTerms(db, result.text);
+    } catch (e) {
+      console.error(`[seen-terms] 提取分块 ${i / EXTRACT_CHUNK + 1}/${Math.ceil(latest.length / EXTRACT_CHUNK)} 失败（跳过，其余块不受影响）:`, e instanceof Error ? e.message : e);
+    }
+  }
+  return count;
+}
+
+function applyExtractedTerms(db: Store, text: string): number {
+  const parsed = JSON.parse(text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
   if (!Array.isArray(parsed)) return 0;
   let count = 0;
   for (const item of parsed)
