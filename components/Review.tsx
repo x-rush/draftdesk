@@ -84,6 +84,39 @@ export function Review() {
     return byDecision;
   }, [rows]);
   const visible = rows.filter((r) => (status === "all" ? true : r.decision === status)).filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter);
+  // 数据治理（根因 B）：同题 pending 聚合——外部 Agent 每轮重写同题 outline，
+  // 80+ 条里同题 4-6 连发无法浏览。组内取最新为主行，拍板=批量拍全组。
+  const groups = useMemo(() => {
+    const byTitle = new Map<string, Row[]>();
+    for (const r of visible) {
+      const key = r.title.trim();
+      const bucket = byTitle.get(key) || [];
+      bucket.push(r);
+      byTitle.set(key, bucket);
+    }
+    return [...byTitle.values()]
+      .map((members) => {
+        const sorted = [...members].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return { primary: sorted[0], members: sorted };
+      })
+      .sort((a, b) => b.primary.createdAt.localeCompare(a.primary.createdAt));
+  }, [visible]);
+  const expandedGroups = useState<Set<string>>(new Set());
+  const [openGroups, setOpenGroups] = expandedGroups;
+  const toggleGroup = (title: string) => setOpenGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(title)) next.delete(title); else next.add(title);
+    return next;
+  });
+  async function decideGroup(group: { primary: Row; members: Row[] }, decision: string, reason?: string) {
+    const ids = group.members.map((m) => m.id);
+    if (ids.length === 1) return decide(group.primary, decision, reason);
+    await act(async () => {
+      const r = await api<{ applied: number; failed: any[] }>("decisions/batch", { ids, decision, ...(decision === "rejected" ? { rejectReason: reason || "其他" } : {}) });
+      await reload();
+      setNotice(`已拍板 ${r.applied} 条（含同题重复 ${ids.length - 1} 条）。`);
+    });
+  }
 
   async function batch(decision: string) {
     if (!selected.size) return setNotice("先勾选要拍板的条目。");
@@ -191,8 +224,10 @@ export function Review() {
             </div>
           </details>
         </div>
-        {visible.length === 0 && <p>该状态下暂无条目。</p>}
-        {visible.map((row) => {
+        {groups.length === 0 && <p>该状态下暂无条目。</p>}
+        {groups.map((group) => {
+        const row = group.primary;
+        const dupCount = group.members.length;
           const cluster = clusters.find((c) => c.id === row.clusterId);
           return (
           <div className="review-row card-row" key={row.id}>
@@ -215,6 +250,11 @@ export function Review() {
                 <strong className="card-title">{row.title}</strong>
               )}
               <span className="card-badges">
+                {dupCount > 1 && (
+                  <button className="creation-badge" style={{ cursor: "pointer" }} onClick={() => toggleGroup(row.title)}>
+                    同题 ×{dupCount}{openGroups.has(row.title) ? " ▲" : " ▼"}
+                  </button>
+                )}
                 <span className="creation-badge">{sourceFilterLabels[row.sourceType] || row.sourceType}</span>
                 <span className="creation-badge">{row.kind}</span>
                 <span className="creation-badge">{statusLabels[row.decision]}</span>
@@ -235,15 +275,15 @@ export function Review() {
               <span className="card-actions">
                 {row.decision === "pending" && (
                   <>
-                    <button className="primary" disabled={busy} onClick={() => void decide(row, "approved")}>通过</button>
-                    <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "deferred")}>暂缓</button>
+                    <button className="primary" disabled={busy} onClick={() => void decideGroup(group, "approved")}>通过{dupCount > 1 ? ` ×${dupCount}` : ""}</button>
+                    <button className="button-secondary" disabled={busy} onClick={() => void decideGroup(group, "deferred")}>暂缓</button>
                     {reasonOpen.has(row.id) ? (
                       <>
                         <select aria-label={`否决原因 ${row.title}`} value={rowReason[row.id] || ""} onChange={(e) => setRowReason({ ...rowReason, [row.id]: e.target.value })}>
                           <option value="">否决原因…</option>
                           {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
                         </select>
-                        <button disabled={busy || !rowReason[row.id]} onClick={() => { void decide(row, "rejected", rowReason[row.id]); setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id))); }}>确认否决</button>
+                        <button disabled={busy || !rowReason[row.id]} onClick={() => { void decideGroup(group, "rejected", rowReason[row.id]); setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id))); }}>确认否决</button>
                         <button className="button-secondary" onClick={() => setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id)))}>取消</button>
                       </>
                     ) : (
@@ -269,6 +309,22 @@ export function Review() {
             {row.decision === "published" && row.publishedRef && (
               <p><a href={row.publishedRef} target="_blank" rel="noreferrer">{row.publishedRef}</a></p>
             )}
+            {dupCount > 1 && openGroups.has(row.title) && (
+              <div className="group-members">
+                {group.members.slice(1).map((m) => (
+                  <div className="card-row-bottom" key={m.id} style={{ borderTop: "1px dashed var(--line)", paddingTop: 8, marginTop: 8 }}>
+                    <span className="card-meta">{sourceFilterLabels[m.sourceType] || m.sourceType} · {date(m.createdAt)}{m.evidenceCount !== undefined ? ` · 证据 ${m.evidenceCount} 条` : ""}{m.producedBy ? ` · ${producedByLabel(m.producedBy)}` : ""}</span>
+                    <span className="card-actions">
+                      {m.decision === "pending" && <>
+                        <button className="button-secondary" disabled={busy} onClick={() => void decide(m, "approved")}>通过</button>
+                        <button disabled={busy} onClick={() => void decide(m, "rejected", "重复条目")}>否决</button>
+                      </>}
+                      {m.decision !== "pending" && <span className="card-meta">{statusLabels[m.decision]}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {["approved", "drafting", "published"].includes(row.decision) && (
               <details className="row-fold">
                 <summary>草稿正文（可直接读、改、发布）</summary>
@@ -293,8 +349,8 @@ export function Review() {
         })}
       </section>
 
-      <section className="surface">
-        <h2>手动添加选题</h2>
+      <details className="form-section">
+        <summary><h2 style={{ display: "inline", margin: 0 }}>手动添加选题</h2></summary>
         <Field label="标题">
           <input value={manual.title} onChange={(e) => setManual({ ...manual, title: e.target.value })} />
         </Field>
@@ -305,10 +361,10 @@ export function Review() {
           <input value={manual.platforms} onChange={(e) => setManual({ ...manual, platforms: e.target.value })} />
         </Field>
         <button className="primary" disabled={busy} onClick={() => void addManual()}>加入待决策队列</button>
-      </section>
+      </details>
 
-      <section className="surface">
-        <h2>内容簇与多平台大纲</h2>
+      <details className="form-section">
+        <summary><h2 style={{ display: "inline", margin: 0 }}>内容簇与多平台大纲</h2></summary>
         <p className="muted">多条同类资讯合并为一个簇；一个簇可产出多份不同平台的大纲，各自独立拍板。AI 自动聚合即将上线，当前支持手动登记。</p>
         <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）").join("、") : ""}</p>
         <Field label="簇 ID">
@@ -327,10 +383,10 @@ export function Review() {
           <input value={outlineForm.title} onChange={(e) => setOutlineForm({ ...outlineForm, title: e.target.value })} />
         </Field>
         <button disabled={busy} onClick={() => void addOutline()}>创建大纲</button>
-      </section>
+      </details>
 
-      <section className="surface">
-        <h2>内置 AI 参与开关（aiPolicy）</h2>
+      <details className="form-section">
+        <summary><h2 style={{ display: "inline", margin: 0 }}>内置 AI 参与开关（aiPolicy）</h2></summary>
         <p className="muted">off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。</p>
         {aiPolicy && (
           <div className="toolbar">
@@ -356,10 +412,10 @@ export function Review() {
             </Field>
           </div>
         )}
-      </section>
+      </details>
 
-      <section className="surface">
-        <h2>人设配置（AI 个性化判断输入）</h2>
+      <details className="form-section">
+        <summary><h2 style={{ display: "inline", margin: 0 }}>人设配置（AI 个性化判断输入）</h2></summary>
         <p className="muted">
           领域边界 / 目标 / 平台规则 / 六维权重与阈值 / 硬红线 / 文风。改这里，AI 的判断随之变化；
           这是配置，不是写死的业务规则。
@@ -372,7 +428,7 @@ export function Review() {
           onChange={(e) => setPersonaText(e.target.value)}
         />
         <button className="primary" disabled={busy} onClick={() => void savePersona()}>保存人设配置</button>
-      </section>
+      </details>
       {detail && (
         <OutlineDrawer
           outline={detail}

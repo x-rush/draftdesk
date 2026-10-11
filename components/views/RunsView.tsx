@@ -2,10 +2,20 @@
 // 运行记录视图（PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
 import { api, date, download, Empty } from "../ui";
 import { ResearchBrief } from "../ResearchBrief";
+import { useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 
 export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { busy, act, showResults, setRunId, runId, jobsPage, setJobsPage, pager } = ws;
+  // 数据治理（根因 B）：状态筛选 + 空跑记录折叠——30 条里大量「完成·无新增
+  // 推荐·0 tokens」零信息卡污染列表。
+  const [runFilter, setRunFilter] = useState<"all" | "completed" | "failed" | "active">("all");
+  const [hideNoFindings, setHideNoFindings] = useState(true);
+  const isNoFindings = (j: any) => j.state === "completed" && j.outcome === "no-findings";
+  const jobsAll = data.jobs;
+  const jobs = jobsAll
+    .filter((j) => (runFilter === "all" ? true : runFilter === "active" ? ["queued", "running"].includes(j.state) : j.state === runFilter))
+    .filter((j) => !(hideNoFindings && isNoFindings(j)));
   return (
     <>
       <div className="budget-strip">
@@ -16,12 +26,21 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
         </strong>
         <span className="budget-note">实际模型用量在每个任务的条目中显示。</span>
       </div>
-      {!data.jobs.length ? (
-        <Empty title="研究尚未开始">
-          在研究策略中运行一次，完整流程会记录在这里。
+      <nav className="discovery-modes" aria-label="运行状态筛选" style={{ marginBottom: "var(--s3)" }}>
+        {([["all", "全部", jobsAll.length], ["active", "进行中", jobsAll.filter((j) => ["queued", "running"].includes(j.state)).length], ["failed", "失败", jobsAll.filter((j) => j.state === "failed").length], ["completed", "完成", jobsAll.filter((j) => j.state === "completed").length]] as const).map(([key, label, count]) => (
+          <button key={key} className={runFilter === key ? "active" : ""} aria-current={runFilter === key ? "page" : undefined} onClick={() => setRunFilter(key)}>{label} {count}</button>
+        ))}
+        <label className="check" style={{ margin: "0 0 0 auto" }}>
+          <input type="checkbox" checked={hideNoFindings} onChange={(e) => setHideNoFindings(e.target.checked)} />
+          隐藏空跑（无新增推荐）
+        </label>
+      </nav>
+      {!jobs.length ? (
+        <Empty title={jobsAll.length ? "当前筛选下没有任务" : "研究尚未开始"}>
+          {jobsAll.length ? "调整上方筛选或隐藏开关再看。" : "在研究策略中运行一次，完整流程会记录在这里。"}
         </Empty>
       ) : (
-        data.jobs.map((j) => (
+        jobs.map((j) => (
           <section className="run" key={j.id}>
             <div className="card-row-top">
               <h2 className="card-title">{j.plan.name}</h2>
@@ -58,8 +77,8 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                 {w}
               </p>
             ))}
-            <ResearchBrief job={j} />
-            <details className="row-fold">
+            {!isNoFindings(j) && <ResearchBrief job={j} />}
+            {!isNoFindings(j) && <details className="row-fold">
               <summary>步骤、预算与技能版本{["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 ? " · 重试说明" : ""}</summary>
               {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
               <ol className="timeline">
@@ -92,7 +111,7 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
               >
                 导出中间分析
               </button>
-            </details>
+            </details>}
           </section>
         ))
       )}
