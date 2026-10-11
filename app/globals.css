@@ -1388,6 +1388,16 @@ main {
 .page-split .split-main { display: grid; gap: var(--s4); min-width: 0; }
 @media (max-width: 1100px) { .page-split { grid-template-columns: 1fr; } }
 .page-split .split-side { display: grid; gap: var(--s4); position: sticky; top: 90px; }
+/* 外部接入侧栏卡内部纵向节奏 */
+.page-split .split-side > .surface { display: grid; gap: 12px; align-content: start; }
+.page-split .split-side > .surface h2 { margin: 0; }
+.page-split .split-side > .surface .notice { margin: 0; }
+.page-split .split-side > .surface details { border: 1px solid var(--line); border-radius: 10px; background: #fafbf7; padding: 10px 14px; }
+.page-split .split-side > .surface details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.page-split .split-side > .surface details[open] { padding-bottom: 12px; }
+.page-split .split-side > .surface .field { margin: 0; }
+.page-split .split-side > .surface .card-actions { justify-content: flex-start; }
+.page-split .split-side > .surface .helper-text:last-child { margin-bottom: 0; }
 .page-split .split-side > .surface { padding: var(--s4); }
 .page-panel .panel-tabs { margin-bottom: var(--s4); }
 .page-panel .panel-body { max-width: 960px; }
@@ -1442,9 +1452,15 @@ main {
   padding: var(--s5); box-shadow: 0 12px 36px #233b3226; min-width: 300px;
   display: grid; gap: var(--s3);
 }
-.row-fold { margin-top: 6px; }
-.row-fold summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-.plan-content .row-fold { display: inline-block; margin: 4px 0; }
+.row-fold {
+  border: 1px solid var(--line); border-radius: 10px; background: #fafbf7;
+  padding: 10px 14px; margin: var(--s3) 0;
+}
+.row-fold summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 2px 0; }
+.row-fold summary:hover { color: var(--ink); }
+.row-fold[open] { padding-bottom: var(--s4); }
+.row-fold > *:not(summary) { margin-top: var(--s3); }
+.plan-content .row-fold { display: inline-block; margin: 4px 0; padding: 6px 12px; }
 .plan-content .card-meta { -webkit-line-clamp: 1; }
 /* 卡片内边距统一 16px（原 18-26px 混用） */
 .surface { padding: var(--s5); }

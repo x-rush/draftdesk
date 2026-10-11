@@ -26,7 +26,7 @@ export function AgentSetup({plan,sources}:{plan?:Plan;sources:Source[]}) {
     <div className="toolbar"><button disabled={!validBase} onClick={async()=>{try{await navigator.clipboard.writeText(instructions);setNotice("已复制配置提示词，不含令牌。请交给你的 Agent 执行并核对小样本回执。")}catch{setNotice("复制失败，请下载配置包。")}}}>复制给 Agent 的配置提示词</button>
     <button disabled={!validBase} onClick={()=>download("draftdesk-agent-setup.json",{agent,location,mode,baseUrl:base,plan,sources:selected,instructions})}>下载配置说明与策略</button></div>
     {notice&&<p role="status">{notice}</p>}
-    <details><summary>预览任务说明与搜索计划</summary><pre className="code" style={{whiteSpace:"pre-wrap"}}>{instructions}</pre><ul>{queryPlan(plan,Math.max(0,plan.maxQueries-Math.min(2,Math.floor(plan.maxQueries/2)))).map((q,i)=><li key={i}>{q.query}</li>)}</ul><p>检索意图是建议，外部 Agent 须按自己的工具执行。最多预留 2 次补证，包含在总次数内。</p></details>
+    <details className="row-fold"><summary>预览任务说明与搜索计划</summary><pre className="code" style={{whiteSpace:"pre-wrap"}}>{instructions}</pre><ul>{queryPlan(plan,Math.max(0,plan.maxQueries-Math.min(2,Math.floor(plan.maxQueries/2)))).map((q,i)=><li key={i}>{q.query}</li>)}</ul><p>检索意图是建议，外部 Agent 须按自己的工具执行。最多预留 2 次补证，包含在总次数内。</p></details>
     <div className="agent-section-title"><h3 style={{ margin: 0 }}>由 Agent 自检并试跑</h3></div><ol><li>复制提示词，让你的 Agent 自行检查地址、Skill 和搜索工具。</li><li>你在 Agent 的安全配置中设置提交令牌；不要把它粘贴到提示词。</li><li>让 Agent 返回一次真实搜索的小样本与预检结果，核对来源和日期。</li><li>确认工作台收到回执后，再决定是否运行正式研究或安排日程。</li></ol>
     <p>工作台只提供配置提示词、协议和验收入口，对任何 Agent 通用；不会远程控制外部 Agent 或替用户填写密钥。完整研究提交后仍需审核，不会自动公开。</p>
   </section>;
