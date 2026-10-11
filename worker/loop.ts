@@ -7,6 +7,7 @@ import { now } from "../core/store";
 import { recoverOrphanJobs, runJob, scheduleTick } from "../core/pipeline";
 import { seenTermsTick } from "../core/seen-extract";
 import { seenDiggingTick } from "../core/seen-dig";
+import { seenJudgeTick } from "../core/seen-judge";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -25,6 +26,7 @@ export function startWorkerLoop(db: Store) {
         scheduleTick(db);
         seenTermsTick(db, requestModel);
         seenDiggingTick(db);
+        seenJudgeTick(db);
         runJanitor(db);
         const job = db.claim();
         if (job) await runJob(db, job);

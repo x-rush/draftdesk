@@ -24,4 +24,29 @@ export const routes: RouteDef[] = [
     pattern: "site-projects",
     handler: ({ db }) => json({ items: db.list("site-projects") }),
   },
+  {
+    // 站点发现（海外定位批 6）：DDG 竞争度查询顺便产出的独立站集合。
+    // 支持 ?limit&offset&brand=true|false&q（host/命中词搜索），首见降序。
+    methods: ["GET"],
+    pattern: "site-discoveries",
+    handler: ({ db, query }) => {
+      const limit = Math.min(200, Math.max(1, Number(query.get("limit")) || 100));
+      const offset = Math.max(0, Number(query.get("offset")) || 0);
+      const brand = query.get("brand") || "";
+      const q = (query.get("q") || "").trim().toLowerCase().slice(0, 80);
+      const where = [
+        "collection='site-discoveries'",
+        "(?='' OR json_extract(body,'$.brand')=?)",
+        "(?='' OR json_extract(body,'$.id') LIKE '%'||?||'%' OR json_extract(body,'$.terms') LIKE '%'||?||'%')",
+      ].join(" AND ");
+      const brandVal = brand === "" ? "" : brand === "true" ? "true" : "false";
+      const params = [brandVal, brandVal, q, q];
+      const total = (db.kv.sqlRows(`SELECT COUNT(*) c FROM documents WHERE ${where}`, ...params)[0] as { c: number }).c;
+      const rows = db.kv.sqlRows(
+        `SELECT body FROM documents WHERE ${where} ORDER BY json_extract(body,'$.firstFoundAt') DESC LIMIT ? OFFSET ?`,
+        ...params, limit, offset,
+      );
+      return json({ items: rows.map((r: any) => JSON.parse(String(r.body))), total, limit, offset });
+    },
+  },
 ];

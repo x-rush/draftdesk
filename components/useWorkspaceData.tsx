@@ -62,6 +62,8 @@ export function useWorkspaceData() {
   const [discussionContext, setDiscussionContext] = useState<import("./ActionButtons").DiscussContext | null>(null);
   const [seoTerms, setSeoTerms] = useState<any[]>([]);
   const [siteProjects, setSiteProjects] = useState<any[]>([]);
+  // 站点发现（海外定位批 6）：DDG 竞争度查询产出的独立站集合
+  const [siteDiscoveries, setSiteDiscoveries] = useState<any[]>([]);
   // 热词词表（词表分页批）：服务端分页/筛选/搜索 + 三区与意图计数一次响应
   const [seenList, setSeenList] = useState<any>({ items: [], total: 0, counts: {}, zones: null });
   const [seenQ, setSeenQ] = useState(""), [seenStatus, setSeenStatus] = useState(""), [seenIntent, setSeenIntent] = useState(""), [seenPage, setSeenPage] = useState(1);
@@ -75,12 +77,13 @@ export function useWorkspaceData() {
   currentKey.current = requestKey;
   async function refresh() {
     const key = currentKey.current, version = ++requestVersion.current;
-    const [next, outlineList, clusterList, seoTermList, siteProjectList] = await Promise.all([
+    const [next, outlineList, clusterList, seoTermList, siteProjectList, siteDiscoveryList] = await Promise.all([
       api<Snapshot>("workspace?" + key),
       api<{ items: any[] }>("outlines"),
       api<{ items: any[] }>("clusters"),
       api<{ items: any[] }>("seo-terms"),
       api<{ items: any[] }>("site-projects"),
+      api<{ items: any[] }>("site-discoveries?limit=200"),
     ]);
     if (currentKey.current === key && requestVersion.current === version) {
       setData(next);
@@ -89,6 +92,7 @@ export function useWorkspaceData() {
       setClusters(clusterList?.items ?? []);
       setSeoTerms(seoTermList?.items ?? []);
       setSiteProjects(siteProjectList?.items ?? []);
+      setSiteDiscoveries(siteDiscoveryList?.items ?? []);
       const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
       if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
       next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
@@ -198,7 +202,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
+    outlines, clusters, seoTerms, siteProjects, siteDiscoveries, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,

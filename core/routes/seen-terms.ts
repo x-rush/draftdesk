@@ -5,6 +5,7 @@ import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
+import { computeObsRatio, judgeVerdict } from "../seen-judge";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const intentEnum = z.enum(["informational", "comparison", "commercial", "question"]);
@@ -80,8 +81,13 @@ function seenListPayload(db: any, query: URLSearchParams) {
   const region = query.get("region") || "";
   const q = query.get("q") || "";
   const list = querySeenTerms(db.kv, { limit, offset, status, intent, region, q });
+  // 判定层（海外定位批 5）：每词附 obsRatio 与值不值得做三档（无外部调用，纯读时计算）
+  const items = list.items.map((t) => {
+    const { verdict, reason } = judgeVerdict(t);
+    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason };
+  });
   return {
-    items: list.items,
+    items,
     total: list.total,
     limit,
     offset,

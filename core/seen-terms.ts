@@ -62,6 +62,13 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// obsByDay 瘦身：只保留最近 30 天（判定层 obsRatio 只看近 9 天，留足余量）
+function trimObsByDay(byDay: Record<string, number>): Record<string, number> {
+  const keys = Object.keys(byDay).sort();
+  if (keys.length <= 30) return byDay;
+  return Object.fromEntries(keys.slice(-30).map((k) => [k, byDay[k]]));
+}
+
 // status 只升不降（archived 除外——archived 只能人工设置，机器永不降级/升级它）
 function upgradeStatus(current: SeenTermStatus | undefined, next: SeenTermStatus): SeenTermStatus {
   if (current === "archived") return "archived";
@@ -99,6 +106,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
     seed: prev?.seed ?? input.seed,
     intent: input.intent ?? prev?.intent,
     daysSeen: prev?.daysSeen ?? [],
+    obsByDay: prev?.obsByDay ?? {},
     producedBy: by,
     updatedAt: now0(),
     ...(prev?.createdAt ? {} : { createdAt: now0() }),
@@ -115,13 +123,16 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
   const day = opts.day ?? today();
   const daysSeen: string[] = [...new Set([...(prev?.daysSeen || []), day])].sort();
   // 一天一次计数：同日重复提取不膨胀 observations
-  const observations = (prev?.observations ?? 0) + (prev?.daysSeen?.includes(day) ? 0 : 1);
+  const freshObs = prev?.daysSeen?.includes(day) ? 0 : 1;
+  const observations = (prev?.observations ?? 0) + freshObs;
   let status: SeenTermStatus = prev?.status ?? "new";
   if (status !== "archived") {
     if (status === "new" && observations >= 2) status = "rising";
     if (status === "rising" && has3Consecutive(daysSeen)) status = "sustained";
   }
   const mergedSources = [...new Set([...(prev?.sources || []), ...(opts.sources || [])])];
+  // obsByDay 按日记数（判定层 obsRatio 的原料）：只保留最近 30 天
+  const obsByDay = trimObsByDay({ ...(prev?.obsByDay || {}), ...(freshObs ? { [day]: (prev?.obsByDay?.[day] || 0) + 1 } : {}) });
   const doc = {
     id,
     term: prev?.term ?? term.trim(),
@@ -132,6 +143,7 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     observations,
     status,
     daysSeen,
+    obsByDay,
     offTopic: opts.offTopic ?? prev?.offTopic,
     relevance: opts.relevance ?? prev?.relevance,
     region: opts.region ?? inferRegion(mergedSources) ?? prev?.region,
@@ -152,12 +164,14 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
 export function observeSuggestion(kv: TermStore, term: string, seed: string, opts: { source?: string; intent?: SeenTermIntent } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
+  const day0 = today();
   if (prev) {
     const mergedSources = [...new Set([...(prev.sources || []), ...(opts.source ? [opts.source] : [])])];
     const doc = {
       ...prev,
       lastSeenAt: new Date().toISOString(),
       observations: (prev.observations ?? 0) + 1,
+      obsByDay: trimObsByDay({ ...(prev.obsByDay || {}), [day0]: (prev.obsByDay?.[day0] || 0) + 1 }),
       sources: mergedSources,
       region: prev.region ?? inferRegion(mergedSources),
       seed: prev.seed ?? seed,
@@ -180,6 +194,7 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
     observations: 1,
     status: "new" as SeenTermStatus,
     daysSeen: [],
+    obsByDay: { [day0]: 1 },
     seed,
     intent: opts.intent ?? classifyIntent(term),
     offTopic: undefined,
@@ -267,6 +282,9 @@ export function mergeSpaceVariants(kv: MergeStore): { merged: number; removed: n
       sources: [...new Set(docs.flatMap((d) => d.sources || []))],
       relatedSearches: [...new Set(docs.flatMap((d) => d.relatedSearches || []))],
       daysSeen: [...new Set(docs.flatMap((d) => d.daysSeen || []))].sort(),
+      obsByDay: Object.fromEntries(
+        [...new Set(docs.flatMap((d) => Object.keys(d.obsByDay || [])))].map((k) => [k, Math.max(...docs.map((d) => d.obsByDay?.[k] ?? 0))]),
+      ),
       firstSeenAt: docs.map((d) => d.firstSeenAt).filter(Boolean).sort()[0] ?? top.firstSeenAt,
       lastSeenAt: docs.map((d) => d.lastSeenAt).filter(Boolean).sort().at(-1) ?? top.lastSeenAt,
       status,

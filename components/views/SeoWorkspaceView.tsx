@@ -25,6 +25,15 @@ function RegionBadge({ region }: { region?: string }) {
   if (region === "cn") return <span className="pill">🇨🇳 中文</span>;
   return null;
 }
+// 值不值得做三档徽章（判定层）：推荐绿/可以试试蓝/不值得做灰/待查暗
+const VERDICT_LABELS: Record<string, string> = { "推荐": "✅ 推荐", "可以试试": "🟦 可以试试", "不值得做": "⛔ 不值得做", "竞争度待查": "⏳ 竞争度待查" };
+function VerdictBadge({ verdict, reason }: { verdict?: string; reason?: string }) {
+  if (!verdict) return null;
+  return <span className="pill" title={reason}>{VERDICT_LABELS[verdict] || verdict}{verdict === "推荐" && " 💎"}</span>;
+}
+function ObsBadge({ obsRatio }: { obsRatio?: number }) {
+  return typeof obsRatio === "number" ? <span title="近2天日均÷前7天日均">obs {obsRatio.toFixed(2)}</span> : null;
+}
 
 export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { seoTerms, busy, act, setNotice, navigate, setDiscussionContext, refresh } = ws;
@@ -127,6 +136,8 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                         <span className="pill">{t.status}</span>
                         <RelevanceBadge relevance={t.relevance} />
                         <RegionBadge region={t.region} />
+                        <VerdictBadge verdict={t.verdict} reason={t.verdictReason} />
+                        <ObsBadge obsRatio={t.obsRatio} />
                         {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
                         {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                         {t.seed && <span>血缘：{t.seed}</span>}

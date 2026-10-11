@@ -2,23 +2,62 @@
 // 应用机会 · 站群评估器（信息架构 v2-5）：
 // 数据源 = seo-terms 中 siteCandidate:true 的词；域名/站型/需求大纲均来自外部 Agent 数据。
 // [讨论][推进=立项建站（site-projects, pending）]；忽略为会话级隐藏。
+// 站点发现 tab（海外定位批 6）：site-discoveries 独立站卡片（host/命中词/首次发现/它做的是什么）。
 import { useMemo, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
-import { Empty, api } from "../ui";
+import { Empty, api, date } from "../ui";
 
 export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot }) {
-  const { seoTerms, siteProjects, busy, act, setNotice, navigate, setDiscussionContext } = ws;
+  const { seoTerms, siteProjects, siteDiscoveries, busy, act, setNotice, navigate, setDiscussionContext } = ws;
   const [siteType, setSiteType] = useState("all");
   const [ignored, setIgnored] = useState<string[]>([]);
+  const [tab, setTab] = useState<"candidates" | "sites">("candidates");
   const candidates = useMemo(
     () => (seoTerms || []).filter((t) => t.siteCandidate === true && !ignored.includes(t.term)),
     [seoTerms, ignored],
   );
   const filtered = siteType === "all" ? candidates : candidates.filter((t) => t.siteType === siteType);
   const projects = siteProjects || [];
+  const discoveries = siteDiscoveries || [];
 
   return (
     <>
+      <nav className="discovery-modes" aria-label="应用机会板块">
+        <button className={tab === "candidates" ? "active" : ""} aria-current={tab === "candidates" ? "page" : undefined} onClick={() => setTab("candidates")}>站群候选 {candidates.length}</button>
+        <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}>🌐 站点发现 {discoveries.length}</button>
+      </nav>
+      {tab === "sites" && (
+        discoveries.length === 0 ? (
+          <Empty title="还没有站点发现。">
+            判定层每天对 score TOP100 强相关海外词查 DDG 竞争度（vercel/github.io/pages.dev/netlify.app），
+            查到的同题独立站会自动出现在这里。首跑约需 3-5 分钟。
+          </Empty>
+        ) : (
+          <div className="discovery-list">
+            {discoveries.map((s) => (
+              <article className="discovery-row" key={s.host}>
+                <div className="row-content">
+                  <div className="row-meta">
+                    <span className="pill">{s.platform}</span>
+                    {s.brand ? <span className="pill">🚫 不建议做</span> : <span className="pill">✅ 候选</span>}
+                    {s.brandReason && <span>原因：{s.brandReason}</span>}
+                    <span>首次发现 {s.firstFoundAt ? date(s.firstFoundAt) : ""}</span>
+                    <span>DDG 最低排名 {s.bestRank}</span>
+                  </div>
+                  <a className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} href={`https://${s.host}`} target="_blank" rel="noopener noreferrer">{s.host} ↗</a>
+                  <div className="tags">
+                    {(s.terms || []).slice(0, 6).map((t: string) => <span key={t}>命中词：{t}</span>)}
+                  </div>
+                </div>
+                <div className="row-side">
+                  <button onClick={() => { void navigator.clipboard.writeText(s.host); setNotice("已复制域名：" + s.host); }}>复制域名</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      )}
+      {tab === "candidates" && (
       <div className="filter-row">
         <select aria-label="按站型筛选" value={siteType} onChange={(e) => setSiteType(e.target.value)}>
           <option value="all">全部站型</option>
@@ -79,6 +118,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
             );
           })}
         </div>
+      )
       )}
     </>
   );
