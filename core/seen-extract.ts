@@ -9,7 +9,7 @@ import type { PersonaRelevance } from "./seen-terms";
 
 const GATE_KEY = "seen-terms-gate";
 const DAY_MS = 86400000;
-type ModelRunner = (db: Store, messages: { role: "user"; content: string }[], opts: { signal: AbortSignal; plan?: "cheap" | "full" }) => Promise<{ text: string; usage?: unknown }>;
+type ModelRunner = (db: Store, messages: { role: "user"; content: string }[], opts: { signal: AbortSignal; plan?: "cheap" | "full"; model?: string }) => Promise<{ text: string; usage?: unknown }>;
 
 // 闸门：所有启用调度计划「最近 24 小时内存在 completed」（滚动窗口，规避 UTC 日期边界——
 // 北京白天采集的任务 finishedAt 的 UTC 日期恒为「昨天」，按日历日比较会让闸门白天永不置位）
@@ -98,6 +98,23 @@ async function runExtraction(db: Store, runModel: ModelRunner, dateKey: string, 
 
 const EXTRACT_CHUNK = 60;
 const EXTRACT_CHUNK_TIMEOUT_MS = 180000;
+// 毒块降级重试模型（第三轮 4）：omni 的安全路由会被安全敏感标题挂死，
+// glm 系安全路由不同——超时块自动降级重试一次。端点实测 glm-5.3 可用。
+const EXTRACT_FALLBACK_MODEL = process.env.DRAFTDESK_FALLBACK_MODEL || "glm-5.3";
+
+// 毒标题台账（第三轮 4）：记录触发挂死的分块标题样本（截断 100 字/条），
+// 累积后分析共性、沉淀安全路由绕过清单。
+function recordToxicSample(db: Store, chunkIndex: number, titles: string[], retryModel: string | undefined) {
+  const id = `${new Date().toISOString().slice(0, 10)}:chunk${chunkIndex}`;
+  db.put("toxic-samples", id, {
+    id,
+    at: new Date().toISOString(),
+    kind: "extract-chunk-timeout",
+    titles: titles.map((t) => t.slice(0, 100)),
+    retryModel: retryModel ?? null,
+    updatedAt: new Date().toISOString(),
+  });
+}
 
 async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   if (!db.config().apiKey) return 0;
@@ -123,7 +140,21 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
       const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(EXTRACT_CHUNK_TIMEOUT_MS), plan: "cheap" });
       count += applyExtractedTerms(db, result.text);
     } catch (e) {
-      console.error(`[seen-terms] 提取分块 ${i / EXTRACT_CHUNK + 1}/${Math.ceil(latest.length / EXTRACT_CHUNK)} 失败（跳过，其余块不受影响）:`, e instanceof Error ? e.message : e);
+      const reason = String((e as Error)?.message || e);
+      // 毒块降级重试（第三轮 4）：超时=大概率踩中 omni 安全路由挂死，换 glm 重试一次
+      if (/timeout|aborted/i.test(reason)) {
+        const chunkIndex = i / EXTRACT_CHUNK + 1;
+        recordToxicSample(db, chunkIndex, chunk.map((x) => x.title), EXTRACT_FALLBACK_MODEL);
+        try {
+          const fallback = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(EXTRACT_CHUNK_TIMEOUT_MS), plan: "cheap", model: EXTRACT_FALLBACK_MODEL });
+          count += applyExtractedTerms(db, fallback.text);
+          console.log(`[seen-terms] 分块 ${chunkIndex}/${Math.ceil(latest.length / EXTRACT_CHUNK)} omni 超时，${EXTRACT_FALLBACK_MODEL} 重试成功`);
+          continue;
+        } catch (fallbackError) {
+          console.error(`[seen-terms] 分块 ${chunkIndex} ${EXTRACT_FALLBACK_MODEL} 重试仍失败:`, fallbackError instanceof Error ? fallbackError.message : fallbackError);
+        }
+      }
+      console.error(`[seen-terms] 提取分块 ${i / EXTRACT_CHUNK + 1}/${Math.ceil(latest.length / EXTRACT_CHUNK)} 失败（跳过，其余块不受影响）:`, reason.slice(0, 120));
     }
   }
   return count;

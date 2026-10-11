@@ -40,7 +40,9 @@ export const routes: RouteDef[] = [
         "(?='' OR json_extract(body,'$.id') LIKE '%'||?||'%' OR json_extract(body,'$.terms') LIKE '%'||?||'%')",
       ].join(" AND ");
       const brandVal = brand === "" ? "" : brand === "true" ? "true" : "false";
-      const params = [brandVal, brandVal, q, q];
+      // 占位符 5 个（brand 2 + like 3）：q 要同时喂 id 与 terms 两处 LIKE。
+      // 此前漏绑第 5 个导致 node:sqlite 错位绑定（LIMIT 值落进 LIKE 参数）→ 列表恒空。
+      const params = [brandVal, brandVal, q, q, q];
       const total = (db.kv.sqlRows(`SELECT COUNT(*) c FROM documents WHERE ${where}`, ...params)[0] as { c: number }).c;
       const rows = db.kv.sqlRows(
         `SELECT body FROM documents WHERE ${where} ORDER BY json_extract(body,'$.firstFoundAt') DESC LIMIT ? OFFSET ?`,

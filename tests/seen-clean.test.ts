@@ -8,7 +8,7 @@ import path from "node:path";
 import { Store } from "../core/store";
 import { cleanSeedPollution } from "../core/seen-clean";
 import { judgeSeenTerm, observeSeenTerm, termId } from "../core/seen-terms";
-import { judgeUnjudgedTerms } from "../core/seen-extract";
+import { judgeUnjudgedTerms, requestSeenTermsExtraction, seenTermsTick } from "../core/seen-extract";
 
 function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
@@ -122,6 +122,39 @@ test("回填判定：只判未判定词（archived/已判跳过），空池零�
     const judged2 = await judgeUnjudgedTerms(db, mockRunner);
     assert.equal(judged2, 0);
     assert.equal(calls, 1, "空池应零成本跳过");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("毒块降级重试（第三轮 4）：omni 超时块自动换 glm 重试并记毒标题台账", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-toxic-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("discovery", "fb-j", { jobId: "fb-j", at: new Date().toISOString(), planName: "p", candidates: [{ url: "https://f.example/1", title: "Anthropic 智能体失控凶案线索标题", sourceId: "s", sourceName: "AIHOT", status: "watch", reason: "r", observedAt: new Date().toISOString() }], sources: [] });
+    const models: (string | undefined)[] = [];
+    let calls = 0;
+    const mockRunner = async (_db: unknown, _messages: unknown, opts: { model?: string }) => {
+      calls++;
+      models.push(opts?.model);
+      if (calls === 1) throw new Error("The operation was aborted due to timeout");
+      if (calls === 2) return { text: JSON.stringify([{ term: "降级提取词", sources: ["AIHOT"], relevance: "strong" }]) };
+      return { text: "[]" };
+    };
+    requestSeenTermsExtraction(db);
+    seenTermsTick(db, mockRunner);
+    await new Promise((r) => setTimeout(r, 120));
+    const saved = db.get<any>("seen-terms", "降级提取词");
+    assert.ok(saved, "毒块经 glm 重试应落地");
+    assert.equal(saved.relevance, "strong");
+    assert.deepEqual(models, [undefined, "glm-5.3"], "第 2 次调用应换 glm-5.3（判档后池内无待判词，judge 零调用）");
+    const toxic = db.list<any>("toxic-samples");
+    assert.equal(toxic.length, 1, "毒标题台账应有一条");
+    assert.match(toxic[0].titles[0], /Anthropic/);
+    assert.equal(toxic[0].retryModel, "glm-5.3");
   } finally {
     db?.close();
     cleanup(dir);

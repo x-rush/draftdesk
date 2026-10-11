@@ -13,6 +13,8 @@ export const RETENTION = {
   seenTerms: { purgeArchivedAfterDays: 90 },
   // 模型调用台账（成本纪律批 7）：看板只看近 7 天，留一个月余量后清理。
   modelMetrics: { purgeAfterDays: 35 },
+  // 毒标题台账（第三轮 4）：诊断数据留 30 天。
+  toxicSamples: { purgeAfterDays: 30 },
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
@@ -122,6 +124,11 @@ export function purgeOldModelMetrics(db: Store): number {
   let purged = 0;
   for (const m of db.list<any>("model-metrics")) {
     if (String(m.id) < cutoff) { db.del("model-metrics", m.id); purged++; }
+  }
+  const toxicCutoff = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" })
+    .format(new Date(Date.now() - RETENTION.toxicSamples.purgeAfterDays * 86400000));
+  for (const t of db.list<any>("toxic-samples")) {
+    if (String(t.id).slice(0, 10) < toxicCutoff) { db.del("toxic-samples", t.id); purged++; }
   }
   return purged;
 }

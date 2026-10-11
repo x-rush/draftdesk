@@ -36,6 +36,7 @@ export async function requestModel(
     fetch?: typeof fetch;
     maxOutputTokens?: number;
     plan?: "cheap" | "full";
+    model?: string;
   },
 ) {
   options.signal.throwIfAborted();
@@ -84,7 +85,7 @@ export async function requestModel(
         Authorization: `Bearer ${cfg.apiKey}`,
       },
       body: JSON.stringify({
-        model: cfg.model,
+        model: options.model || cfg.model,
         messages,
         max_tokens: outputTokens,
         ...(qwenFlash ? { thinking_budget: thinkingBudget, preserve_thinking: false } : {}),

@@ -64,8 +64,10 @@ export function wordScore(term: { observations?: number }): number {
 }
 
 // ---- DDG SERP ----
+const SITE_FILTERS = "site:vercel.app OR site:github.io OR site:pages.dev OR site:netlify.app";
+
 export function ddgQuery(term: string): string {
-  return `${term} site:vercel.app OR site:github.io OR site:pages.dev OR site:netlify.app`;
+  return `${term} ${SITE_FILTERS}`;
 }
 
 export function platformOf(host: string): string | undefined {
@@ -100,6 +102,41 @@ export async function fetchDdg(q: string, doFetch: typeof fetch, outer?: AbortSi
   return html;
 }
 
+// ---- SERP 搜索层（第三轮 3）：DDG 对容器 IP 回 202 反爬挑战页（实弹 2/66 成功），
+// 主力改内网 SearXNG（聚合后端、site: 语义正确、零反爬；hybrid 搜索同源），DDG html 降为兜底。
+export type SerpHit = { host: string; url: string; title: string };
+
+export async function searchSerp(db: Store, term: string, doFetch: typeof fetch, outer?: AbortSignal): Promise<{ engine: string; results: SerpHit[] }> {
+  const errors: string[] = [];
+  const base = (db.config().searxngUrl || "http://searxng:8080").replace(/\/+$/, "");
+  try {
+    const query = `"${term}" ${SITE_FILTERS}`;
+    const response = await doFetch(`${base}/search?q=${encodeURIComponent(query)}&format=json`, {
+      signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(20000)]),
+    });
+    if (!response.ok) throw new Error(`searxng HTTP ${response.status}`);
+    const data = JSON.parse(await response.text()) as { results?: { url?: string; title?: string }[] };
+    const results: SerpHit[] = [];
+    for (const item of data.results || []) {
+      try {
+        const url = new URL(String(item.url || ""));
+        results.push({ host: url.hostname.replace(/^www\./, ""), url: url.toString(), title: String(item.title || "").replace(/<[^>]+>/g, "").trim() });
+      } catch { continue; }
+      if (results.length >= 30) break;
+    }
+    return { engine: "searxng", results };
+  } catch (e) {
+    errors.push("searxng: " + String((e as Error)?.message || e).slice(0, 80));
+  }
+  try {
+    const html = await fetchDdg(ddgQuery(term), doFetch, outer);
+    return { engine: "ddg", results: parseDdgResults(html) };
+  } catch (e) {
+    errors.push("ddg: " + String((e as Error)?.message || e).slice(0, 80));
+    throw new Error(errors.join(" | "));
+  }
+}
+
 // ---- 站点发现 ----
 type SiteStore = Store;
 function mergeSiteDiscovery(db: SiteStore, host: string, platform: string, term: string, rank: number, brand: boolean, brandReason?: string) {
@@ -129,26 +166,38 @@ function hasSuggestDemand(term: string, suggestions: string[]): boolean {
 
 // ---- 每日判定 tick ----
 // 只查 relevance=strong 的 global 词中 score TOP100 且未查过的；永久缓存不二查。
-// 全程 fire-and-forget；每词一次 DDG + 一次 suggest（hasDemand 判定），500ms 间隔。
-export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch) {
+// 全程 fire-and-forget；每词一次 SERP + 一次 suggest（hasDemand 判定），500ms 基础间隔，
+// 失败指数退避 1s→2s→4s→8s 封顶（挤过限流窗口），成功复位。
+// 「立即整理」（seen-dig-manual）晚于当日完成键时重跑当日判定——失败词同池重试。
+export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { backoffBaseMs?: number } = {}) {
   const today = new Date().toISOString().slice(0, 10);
-  if (db.get("meta", "seen-judge-done:" + today)) return;
+  const done = db.get<any>("meta", "seen-judge-done:" + today);
+  const manual = db.get<any>("meta", "seen-dig-manual");
+  const byManual = !!manual?.date && manual.date === today && (!done || manual.at > done.at);
+  if (done && !byManual) return;
   const running = db.get<any>("meta", "seen-judge-running");
   if (running && Date.now() - Date.parse(running.at) < 20 * 60000) return;
   const queue = db.list<any>("seen-terms")
     .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global" && typeof t.serpDedicated !== "number")
     .sort((a, b) => wordScore(b) - wordScore(a))
     .slice(0, JUDGE_TOP);
-  if (!queue.length) return;
+  if (!queue.length) {
+    if (byManual) db.put("meta", "seen-judge-done:" + today, { at: new Date().toISOString(), date: today, queue: 0, queried: 0, failed: 0, sites: 0 });
+    return;
+  }
   db.put("meta", "seen-judge-running", { at: new Date().toISOString() });
   void (async () => {
-    console.log(`[seen-judge] 判定开始：队列 ${queue.length} 词（obsRatio + DDG 竞争度 + 站点发现）`);
+    console.log(`[seen-judge] 判定开始：队列 ${queue.length} 词（obsRatio + SERP 竞争度 + 站点发现）`);
     let queried = 0, failed = 0, sites = 0;
+    const reasons: Record<string, number> = {};
+    let consecutiveFailures = 0;
+    const backoffBase = opts.backoffBaseMs ?? 1000;
     try {
       const outer = AbortSignal.timeout(10 * 60000);
       await new Limiter(DDG_INTERVAL_MS, 1).run(queue.map((t) => async () => {
         try {
-          const results = parseDdgResults(await fetchDdg(ddgQuery(t.term), doFetch, outer));
+          const { engine, results } = await searchSerp(db, t.term, doFetch, outer);
+          consecutiveFailures = 0;
           const platformResults = results.map((r, i) => ({ ...r, rank: i + 1, platform: platformOf(r.host) })).filter((r) => r.platform);
           const hosts = new Set(platformResults.map((r) => r.host));
           // suggest 需求判定：失败不阻塞（按有需求处理，不误标品牌词）
@@ -166,6 +215,7 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch) {
               serpDedicated: platformResults.length,
               serpInternal: hosts.size,
               serpHosts: [...hosts].slice(0, 10),
+              serpEngine: engine,
               serpCheckedAt: new Date().toISOString(),
               serpFailDays: 0,
               updatedAt: new Date().toISOString(),
@@ -173,22 +223,28 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch) {
             bumpSeenTermsVersion(db);
           }
           queried++;
-        } catch {
+        } catch (e) {
           failed++;
+          const reason = String((e as Error)?.message || e).slice(0, 100);
+          reasons[reason] = (reasons[reason] || 0) + 1;
           const prev = db.get<any>("seen-terms", String(t.id));
           if (prev) {
             const failDays = (prev.serpFailDays || 0) + 1;
             db.put("seen-terms", String(t.id), { ...prev, serpFailDays: failDays, updatedAt: new Date().toISOString() });
-            if (failDays === 3) console.warn(`[seen-judge] 告警：${t.term} 连续 3 天 DDG 查询失败（可能被限流）`);
+            if (failDays === 3) console.warn(`[seen-judge] 告警：${t.term} 连续 3 天 SERP 查询失败（${reason.slice(0, 60)}）`);
           }
+          // 指数退避（成功复位）：连续失败把节奏放慢到 1s→2s→4s→8s，避免顶着限流硬冲
+          await new Promise((r) => setTimeout(r, Math.min(8000, backoffBase * 2 ** consecutiveFailures)));
+          consecutiveFailures++;
         }
       }));
     } finally {
-      const summary = { at: new Date().toISOString(), date: today, queue: queue.length, queried, failed, sites };
+      const summary = { at: new Date().toISOString(), date: today, queue: queue.length, queried, failed, sites, reasons };
       db.put("meta", "seen-judge-done:" + today, summary);
       db.put("meta", "seen-judge-last", summary);
       db.del("meta", "seen-judge-running");
-      console.log(`[seen-judge] 判定完成：查询 ${queried}（失败 ${failed}）/ 发现站点 ${sites}`);
+      const topReasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([r, n]) => `${n}×${r.slice(0, 50)}`).join("；");
+      console.log(`[seen-judge] 判定完成：查询 ${queried}（失败 ${failed}${topReasons ? "：" + topReasons : ""}）/ 发现站点 ${sites}`);
     }
   })();
 }

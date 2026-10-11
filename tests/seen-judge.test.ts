@@ -101,12 +101,13 @@ test("判定 tick：竞争度入库 + 站点发现 + 品牌词 + 永久缓存；
     let ddgCalls = 0, suggestCalls = 0;
     const fakeFetch = (async (url: any) => {
       const u = String(url);
+      if (u.includes("searxng")) throw new Error("searxng 不可用（测试走 DDG 兜底）");
       ddgCalls++;
       if (u.includes("html.duckduckgo.com")) return new Response(DDG_HTML, { status: 200 });
       if (u.includes("suggestqueries.google.com")) { suggestCalls++; return new Response('["q",[["nice app free",0]]]', { status: 200 }); }
       throw new Error("unexpected " + u);
     }) as unknown as typeof fetch;
-    seenJudgeTick(db, fakeFetch);
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1 });
     await new Promise((r) => setTimeout(r, 120));
     const term = db.get<any>("seen-terms", "nice app");
     assert.equal(term.serpDedicated, 2, "两个平台站结果");
@@ -132,10 +133,64 @@ test("判定 tick：竞争度入库 + 站点发现 + 品牌词 + 永久缓存；
     // 模拟次日：清 done 键（失败词重试语义由 serpDedicated 缺失驱动）
     db.del("meta", "seen-judge-done:" + new Date().toISOString().slice(0, 10));
     const failing = (async () => { ddgCalls++; throw new Error("blocked"); }) as unknown as typeof fetch;
-    seenJudgeTick(db, failing);
+    seenJudgeTick(db, failing, { backoffBaseMs: 1 });
     await new Promise((r) => setTimeout(r, 120));
     assert.equal(db.get<any>("seen-terms", "fail 词").serpFailDays, 1, "失败词计 serpFailDays");
     assert.equal(typeof db.get<any>("seen-terms", "nice app").serpDedicated, "number", "已查词不重查");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("SERP 搜索层（第三轮 3）：SearXNG 主力命中、失败原因台账、手动重跑", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-serp-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const today = new Date().toISOString();
+    db.put("seen-terms", "searxng 词", { id: "searxng 词", term: "searxng 词", status: "rising", observations: 9, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: today, lastSeenAt: today, relevance: "strong", region: "global" });
+    const SEARXNG_JSON = JSON.stringify({ results: [
+      { url: "https://tool-a.vercel.app/", title: "Tool A" },
+      { url: "https://openai-x.vercel.app/", title: "OpenAI X" },
+    ] });
+    let searxngCalls = 0, ddgCalls = 0;
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("searxng")) { searxngCalls++; return new Response(SEARXNG_JSON, { status: 200 }); }
+      if (u.includes("suggestqueries.google.com")) return new Response('["q",[["searxng 词 free",0]]]', { status: 200 });
+      ddgCalls++;
+      return new Response("anomaly detected", { status: 202 });
+    }) as unknown as typeof fetch;
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1 });
+    await new Promise((r) => setTimeout(r, 150));
+    const term = db.get<any>("seen-terms", "searxng 词");
+    assert.equal(term.serpDedicated, 2);
+    assert.equal(term.serpEngine, "searxng", "SearXNG 主力");
+    assert.equal(ddgCalls, 0, "SearXNG 可用时不打 DDG");
+    const brand = db.get<any>("site-discoveries", "openai-x.vercel.app");
+    assert.equal(brand.brand, true);
+    // 失败原因台账：SearXNG 挂 + DDG 202 → reasons 进完成键
+    db.put("seen-terms", "fail 词2", { id: "fail 词2", term: "fail 词2", status: "rising", observations: 9, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: today, lastSeenAt: today, relevance: "strong", region: "global" });
+    db.del("meta", "seen-judge-done:" + new Date().toISOString().slice(0, 10));
+    const allFail = (async () => { throw new Error("boom"); }) as unknown as typeof fetch;
+    seenJudgeTick(db, allFail, { backoffBaseMs: 1 });
+    await new Promise((r) => setTimeout(r, 120));
+    const done = db.get<any>("meta", "seen-judge-done:" + new Date().toISOString().slice(0, 10));
+    assert.equal(done.failed, 1);
+    assert.ok(Object.keys(done.reasons || {}).length >= 1, "失败原因应入台账");
+    assert.equal(db.get<any>("seen-terms", "fail 词2").serpFailDays, 1);
+    // 手动重跑：立即整理晚于完成键 → 同池重试失败词
+    const failingThenOk = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("searxng")) return new Response(SEARXNG_JSON, { status: 200 });
+      if (u.includes("suggestqueries.google.com")) return new Response('["q",[["x",0]]]', { status: 200 });
+      throw new Error("unexpected");
+    }) as unknown as typeof fetch;
+    db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
+    seenJudgeTick(db, failingThenOk, { backoffBaseMs: 1 });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(typeof db.get<any>("seen-terms", "fail 词2").serpDedicated, "number", "手动触发应重试失败词");
   } finally {
     db?.close();
     cleanup(dir);

@@ -100,6 +100,12 @@ export class KV {
     return stmt;
   }
   sqlRows(sql: string, ...params: any[]): Array<Record<string, unknown>> {
+    // node:sqlite 参数不足时静默错位绑定（占位符吃到相邻实参，曾致列表恒空而计数正常）
+    // ——显式断言参数个数把这类 bug 变成响亮报错。node:sqlite 无 parameterCount 属性，
+    // 用 SQL 文本统计问号（内部 SQL 的问号只出现在占位符位置）。
+    const expected = (sql.match(/\?/g) || []).length;
+    if (params.length !== expected)
+      throw new Error(`SQL 参数个数不匹配：绑定 ${params.length}，占位符 ${expected}——${sql.slice(0, 120)}`);
     return this.prepared(sql).all(...params) as Array<Record<string, unknown>>;
   }
 }
