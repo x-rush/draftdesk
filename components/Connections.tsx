@@ -109,10 +109,10 @@ export function Connections({
             <button onClick={() => void navigator.clipboard.writeText(token)}>
               复制令牌
             </button>
-            <button onClick={() => setToken("")}>我已保存，隐藏</button>
+            <button onClick={() => { if (confirm("隐藏后将无法再次查看该令牌。确认已妥善保存？")) setToken(""); }}>我已保存，隐藏</button>
           </div>
         )}
-        {connections.filter((c: any) => !c.revoked).map((c: any) => (
+        {[...connections.filter((c: any) => !c.revoked)].sort((a: any, b: any) => (b.lastUsedAt || "").localeCompare(a.lastUsedAt || "")).map((c: any) => (
           <div className="token-row" key={c.id}>
             <span className="token-name">{c.name}</span>
             <span className="token-scopes">{(c.scopes || ["submit"]).filter((sc: string) => sc !== "submit").map((sc: string) => ({ read: "读取", consume: "消费", suggest: "建议写回" } as Record<string, string>)[sc] || sc).join(" + ") || "仅提交"}</span>
@@ -132,11 +132,13 @@ export function Connections({
         {connections.some((c: any) => c.revoked) && (
           <details className="token-group fold-card">
             <summary>已撤销 / 历史（{connections.filter((c: any) => c.revoked).length}）</summary>
+            <div style={{ maxHeight: 320, overflowY: "auto" }}>
             {connections.filter((c: any) => c.revoked).map((c: any) => (
               <div className="token-row" key={c.id}>
                 <span className="token-name">{c.name}</span>
                 <span className="token-scopes">{c.revokedAt ? "撤销于 " + date(c.revokedAt) : "已撤销"}</span>
               </div>
+</div>
             ))}
           </details>
         )}
@@ -234,7 +236,8 @@ export function Connections({
                 })
               }
             >
-              {selectedJob?.state==="completed"?"此策略已完成":selectedJob&&["queued","running"].includes(selectedJob.state)?"此策略处理中":selectedJob?"重试失败任务":"用所选策略分析（模型计费）"}
+              title="创建分析任务会调用工作台模型，产生 token 消耗"
+              {selectedJob?.state==="completed"?"此策略已完成":selectedJob&&["queued","running"].includes(selectedJob.state)?"此策略处理中":selectedJob?"重试失败任务":"分析（计费）"}
             </button>
           </div>
         );})}
@@ -245,7 +248,7 @@ export function Connections({
         <section className="surface">
           <h2>两条研究路径</h2>
           <p className="helper-text">二选一，随时切换：<strong>内置管线</strong>零额外组件；<strong>外部回传</strong>适合已有个人助理 Agent 的用户。</p>
-          {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="notice">
+          {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="activity-attention">
             所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请到「研究策略」关闭「每天自动运行」。
           </p>}
           <details className="fold-card">

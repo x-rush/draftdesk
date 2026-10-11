@@ -48,6 +48,9 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
 
       {/* ② 工具行 */}
       <div className="radar-toolbar">
+        {hideNoFindings && emptyCount > 0 && runFilter !== "completed" && (
+          <span className="muted" style={{ fontSize: 12 }}>已隐藏 {emptyCount} 条空跑</span>
+        )}
         <nav className="discovery-modes" aria-label="运行状态筛选">
           {([["all", "全部", jobsAll.length], ["active", "进行中", activeCount], ["failed", "失败", failedCount], ["completed", "完成", jobsAll.filter((j) => j.state === "completed").length]] as const).map(([key, label, count]) => (
             <button key={key} className={runFilter === key ? "active" : ""} aria-current={runFilter === key ? "page" : undefined} onClick={() => setRunFilter(key)}>{label} {count}</button>

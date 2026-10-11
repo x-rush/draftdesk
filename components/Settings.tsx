@@ -125,7 +125,7 @@ export function Settings({
             })
           }
         >
-          测试模型连接
+          {busy ? "测试中…" : "测试模型连接"}
         </button>
         <p className="helper-text" style={{ marginBottom: 0 }}>填写百炼 API Key，而非阿里云 AccessKey ID / Secret。模型标识如需更换，注意 .env 的 DRAFTDESK_AI_MODEL 会覆盖此处配置。</p>
       </section>
@@ -230,7 +230,7 @@ export function Settings({
             setNotice(r.message);
           })}
         >
-          测试搜索
+          {busy ? "测试中…" : "测试搜索"}
         </button>
       </section>
 
@@ -300,6 +300,7 @@ export function Settings({
           if (!todayCounts) return <p className="muted" style={{ margin: 0 }}>今日快照尚未生成（janitor 每日首跑后出现）。</p>;
           const names = [...new Set([...Object.keys(todayCounts), ...Object.keys(yesterdayCounts || {})])].sort();
           return (
+            <div style={{ maxHeight: 320, overflowY: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: "left", opacity: 0.7 }}>
@@ -322,6 +323,7 @@ export function Settings({
                 })}
               </tbody>
             </table>
+            </div>
           );
         })()}
         <p className="helper-text" style={{ marginBottom: 0 }}>

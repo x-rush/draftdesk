@@ -79,7 +79,7 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
     <>
       {/* ① 统计条 */}
       <div className="stat-strip">
-        <div className="stat-card"><strong>{sources.length}</strong><span>数据源</span><small>分 4 类管理，点下方分类筛选</small></div>
+        <div className="stat-card"><strong>{sources.length}</strong><span>数据源</span><small>按 4 类管理（搜索与趋势/热榜/社区与官方/网页搜索）</small></div>
         <div className="stat-card accent"><strong>{enabledCount}</strong><span><CheckCircle2 size={13} /> 已启用</span><small>进入策略调度与热词挖掘</small></div>
         <div className="stat-card"><strong>{disabledCount}</strong><span><PauseCircle size={13} /> 已停用</span><small>{showDisabled ? "列表中灰点显示，可在配置里启用" : "当前已隐藏"}</small></div>
         <div className="stat-card"><strong>{aggregatedCount}</strong><span><RefreshCw size={13} /> 聚合可检测</span><small>本地 DailyHotApi，逐个检测连接</small></div>
