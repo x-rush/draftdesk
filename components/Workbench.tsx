@@ -213,14 +213,23 @@ export function Workbench() {
           </div>
         </header>
         <main>
-          <div className="page-heading">
-            <div>
-              <p className="date-stamp">
-                {today}
-              </p>
-              <h1>{titles[0]}</h1>
-              <p>{titles[1]}</p>
-            </div>
+          {/* 研究讨论：页头收成单行紧凑条（大标题+日期+副标题三件套会吃掉 200px，
+              聊天面板要整个视口高度） */}
+          <div className={view === "chat" ? "page-heading page-heading-compact" : "page-heading"}>
+            {view === "chat" ? (
+              <div>
+                <h1>{titles[0]}</h1>
+                <p>{titles[1]}</p>
+              </div>
+            ) : (
+              <div>
+                <p className="date-stamp">
+                  {today}
+                </p>
+                <h1>{titles[0]}</h1>
+                <p>{titles[1]}</p>
+              </div>
+            )}
             {data &&
               ["discover", "trends", "ideas", "activities"].includes(view) && (
                 <button

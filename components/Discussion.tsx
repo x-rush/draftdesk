@@ -248,69 +248,59 @@ export function Discussion({
       <section className="chat-panel">
         <header>
           <div className="chat-head">
-            <h2>{conversation.title}</h2>
+            <h2 title={conversation.title}>{conversation.title}</h2>
             <span className="pill">私人讨论 · 不自动联网</span>
           </div>
-          <p>
-            {conversation.artifactId
-              ? "已关联研究产物与原始证据"
-              : "自由讨论；从一条发现进入可带入证据"}
-          </p>
-          {context&&<details className="discussion-context"><summary>本次讨论的材料：{context.title} · {context.evidenceIds.length} 条证据</summary><p>{context.summary}</p><p>面向：{context.audience}</p><p>带入内容结构、事实结论、待核实问题与关联证据。没有关联的资料不会自动加入。</p></details>}
-        <div className="toolbar">
-          <button
-            disabled={
-              busy ||
-              working ||
-              !context ||
-              !conversation.messages.length
-            }
-            onClick={() => {
-              setWorking(true);
-              void api("distill", { id: conversation.id, kind: "topic" })
-                .then(setDraft)
-                .catch((e) => setError(e.message))
-                .finally(() => setWorking(false));
-            }}
-          >
-            整理为内容选题
-          </button>
-          <button
-            disabled={
-              busy ||
-              working ||
-              !context ||
-              !conversation.messages.length
-            }
-            onClick={() => {
-              setWorking(true);
-              void api("distill", { id: conversation.id, kind: "idea" })
-                .then(setDraft)
-                .catch((e) => setError(e.message))
-                .finally(() => setWorking(false));
-            }}
-          >
-            整理为应用方案
-          </button>
-          <button
-            disabled={!conversation.messages.length}
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(
-                  conversation.messages
-                    .map(
-                      (m) =>
-                        (m.role === "user" ? "我" : "AI") + "：" + m.content,
+          <div className="chat-subline">
+            <span className="chat-mode">
+              {conversation.artifactId ? "已关联研究产物与原始证据" : "自由讨论；从一条发现进入可带入证据"}
+            </span>
+            <div className="toolbar">
+              <button
+                disabled={busy || working || !context || !conversation.messages.length}
+                onClick={() => {
+                  setWorking(true);
+                  void api("distill", { id: conversation.id, kind: "topic" })
+                    .then(setDraft)
+                    .catch((e) => setError(e.message))
+                    .finally(() => setWorking(false));
+                }}
+              >
+                整理为内容选题
+              </button>
+              <button
+                disabled={busy || working || !context || !conversation.messages.length}
+                onClick={() => {
+                  setWorking(true);
+                  void api("distill", { id: conversation.id, kind: "idea" })
+                    .then(setDraft)
+                    .catch((e) => setError(e.message))
+                    .finally(() => setWorking(false));
+                }}
+              >
+                整理为应用方案
+              </button>
+              <button
+                disabled={!conversation.messages.length}
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(
+                      conversation.messages
+                        .map(
+                          (m) =>
+                            (m.role === "user" ? "我" : "AI") + "：" + m.content,
+                        )
+                        .join("\n\n"),
                     )
-                    .join("\n\n"),
-                )
-                .catch(() => setError("复制失败，请手动选择文字。"))
-            }
-          >
-            复制讨论
-          </button>
-          {working && <span>正在按研究 Skill 整理…</span>}
-        </div>
+                    .catch(() => setError("复制失败，请手动选择文字。"))
+                }
+              >
+                复制讨论
+              </button>
+              {working && <span>正在按研究 Skill 整理…</span>}
+            </div>
+          </div>
+          {context&&<details className="discussion-context"><summary>本次讨论的材料：{context.title} · {context.evidenceIds.length} 条证据</summary><p>{context.summary}</p><p>面向：{context.audience}</p><p>带入内容结构、事实结论、待核实问题与关联证据。没有关联的资料不会自动加入。</p></details>}
         </header>
                 {savedNotice&&<p role="status" className="notice">{savedNotice}</p>}
         <div className="messages" aria-live="polite">

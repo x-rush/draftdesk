@@ -370,6 +370,15 @@ main {
   gap: 24px;
   margin-bottom: 30px;
 }
+/* 研究讨论专用紧凑页头：单行（标题+副标题并排），把视口让给聊天面板 */
+.page-heading.page-heading-compact {
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.page-heading.page-heading-compact h1 { margin: 0; font-size: 18px; }
+.page-heading.page-heading-compact > div { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+.page-heading.page-heading-compact > div > p { margin: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .date-stamp {
   font-size: 12px;
   color: #7b886f;
@@ -1179,36 +1188,51 @@ main {
   background: white;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 350px);
+  /* 页头已收成单行紧凑条（研究讨论专用），面板可以吃掉剩余整个视口 */
+  height: calc(100vh - 205px);
   min-height: 560px;
   overflow: hidden;
 }
 .chat-panel > header {
-  padding: var(--s5) 28px;
+  padding: 14px 24px 12px;
   border-bottom: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: none;
+  background: #fcfdfa;
 }
-.chat-head { display: flex; align-items: center; gap: var(--s3); }
-.chat-head h2 { margin: 0; font-size: 18px; }
-.chat-head .pill { margin-left: auto; flex: none; }
-.chat-panel > header .discussion-context { align-self: stretch; }
-.chat-panel > header .toolbar { margin: 0; justify-content: flex-start; flex-wrap: wrap; }
-.chat-panel > header p {
-  font-size: 12px;
-  color: var(--muted);
+.chat-head { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.chat-head h2 {
   margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  /* 讨论标题=完整提问原文，单行截断（全文字数可能上百），悬停有 title 提示 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
+.chat-head .pill { margin-left: auto; flex: none; }
+.chat-subline {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+.chat-subline .chat-mode { font-size: 12px; color: var(--muted); flex: none; }
+.chat-subline .toolbar { margin: 0 0 0 auto; justify-content: flex-end; flex-wrap: wrap; }
+.chat-subline .toolbar button { padding: 5px 10px; font-size: 12px; }
+.chat-panel > header .discussion-context { align-self: stretch; }
 .messages {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 28px 32px;
+  /* 内容列居中收窄（宽屏可读性），滚动条仍贴面板右缘 */
+  padding: 24px max(28px, calc((100% - 860px) / 2));
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 .messages .empty { padding: 48px 24px; margin: auto; }
 .message {
@@ -1217,7 +1241,7 @@ main {
   border-radius: 12px;
   padding: var(--s4) var(--s5);
   margin: 0;
-  max-width: 880px;
+  max-width: 100%;
 }
 .message.user {
   align-self: flex-end;
@@ -1226,10 +1250,14 @@ main {
   border-bottom-right-radius: 4px;
   max-width: 78%;
 }
+/* 助手消息去框：对话主体是内容不是卡片，box-in-box 是上一版挤压感的来源之一 */
 .message.assistant {
-  align-self: flex-start;
+  align-self: stretch;
   width: 100%;
-  border-bottom-left-radius: 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 2px 4px;
 }
 .message > strong {
   display: inline-block;
@@ -1284,6 +1312,9 @@ main {
   .history { position: static; max-height: 220px; min-height: 0; }
   .chat-panel { height: auto; min-height: 0; }
   .messages { max-height: 52vh; flex: none; }
+  .chat-subline { flex-wrap: wrap; }
+  .chat-subline .toolbar { margin-left: 0; justify-content: flex-start; }
+  .page-heading.page-heading-compact > div { flex-wrap: wrap; }
 }
 .page-footer {
   padding: 20px 42px;
