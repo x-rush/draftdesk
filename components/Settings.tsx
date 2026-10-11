@@ -1,6 +1,7 @@
 "use client";
 // 模型与设置视图（PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
-import { useState } from "react";
+// 每日成本看板（成本纪律批 7）：近 7 天调用台账（cheap/full 拆分），今日超昨日 150% 标黄。
+import { useEffect, useState } from "react";
 import { api, Field } from "./ui";
 
 export function Settings({
@@ -10,6 +11,10 @@ export function Settings({
   config: any;
   onChange: () => Promise<void>;
 }) {
+  const [metrics, setMetrics] = useState<any[]>([]);
+  useEffect(() => {
+    void api<{ items: any[] }>("model-metrics?days=7").then((r) => setMetrics(r.items || [])).catch(() => {});
+  }, []);
   const [value, setValue] = useState({
     baseUrl: config.baseUrl,
     model: config.model,
@@ -120,6 +125,40 @@ export function Settings({
           onChange={(e) => setValue({ ...value, apiKey: e.target.value })}
         />
       </Field>
+      </section>
+      <section className="form-section">
+        <h2>每日成本看板</h2>
+        <span className="helper-text">
+          内置模型调用台账（判断/分类记 cheap，产出记 full；cheap 连续 2 次不过合同自动升 full 重试并记升级）。
+          今日 tokens 超昨日 150% 标黄提示。零价值调用零容忍：已消费不重跑、空池跳过、联想/竞争度只做高分词。
+        </span>
+        {metrics.length > 0 && (() => {
+          const today = metrics[0], yesterday = metrics[1];
+          const spike = yesterday && yesterday.tokens > 0 && today.tokens > yesterday.tokens * 1.5;
+          return (
+            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 10, fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                  <th style={{ padding: "4px 8px" }}>日期</th><th>调用</th><th>tokens</th><th>cheap</th><th>full</th><th>升档</th><th>占每日上限</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.slice(0, 2).map((m, i) => (
+                  <tr key={m.id} style={{ background: i === 0 && spike ? "rgba(234,179,8,.14)" : undefined }}>
+                    <td style={{ padding: "4px 8px" }}>{i === 0 ? "今日" : "昨日"} {m.id}{i === 0 && spike ? " 🔶 较昨日 +150%+" : ""}</td>
+                    <td>{m.calls}</td>
+                    <td>{m.tokens.toLocaleString()}</td>
+                    <td>{m.byPlan?.cheap?.calls ?? 0} 次 / {(m.byPlan?.cheap?.tokens ?? 0).toLocaleString()}</td>
+                    <td>{m.byPlan?.full?.calls ?? 0} 次 / {(m.byPlan?.full?.tokens ?? 0).toLocaleString()}</td>
+                    <td>{m.upgrades ?? 0}</td>
+                    <td>{config.dailyTokenLimit ? Math.round((m.tokens / config.dailyTokenLimit) * 100) + "%" : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        })()}
+        {metrics.length === 0 && <p className="muted" style={{ marginTop: 8 }}>暂无调用记录（有内置模型调用后出现）。</p>}
       </section>
       <section className="form-section">
         <h2>我的兴趣类别</h2>

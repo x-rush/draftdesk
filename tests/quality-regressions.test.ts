@@ -22,7 +22,7 @@ test("资讯漏 details 可修复，连续缺失则拒绝，不用默认值掩�
     }) as any;
     const result=generateStructured(db,{id:"test"} as any,"editorial",{evidence},contract,new AbortController().signal,request);
     if(recover) assert.deepEqual(await result,contract.parse(repaired));
-    else await assert.rejects(result,/连续两次未满足数据合同/);
+    else await assert.rejects(result,/连续未满足数据合同/);
     assert.equal(calls,2);
     assert.ok(logs.every(entry=>entry[0]==="job-validation"));
   }

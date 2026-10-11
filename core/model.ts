@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { z as schema } from "zod";
 import { AppError, Store } from "./store";
 import type { Job } from "./schema";
+import { recordModelMetrics, recordModelUpgrade } from "./model-metrics";
 export type ModelMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -34,6 +35,7 @@ export async function requestModel(
     jobId?: string;
     fetch?: typeof fetch;
     maxOutputTokens?: number;
+    plan?: "cheap" | "full";
   },
 ) {
   options.signal.throwIfAborted();
@@ -146,6 +148,8 @@ export async function requestModel(
     usage = value.usage?.total_tokens || 0;
   }
   db.settleReservation(reservationDay,reservation,usage,options.jobId);
+  // 成本纪律批 7：每次成功调用进台账（cheap=判断/分类，full=产出/默认）
+  recordModelMetrics(db, options.plan === "cheap" ? "cheap" : "full", usage);
   if (!output.trim())
     throw new AppError(
       "模型没有输出正文，可能思考额度不足或返回格式不兼容。",
@@ -325,6 +329,7 @@ export async function structured<T>(
   resultSchema: z.ZodType<T>,
   signal: AbortSignal,
   request = requestModel,
+  tier: "cheap" | "full" = "full",
 ): Promise<T> {
   // Short, exact aliases reduce transcription errors without relaxing provenance checks.
   const evidence = input && typeof input === "object" && "evidence" in input
@@ -356,11 +361,17 @@ export async function structured<T>(
     },
     { role: "user", content: JSON.stringify(remap(input,aliases)) },
   ];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // 成本纪律批 7：cheap 档连续 2 次不过合同 → 单次升 full 重试（记 upgrades）；
+  // full 档维持 2 次上限（结构修复一次）。
+  const maxAttempts = tier === "cheap" ? 3 : 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const plan = tier === "cheap" && attempt >= 2 ? "full" : tier;
+    if (plan === "full" && tier === "cheap") recordModelUpgrade(db);
     const response = await request(db, messages, {
       signal,
       json: true,
       jobId: job.id,
+      plan,
     });
     try {
       return resultSchema.parse(
@@ -374,16 +385,24 @@ export async function structured<T>(
         ? fields.slice(0, 12).map((issue) => `${issue.path.join(".")}: ${issue.message}`)
         : ["正文必须是有效的单个 JSON 对象，不能截断或包含代码围栏之外的说明。"];
       db.put("job-validation", job.id, { at: new Date().toISOString(), attempt: attempt + 1, issues, response: response.text });
-      if (attempt === 1)
+      if (attempt === maxAttempts - 1)
         throw new AppError(
-          "模型输出连续两次未满足数据合同：" + issues.slice(0, 3).join("；") + "。未将不完整结果入库。",
+          "模型输出连续未满足数据合同（含升档重试）：" + issues.slice(0, 3).join("；") + "。未将不完整结果入库。",
         );
-      db.step(
-        job.id,
-        "结构修复",
-        "running",
-        "输出不符合合同，最多修复一次，仍受预算限制。",
-      );
+      if (attempt >= 1)
+        db.step(
+          job.id,
+          "结构修复（full 升档重试）",
+          "running",
+          "cheap 档连续两次未过合同，按成本纪律升 full 档重试一次，仍受预算限制。",
+        );
+      else
+        db.step(
+          job.id,
+          "结构修复",
+          "running",
+          "输出不符合合同，最多修复一次，仍受预算限制。",
+        );
       messages.push(
         { role: "assistant", content: response.text.slice(0, 18000) },
         {

@@ -11,6 +11,8 @@ export const RETENTION = {
   evidence: { autoConsumeOlderThanDays: 30 },
   // 热词词库（热词掘金 v3）：archived 超 90 天清理出库，活跃词库目标 5000-8000 条量级。
   seenTerms: { purgeArchivedAfterDays: 90 },
+  // 模型调用台账（成本纪律批 7）：看板只看近 7 天，留一个月余量后清理。
+  modelMetrics: { purgeAfterDays: 35 },
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
@@ -24,9 +26,10 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   let backup: JanitorBackup;
   try { backup = runDailyBackup(db); }
   catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
+  const metricsPurged = purgeOldModelMetrics(db);
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, backup, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, backup, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -105,6 +108,17 @@ export function purgeArchivedSeenTerms(db: Store): number {
     // 出库后失效三区缓存（版本消费方在 core/seen-terms.ts）
     const prev = db.get<{ n: number }>("meta", "seen-terms-version");
     db.put("meta", "seen-terms-version", { n: (prev?.n ?? 0) + 1 });
+  }
+  return purged;
+}
+
+// 模型调用台账清理（成本纪律批 7）：超窗口的按日台账直接删除（id=YYYY-MM-DD 词典序可比）。
+export function purgeOldModelMetrics(db: Store): number {
+  const cutoff = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" })
+    .format(new Date(Date.now() - RETENTION.modelMetrics.purgeAfterDays * 86400000));
+  let purged = 0;
+  for (const m of db.list<any>("model-metrics")) {
+    if (String(m.id) < cutoff) { db.del("model-metrics", m.id); purged++; }
   }
   return purged;
 }

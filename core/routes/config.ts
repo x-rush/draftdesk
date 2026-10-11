@@ -6,6 +6,7 @@ import { json } from "../http/middleware";
 import { AppError } from "../store";
 import { configSchema } from "../schema";
 import { requestModel } from "../model";
+import { recentModelMetrics } from "../model-metrics";
 import { searchProvider } from "../sources";
 
 // persona 人设配置（决策个性化输入）；字段宽松校验，结构由 UI 与种子约定。
@@ -24,6 +25,16 @@ export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "aiPolicy", handler: ({ db }) => json(db.get("config", "aiPolicy") || null) },
   { methods: ["GET"], pattern: "consumerMode", handler: ({ db }) => json(db.get("config", "consumerMode") || "external") },
   { methods: ["GET"], pattern: "planMode", handler: ({ db }) => json(db.get("config", "planMode") || "collect-and-analyze") },
+  {
+    // 每日成本看板（成本纪律批 7）：近 N 天调用台账（cheap/full 拆分 + 升级次数），
+    // 附每日 token 上限供 UI 计算占比与 150% 标黄。
+    methods: ["GET"],
+    pattern: "model-metrics",
+    handler: ({ db, query }) => {
+      const days = Math.min(30, Math.max(1, Number(query.get("days")) || 7));
+      return json({ items: recentModelMetrics(db, days), dailyTokenLimit: db.config().dailyTokenLimit });
+    },
+  },
   {
     methods: ["POST"],
     pattern: "config",
