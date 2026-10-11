@@ -34,16 +34,17 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
           {filtered.map((t) => {
             const project = projects.find((p) => p.term === t.term);
             return (
-              <article className="discovery-row" key={t.term}>
+              <article className="discovery-row card-row" key={t.term}>
                 <div className="row-number">{String(t.frequency ?? 0)}</div>
                 <div className="row-content">
-                  <div className="row-meta">
-                    <span className="pill">{t.siteType || "待评估站型"}</span>
-                    {t.category && <span className="pill">{t.category}</span>}
-                    <span>{(t.sources || []).join(" · ")}</span>
-                    {t.trend7d && <small>7 天趋势：{t.trend7d}</small>}
+                  <div className="card-row-top" style={{ marginBottom: 4 }}>
+                    <strong className="card-title">{t.term}</strong>
+                    <span className="card-badges">
+                      <span className="pill">{t.siteType || "待评估站型"}</span>
+                      {t.category && <span className="pill">{t.category}</span>}
+                      <span className="hotspot-row-meta">{(t.sources || []).join(" · ")}{t.trend7d ? ` · 7 天趋势 ${t.trend7d}` : ""}</span>
+                    </span>
                   </div>
-                  <strong style={{ fontSize: 16 }}>{t.term}</strong>
                   {t.domainSuggestions?.length ? (
                     <p>
                       域名建议（仅建议）：
@@ -68,13 +69,16 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
                     {(t.sourceUrls || []).slice(0, 3).map((u: string) => <a key={u} href={u} target="_blank" rel="noopener noreferrer">数据源 ↗</a>)}
                   </div>
                 </div>
-                <div className="row-side">
-                  {project ? (
-                    <small>已立项 · {project.status}</small>
-                  ) : (
-                    <button className="primary" disabled={busy} onClick={() => void act(async () => { await api("site-projects", { term: t.term }); setNotice("已立项建站（pending）。"); })}>推进 · 立项建站</button>
-                  )}
-                  <button className="button-secondary" disabled={busy} onClick={() => setIgnored([...ignored, t.term])}>忽略</button>
+                <div className="card-row-bottom" style={{ marginTop: 8 }}>
+                  <span className="card-meta">{project ? `已立项 · ${project.status}` : (t.siteRationale ? "" : "待外部 Agent 补充评估")}</span>
+                  <span className="card-actions">
+                    {project ? (
+                      <small>已立项 · {project.status}</small>
+                    ) : (
+                      <button className="primary" disabled={busy} onClick={() => void act(async () => { await api("site-projects", { term: t.term }); setNotice("已立项建站（pending）。"); })}>推进 · 立项建站</button>
+                    )}
+                    <button className="button-secondary" disabled={busy} onClick={() => setIgnored([...ignored, t.term])}>忽略</button>
+                  </span>
                 </div>
               </article>
             );

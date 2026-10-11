@@ -123,7 +123,7 @@ export function Settings({
         <h2>我的兴趣类别</h2>
         <span className="helper-text">勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</span>
       <Field label="兴趣类别（可多选）">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           {(["模型动态", "Agent生态", "图像视频", "开发工具", "成本额度", "教程实战", "其他"] as const).map((cat) => (
             <label className="check" key={cat}>
               <input

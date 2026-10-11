@@ -679,9 +679,12 @@ main {
 }
 .plan-row {
   display: flex;
-  gap: 22px;
-  padding: 27px 0;
-  border-bottom: 1px solid var(--line);
+  gap: var(--s5);
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcf9;
+  margin: var(--s3) 0;
 }
 .plan-icon {
   background: #e7eddf;
@@ -1144,7 +1147,11 @@ main {
 .chat-panel > header {
   padding: 23px;
   border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
+.chat-panel > header .toolbar { margin: 0; justify-content: flex-start; }
 .chat-panel > header p {
   font-size: 12px;
   color: var(--muted);
@@ -1370,6 +1377,8 @@ main {
 }
 .row-fold { margin-top: 6px; }
 .row-fold summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.plan-content .row-fold { display: inline-block; margin: 4px 0; }
+.plan-content .card-meta { -webkit-line-clamp: 1; }
 /* 卡片内边距统一 16px（原 18-26px 混用） */
 .surface { padding: var(--s4); }
 .run { padding: var(--s4); }

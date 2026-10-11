@@ -69,9 +69,10 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                   </button>
                   <p>{o.keyPoints?.[0] || "暂无写作角度；可进讨论补齐。"}</p>
                   <div className="tags">
-                    {(o.evidenceRefs || []).slice(0, 3).map((ref: string) => (
+                    {(o.evidenceRefs || []).slice(0, 1).map((ref: string) => (
                       <a key={ref} href={ref} target="_blank" rel="noopener noreferrer">数据源 ↗</a>
                     ))}
+                    {(o.evidenceRefs?.length || 0) > 1 && <span>+{o.evidenceRefs.length - 1}</span>}
                     {(o.evidenceRefs?.length || 0) > 3 && <span>+{o.evidenceRefs.length - 3}</span>}
                   </div>
                 </div>
