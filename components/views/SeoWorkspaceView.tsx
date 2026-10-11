@@ -124,14 +124,23 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
             <p className="muted">没有匹配的热词。</p>
           ) : (
             <>
-              <div className="term-chips" role="list" aria-label="热词全量词表">
+              <div className="discovery-list" role="list" aria-label="热词全量词表">
                 {ws.seenList.items.map((t: any) => (
-                  <button className="term-chip" key={t.id} role="listitem"
-                    aria-label={`热词 ${t.term}，观测 ${t.observations} 次${t.intent ? `，${DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}` : ""}`}
-                    onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>
-                    {t.term}
-                    <small>×{t.observations}{isLongTail(t.term) ? " 🎯" : ""}{t.seed ? " ◌" : ""}</small>
-                  </button>
+                  <article className="discovery-row" key={t.id} role="listitem" style={{ padding: "18px 4px" }}>
+                    <div className="row-content">
+                      <div className="row-meta">
+                        <span className="pill">{t.status}</span>
+                        {t.intent && <span>{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
+                        {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
+                        {t.seed && <span>血缘：{t.seed}</span>}
+                        <span>观测 {t.observations} 次</span>
+                      </div>
+                      <button className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>{t.term}</button>
+                    </div>
+                    <div className="row-side">
+                      <button onClick={() => { void navigator.clipboard.writeText(t.term); setNotice("已复制搜索词：" + t.term); }}>复制</button>
+                    </div>
+                  </article>
                 ))}
               </div>
               <Pagination info={{ page: ws.seenPage, pages: Math.max(1, Math.ceil(ws.seenList.total / 50)), pageSize: 50, total: ws.seenList.total }} onChange={ws.setSeenPage} disabled={ws.seenLoading} />

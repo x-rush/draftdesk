@@ -37,20 +37,17 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           return groups.flatMap(([label, items]) => [
             <div className="section-head" key={"h-" + label}><h3>{label}</h3><span className="card-meta">{items.length} 个</span></div>,
             ...items.map((s) => (
-          <article className="source-row" key={s.id}>
-            <div>
-              <span className="pill">{s.type.toUpperCase()}</span>
-              <h2>{s.name}</h2>
+          <article className="discovery-row" key={s.id}>
+            <div className="row-content">
+              <div className="row-meta">
+                <span className="pill">{s.type.toUpperCase()}</span>
+                <span>{s.enabled ? "已启用" : "已停用"}</span>
+              </div>
+              <button className="article-title" style={{ fontSize: 17 }} onClick={() => setSource(s)}>{s.name}</button>
               <p>{s.note}</p>
-              <small>
-                {s.url ||
-                  s.query ||
-                  s.region ||
-                  "使用策略中的关键词"}{" "}
-                · {s.enabled ? "已启用" : "已停用"}
-              </small>
+              <div className="tags"><span>{s.url || s.query || s.region || "使用策略中的关键词"}</span></div>
             </div>
-            <div className="source-actions">
+            <div className="row-side">
               {s.type === "aggregated" && <button disabled={sourceChecks[s.id] === "检测中…"} onClick={async () => {
                 setSourceChecks(old => ({ ...old, [s.id]: "检测中…" }));
                 try { const result = await api<{ count: number; updatedAt: string }>("source-check", { sourceId: s.id }); setSourceChecks(old => ({ ...old, [s.id]: `可用 · ${result.count} 条 · 更新于 ${date(result.updatedAt)}` })); }

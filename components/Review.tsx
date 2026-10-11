@@ -230,7 +230,7 @@ export function Review() {
         const dupCount = group.members.length;
           const cluster = clusters.find((c) => c.id === row.clusterId);
           return (
-          <div className="review-row card-row" key={row.id}>
+          <div className="review-row" key={row.id}>
             <div className="card-row-top">
               <label className="check">
                 <input
@@ -249,23 +249,23 @@ export function Review() {
               ) : (
                 <strong className="card-title">{row.title}</strong>
               )}
-              <span className="card-badges">
+              <span className="card-badges" style={{ rowGap: 4 }}>
                 {dupCount > 1 && (
                   <button className="creation-badge" style={{ cursor: "pointer" }} onClick={() => toggleGroup(row.title)}>
                     同题 ×{dupCount}{openGroups.has(row.title) ? " ▲" : " ▼"}
                   </button>
                 )}
-                <span className="creation-badge">{sourceFilterLabels[row.sourceType] || row.sourceType}</span>
-                <span className="creation-badge">{row.kind}</span>
                 <span className="creation-badge">{statusLabels[row.decision]}</span>
-                {row.quality && <span className="creation-badge">证据可信度 {qualityLabels[row.quality] || row.quality}</span>}
+                <span className="creation-badge">{row.kind}</span>
+                {row.quality && <span className="creation-badge">可信度 {qualityLabels[row.quality] || row.quality}</span>}
                 {row.creationStatus && row.creationStatus !== "inbox" && <span className="creation-badge">{(creationLabels as Record<string,string>)[row.creationStatus] || row.creationStatus}</span>}
-                {row.rejectReason && <span className="creation-badge">否决原因 {row.rejectReason}</span>}
+                {row.rejectReason && <span className="creation-badge">否决：{row.rejectReason}</span>}
               </span>
             </div>
             {row.summary && <p className="card-summary">{row.summary.slice(0, 200)}</p>}
             <div className="card-row-bottom">
               <span className="card-meta">
+                <span className="creation-badge" style={{ background: "transparent", padding: 0 }}>{sourceFilterLabels[row.sourceType] || row.sourceType}</span>
                 {row.createdAt ? date(row.createdAt) : ""}
                 {row.evidenceCount !== undefined ? ` · 证据 ${row.evidenceCount} 条` : ""}
                 {row.producedBy ? ` · ${producedByLabel(row.producedBy)}` : ""}

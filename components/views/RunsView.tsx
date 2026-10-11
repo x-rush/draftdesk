@@ -41,23 +41,20 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
         </Empty>
       ) : (
         jobs.map((j) => (
-          <section className="run" key={j.id}>
-            <div className="card-row-top">
-              <h2 className="card-title">{j.plan.name}</h2>
-              <span className="card-badges">
-                <span className={"pill state-" + j.state}>
-                  {{ queued: "等待", running: "运行中", completed: "完成", failed: "失败", cancelled: "已取消" }[j.state]}
-                </span>
-              </span>
+          <article className="discovery-row" key={j.id}>
+            <div className="row-content">
+              <div className="row-meta">
+                <span className={"pill state-" + j.state}>{{ queued: "等待", running: "运行中", completed: "完成", failed: "失败", cancelled: "已取消" }[j.state]}</span>
+                <span>{date(j.createdAt)}</span>
+                <span>{j.external ? "外部证据分析" : "内置采集"}</span>
+                <span>{j.evidenceIds.length} 条证据 · {j.searchCount ?? "未记录"} 次搜索</span>
+                <span>{j.calls} 次调用 · {j.actualTokens.toLocaleString()} tokens</span>
+              </div>
+              <button className="article-title" onClick={() => { if (j.state === "completed") showResults(j.id); }}>{j.plan.name}</button>
+              <p>{j.outcome === "no-findings" ? "完成 · 本轮无新增推荐" : j.stage}</p>
             </div>
-            <p className="card-summary">
-              {j.outcome === "no-findings" ? "完成 · 本轮无新增推荐" : j.stage}
-            </p>
-            <div className="card-row-bottom">
-              <span className="card-meta">
-                {date(j.createdAt)} · {j.external ? "外部证据分析" : "内置采集"} · {j.evidenceIds.length} 条证据 · {j.searchCount ?? "未记录"} 次搜索 · {j.calls} 次调用 · {j.actualTokens.toLocaleString()} tokens
-              </span>
-              <span className="card-actions">
+            <div className="row-side">
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {j.state === "completed" && <button className="button-secondary" onClick={() => showResults(j.id)}>查看本次结果</button>}
                 {["queued", "running"].includes(j.state) && (
                   <button disabled={busy || j.cancelRequested} onClick={() => void act(async () => { await api("cancel", { id: j.id }); })}>
@@ -65,20 +62,21 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                   </button>
                 )}
                 {["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 &&
-                  <button className="button-secondary" disabled={busy || data.stats.activePlanIds.includes(j.planId)}
+                  <button disabled={busy || data.stats.activePlanIds.includes(j.planId)}
                     onClick={() => void act(async () => {
                       await api("jobs", { planId: j.planId, evidenceIds: j.evidenceIds });
                     })}>使用保留证据重试</button>}
-              </span>
+              </div>
             </div>
-            {j.error && <p className="error" style={{ maxWidth: 720 }}>{j.error}</p>}
-            {j.warnings.map((w, i) => (
-              <p className="warning" key={i}>
-                {w}
-              </p>
-            ))}
-            {!isNoFindings(j) && <ResearchBrief job={j} />}
-            {!isNoFindings(j) && <details className="row-fold">
+            <div style={{ width: "100%" }}>
+              {j.error && <p className="error" style={{ maxWidth: 760 }}>{j.error}</p>}
+              {j.warnings.map((w, i) => (
+                <p className="warning" key={i}>
+                  {w}
+                </p>
+              ))}
+              {!isNoFindings(j) && <ResearchBrief job={j} />}
+              {!isNoFindings(j) && <details className="row-fold">
               <summary>步骤、预算与技能版本{["failed", "cancelled"].includes(j.state) && j.evidenceIds.length > 0 ? " · 重试说明" : ""}</summary>
               {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
               <ol className="timeline">
@@ -112,7 +110,8 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                 导出中间分析
               </button>
             </details>}
-          </section>
+            </div>
+          </article>
         ))
       )}
       {runId && <button onClick={() => setRunId("")}>查看全部运行记录</button>}

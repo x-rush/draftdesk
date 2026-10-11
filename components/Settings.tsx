@@ -90,21 +90,23 @@ export function Settings({
         <span className="helper-text">
           研究、审稿与讨论共用同一模型。填写百炼 API Key，而非阿里云 AccessKey ID / Secret。
         </span>
-      <Field label="API Base URL">
-        <input
-          type="url"
-          required
-          value={value.baseUrl}
-          onChange={(e) => setValue({ ...value, baseUrl: e.target.value })}
-        />
-      </Field>
-      <Field label="模型标识">
-        <input
-          required
-          value={value.model}
-          onChange={(e) => setValue({ ...value, model: e.target.value })}
-        />
-      </Field>
+      <div className="form-grid-2">
+        <Field label="API Base URL">
+          <input
+            type="url"
+            required
+            value={value.baseUrl}
+            onChange={(e) => setValue({ ...value, baseUrl: e.target.value })}
+          />
+        </Field>
+        <Field label="模型标识">
+          <input
+            required
+            value={value.model}
+            onChange={(e) => setValue({ ...value, model: e.target.value })}
+          />
+        </Field>
+      </div>
       <Field
         label={
           "百炼 API Key · " +
