@@ -16,7 +16,7 @@ export const RETENTION = {
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
@@ -76,7 +76,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, backup };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, integrity, backup };
   db.put("meta", "janitor", result);
   return result;
 }

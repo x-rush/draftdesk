@@ -58,6 +58,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
         )
       )}
       {tab === "candidates" && (
+      <>
       <div className="filter-row">
         <select aria-label="按站型筛选" value={siteType} onChange={(e) => setSiteType(e.target.value)}>
           <option value="all">全部站型</option>
@@ -118,7 +119,8 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
             );
           })}
         </div>
-      )
+      )}
+      </>
       )}
     </>
   );

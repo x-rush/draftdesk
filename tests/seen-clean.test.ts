@@ -46,14 +46,14 @@ test("清洗：11 跑题种子 + 血缘家族词归档出库；白名单豁免�
     assert.equal(report.family, 3, "三个家族词（含二代）出池");
     assert.equal(report.archived, 6);
     for (const term of ["自动驾驶", "自動駕駛", "自动点击器", "自动驾驶 等级划分", "tesla fsd 订阅", "fsd 价格"]) {
-      const doc = db.get<any>("seen-terms", termId(term));
+      const doc: any = db.get<any>("seen-terms", termId(term));
       assert.equal(doc.status, "archived", `${term} 应归档`);
       assert.equal(doc.relevance, "off");
       assert.equal(doc.offTopic, true);
       assert.equal(doc.archivedReason, "seed-pollution-clean-v1");
     }
     for (const term of ["AI短剧授权平台", "AI生成内容版权", "claude skills 教程", "n8n 工作流"]) {
-      const doc = db.get<any>("seen-terms", termId(term));
+      const doc: any = db.get<any>("seen-terms", termId(term));
       assert.notEqual(doc.status, "archived", `${term} 白名单/无关词不应被动`);
     }
     // 幂等：再跑一遍 0 归档

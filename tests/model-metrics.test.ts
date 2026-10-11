@@ -54,8 +54,8 @@ test("structured cheap 档：连续 2 次不过合同 → 第 3 次升 full 重�
     const plans: string[] = [];
     const request = async (_db: any, _messages: any, opts: any) => {
       plans.push(opts.plan);
-      if (opts.plan !== "full") return { text: "不是合法 JSON，模拟 cheap 输出不过合同" };
-      return { text: JSON.stringify({ ok: true }), usage: 10 };
+      if (opts.plan !== "full") return { text: "不是合法 JSON，模拟 cheap 输出不过合同", usage: 0, reservation: 0 } as any;
+      return { text: JSON.stringify({ ok: true }), usage: 10, reservation: 0 };
     };
     const result = await structured(db, jobFixture("j1"), "skill", {}, schema, AbortSignal.timeout(5000), request, "cheap");
     assert.equal(result.ok, true);
@@ -66,7 +66,7 @@ test("structured cheap 档：连续 2 次不过合同 → 第 3 次升 full 重�
     // full 档维持 2 次上限
     db.put("jobs", "j2", jobFixture("j2"));
     const plans2: string[] = [];
-    const failing = async (_db: any, _m: any, opts: any) => { plans2.push(opts.plan); return { text: "not json" }; };
+    const failing = async (_db: any, _m: any, opts: any) => { plans2.push(opts.plan); return { text: "not json", usage: 0, reservation: 0 } as any; };
     await assert.rejects(structured(db, jobFixture("j2"), "skill", {}, schema, AbortSignal.timeout(5000), failing, "full"));
     assert.equal(plans2.length, 2, "full 档只有 2 次尝试");
   } finally {
