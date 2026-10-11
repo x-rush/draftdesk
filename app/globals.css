@@ -1454,9 +1454,10 @@ main {
 .help-bubble { position: relative; display: inline-flex; }
 .help-bubble > .help-pop {
   position: absolute; z-index: 30; top: calc(100% + 8px); right: 0;
+  width: 320px;
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
   padding: var(--s3) var(--s4); box-shadow: 0 12px 36px #233b3226;
-  max-width: 420px; font-size: 12px; line-height: 1.5; color: var(--muted);
+  font-size: 12px; line-height: 1.55; color: var(--ink);
 }
 .more-menu { position: relative; display: inline-block; }
 .more-menu .menu-pop {

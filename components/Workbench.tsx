@@ -8,6 +8,7 @@ import { Hotspots } from "./Hotspots";
 import { formatApiError, api, download, Drawer, Empty } from "./ui";
 import { Review } from "./Review";
 import { ActivityBatchesPanel } from "./ActivityBatchesPanel";
+import { MessageContent } from "./MessageContent";
 import type { Artifact, Plan, Source } from "../core/schema";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { PlanEditor, SourceEditor } from "./ResearchSetup";
@@ -362,7 +363,7 @@ export function Workbench() {
           onClose={() => setSkill(undefined)}
           wide
         >
-          <pre className="skill-content">{skill.content}</pre>
+          <MessageContent text={skill.content} />
         </Drawer>
       )}
     </div>
