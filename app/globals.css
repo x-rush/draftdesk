@@ -1614,7 +1614,9 @@ details.activity-import-fold > summary { font-size: 14px; }
   padding-top: 9px;
   border-top: 1px dashed #e4ebda;
 }
-.plan-foot small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-foot small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.plan-foot .term-actions { flex: none; }
+.plan-foot .term-actions button { white-space: nowrap; }
 @media (max-width: 900px) { .plan-grid { grid-template-columns: 1fr; } }
 
 
