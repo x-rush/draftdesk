@@ -48,9 +48,10 @@ export function Connections({
       <div className="split-main">
       {error && <p className="error" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
+      <p className="dash-label step-flow"><span className="step-no">1</span>第一步 · 生成接入说明<span className="dash-label-sub">选运行器 / 位置 / 模式 → 复制提示词交给 Agent 自检试跑</span></p>
       <AgentSetup plan={plans.find(p=>p.id===plan)} sources={sources}/>
+      <p className="dash-label step-flow"><span className="step-no">2</span>第二步 · 创建接入令牌<span className="dash-label-sub">提交回传为默认能力；读取 / 消费 / 建议写回按需勾选 · 活跃 {connections.filter((c: any) => !c.revoked).length} 个</span></p>
       <section className="surface">
-        <h2>接入令牌</h2>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -140,9 +141,9 @@ export function Connections({
           </details>
         )}
       </section>
+      <p className="dash-label">📥 备用 · 手动导入证据包<span className="dash-label-sub">粘贴符合协议的 JSON，无需令牌</span></p>
       <section className="surface">
-        <h2>手动导入证据包</h2>
-        <p>也可以直接粘贴符合协议的 JSON，不需要创建令牌。</p>
+        <p className="muted" style={{ marginTop: 0 }}>也可以直接粘贴符合协议的 JSON，不需要创建令牌。</p>
         <textarea
           aria-label="证据包 JSON"
           rows={7}
@@ -194,8 +195,8 @@ export function Connections({
           </button>
         </div>
       </section>
+      <p className="dash-label step-flow"><span className="step-no">3</span>第三步 · 收件箱<span className="dash-label-sub">外部提交的回执、产物与入口 · 共 {receipts.length} 份</span></p>
       <section className="surface">
-        <h2>收件箱</h2>
         {!receipts.length && (
           <p className="muted">
             还没有外部提交。收到证据包后，会在这里显示来源、数量与回执。

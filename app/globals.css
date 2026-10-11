@@ -1604,6 +1604,24 @@ details.activity-import-fold > summary { font-size: 14px; }
 
 
 
+
+/* ── 外部接入：分步流程标签（圆点步骤号）── */
+.dash-label.step-flow { gap: 10px; }
+.step-no {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #253b32;
+  color: #dfe9d8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+
 /* ── 数据源信号台（分类批）：源行两行式（名称行+说明钳行）── */
 .source-cell { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .term-title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
