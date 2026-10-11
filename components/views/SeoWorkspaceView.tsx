@@ -33,8 +33,7 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
   const safePage = Math.min(pages, Math.max(1, page));
   const pageItems = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  // ② 选题×搜索词：outline keyPoints 的「建议搜索词:」前缀行
-  const matched = (ws.outlines || []).filter((o) => (o.keyPoints || []).some((k: string) => k.startsWith("建议搜索词:")));
+
 
   // 热词雷达（三层，词表分页批起为服务端口径）：🆕 status=new 首见降序 /
   // 📈 观测≥3 且 7 天内首见观测降序 / 🔥 sustained daysSeen 长度降序。各 20 条带总数。
@@ -159,13 +158,11 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
         )}
       </section>
       <nav className="discovery-modes" aria-label="SEO 板块">
-        {[["terms", "全量热词"], ["matched", "选题×搜索词"], ["intent", "意图分层"]].map(([id, label]) => (
-          <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id as typeof tab)}>{label}</button>
-        ))}
+        <button className="active" aria-current="page">全量热词</button>
       </nav>
-      {ws.seenLoading && !ws.seenList.items.length && !terms.length && tab !== "radar" && <Skeleton rows={3} label="热词趋势加载中" />}
-      {terms.length === 0 && tab !== "radar" && <Empty title="还没有搜索词数据。">
-        外部 Agent 每日写入 seo-terms（词频/意图/源链接）后，这里会出现全量词表、选题匹配与意图分层。
+      {ws.seenLoading && !ws.seenList.items.length && !terms.length && <Skeleton rows={3} label="热词趋势加载中" />}
+      {terms.length === 0 && <Empty title="还没有搜索词数据。">
+        外部 Agent 每日写入 seo-terms（词频/意图/源链接）后，这里会出现全量词表。
       </Empty>}
       {terms.length > 0 && tab === "terms" && (
         <>
@@ -201,37 +198,6 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
           </div>
           <Pagination info={{ page: safePage, pages, pageSize, total: filtered.length }} onChange={setPage} disabled={busy} />
         </>
-      )}
-      {terms.length > 0 && tab === "matched" && (matched.length === 0
-        ? <Empty title="还没有选题带建议搜索词。">大纲 keyPoints 中写入「建议搜索词:」前缀行后，这里自动配对。</Empty>
-        : <div className="discovery-list">
-          {matched.map((o) => (
-            <article className="discovery-row" key={o.id}>
-              <div className="row-content">
-                <div className="row-meta"><span>{o.platform}</span><span>{o.decision}</span></div>
-                <strong>{o.title}</strong>
-                <div className="tags">
-                  {(o.keyPoints || []).filter((k: string) => k.startsWith("建议搜索词:")).map((k: string) => (
-                    <span key={k}>{k.replace("建议搜索词:", "").trim()}</span>
-                  ))}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>)}
-      {terms.length > 0 && tab === "intent" && (
-        <div className="discovery-list">
-          {INTENTS.map((it) => {
-            const group = terms.filter((t) => t.intent === it);
-            if (!group.length) return null;
-            return (
-              <section key={it} style={{ marginBottom: 14 }}>
-                <h3>{it}（{group.length}）</h3>
-                <div className="tags">{group.slice(0, 30).map((t) => <span key={t.term}>{t.term} ×{t.frequency ?? 0}</span>)}</div>
-              </section>
-            );
-          })}
-        </div>
       )}
     </>
   );
