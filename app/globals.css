@@ -1723,6 +1723,10 @@ button.stat-card.active { border-color: var(--green); box-shadow: inset 3px 0 0 
 /* G6 表格表头分隔（通用件批） */
 table th { border-bottom: 1px solid var(--line); }
 
+/* 工具行内子元素清残留外边距（discovery-modes 自带 margin-bottom 22px 会把行撑歪） */
+.radar-toolbar > .discovery-modes, .radar-toolbar > .button, .radar-toolbar > button, .radar-toolbar > details { margin-top: 0; margin-bottom: 0; }
+.radar-toolbar { align-items: center; }
+
 /* G5 disabled 语义（通用件批）：不可点要看得出来 */
 button:disabled, .button:disabled {
   cursor: not-allowed;
