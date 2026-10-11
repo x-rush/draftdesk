@@ -342,6 +342,14 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
   );
 
   return (
+    <>
+    {/* 统计条（完全重设计批）：当前快照/可分析/待核实/历史快照 */}
+    <div className="stat-strip">
+      <div className="stat-card accent"><strong>{hasBatch ? batch.length : 0}</strong><span>📄 当前快照材料</span><small>{hasBatch ? "最新一次采集或导入的原始记录" : "还没有快照——用下方向导采集"}</small></div>
+      <div className="stat-card"><strong>{eligible.length}</strong><span>✅ 可分析</span><small>有可验证的截止年份与规则</small></div>
+      <div className="stat-card"><strong>{relevantLeads.length}</strong><span>🔍 待核实线索</span><small>缺年份或规则，需人工补齐</small></div>
+      <div className="stat-card"><strong>{received.length}</strong><span>🗄 历史快照</span><small>{triage ? `AI 已入模 ${triage.selectedCount} 条` : "AI 整理尚未运行"}</small></div>
+    </div>
     <section className="surface activity-tools">
       <div className="radar-toolbar" style={{ marginTop: 0 }}>
         <nav className="activity-tabs" aria-label="创作活动资料视图">{([["recommend", "为我推荐", triage?.items.length ?? 0], ["materials", "全部材料", batch.length], ["history", "历史快照", received.length]] as Array<[ActivityView, string, number]>).map(([view, label, count]) => <button type="button" key={view} className={activeView === view ? "active" : ""} aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)}>{label}<span>{count}</span></button>)}</nav>
@@ -367,5 +375,6 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
       {drawer === "detail" && selectedItem && <Drawer title={selectedItem.title} subtitle={`${selectedItem.platform} · ${selectedItem.dateText || "时间未知"}`} onClose={() => setDrawer(null)} wide><div className="activity-detail-stack"><div className="activity-row-meta"><span className="activity-platform-tag">{selectedItem.platform}</span><span>{selectedItem.completeness === "detail" ? "详情正文" : "列表摘要"}</span><span>采集于 {formatDate(selectedItem.capturedAt)}</span></div><p><strong>判断：</strong>{activityBatchDecision(selectedItem, keywords).reason}</p><p><strong>官方来源：</strong><a href={selectedItem.url} target="_blank" rel="noopener noreferrer">{selectedItem.url} ↗</a></p><h3>原始摘录</h3><pre className="activity-raw-text">{selectedItem.text || "此条只有标题，没有正文摘录。"}</pre><div className="activity-detail-actions"><button className="primary" onClick={() => openVerify(selectedItem)}>核实规则并分析</button><a href={selectedItem.url} target="_blank" rel="noopener noreferrer">打开官方页面 ↗</a></div></div></Drawer>}
       {drawer === "verify" && <Drawer title="核实活动规则" subtitle={selectedLead || "手动添加一条官方活动"} onClose={() => setDrawer(null)} wide>{selectedLead && <p className="activity-attention">请从官方详情补全规则正文，并确认其中写明截止年份。列表摘要不能代替规则。</p>}<Field label="活动名称"><input value={title} disabled={busy} onChange={(event) => { setTitle(event.target.value); reset(); }} maxLength={300} /></Field><Field label="官方活动地址"><input value={url} disabled={busy} onChange={(event) => { setUrl(event.target.value); reset(); }} /></Field><Field label="规则正文" hint="至少 50 字；正文必须能支撑截止日期和参与条件。"><textarea rows={10} value={text} disabled={busy} maxLength={12000} onChange={(event) => { setText(event.target.value); reset(); }} /></Field><Field label="投稿截止日期（从规则正文核对）"><input type="date" value={deadlineDate} disabled={busy} onChange={(event) => setDeadlineDate(event.target.value)} /></Field><p className="field-help">{text.length} / 12000 字 · 已过期或日期无法从官方规则核对的活动不会提交模型。</p>{deadlineDate && text.trim().length >= 50 && !manualActivityDeadline(deadlineDate, text).eligible && <p className="error">{manualActivityDeadline(deadlineDate, text).reason}</p>}<div className="activity-detail-actions"><button className="primary" disabled={busy || active || text.trim().length < 50 || title.trim().length < 3 || !url || !manualActivityDeadline(deadlineDate, text).eligible} onClick={() => void run()}>{busy ? "正在提交…" : active ? "活动分析进行中" : "保存规则并分析"}</button><button type="button" onClick={() => setDrawer(null)}>稍后处理</button></div>{evidenceId && <p className="notice">原文已保存，失败可重试创建分析任务。</p>}</Drawer>}
     </section>
+    </>
   );
 }
