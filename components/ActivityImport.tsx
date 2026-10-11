@@ -355,7 +355,7 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
     <section className="surface activity-tools">
       <div className="radar-toolbar" style={{ marginTop: 0 }}>
         <nav className="activity-tabs" aria-label="创作活动资料视图">{([["recommend", "为我推荐", triage?.items.length ?? 0], ["materials", "全部材料", batch.length], ["history", "历史快照", received.length]] as Array<[ActivityView, string, number]>).map(([view, label, count]) => <button type="button" key={view} className={activeView === view ? "active" : ""} aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)}>{label}<span>{count}</span></button>)}</nav>
-        <button type="button" className="secondary" style={{ marginLeft: "auto" }} onClick={() => { setShowSetup(true); document.querySelector("details.activity-import-fold")?.scrollIntoView({ block: "center" }); }}>手动添加活动</button>
+        <button type="button" className="secondary" style={{ marginLeft: "auto" }} onClick={() => { setShowSetup(true); document.querySelector("details.activity-import-fold")?.scrollIntoView({ block: "center" }); }}>采集新活动</button>
       </div>
       {/* 来源条（原四大卡压缩）：平台+采集状态+官方入口，一行扫完 */}
       <details className="fold-card activity-import-fold" open={showSetup} onToggle={(e) => setShowSetup(e.currentTarget.open)}>

@@ -275,6 +275,7 @@ export function Discussion({
             </span>
             <div className="toolbar">
               <button
+                title={(!context || !conversation.messages.length) ? "需要关联研究产物且至少一条消息后可用" : undefined}
                 disabled={busy || working || !context || !conversation.messages.length}
                 onClick={() => {
                   setWorking(true);
@@ -287,6 +288,7 @@ export function Discussion({
                 整理为内容选题
               </button>
               <button
+                title={(!context || !conversation.messages.length) ? "需要关联研究产物且至少一条消息后可用" : undefined}
                 disabled={busy || working || !context || !conversation.messages.length}
                 onClick={() => {
                   setWorking(true);
@@ -324,7 +326,12 @@ export function Discussion({
         <div className="messages" aria-live="polite">
           {!conversation.messages.length && !busy && (
             <Empty title="从一个具体问题开始">
-              把观点变成可论证的选题，把需求变成可验证的产品。可以询问：“这个结论还缺什么证据？”
+              把观点变成可论证的选题，把需求变成可验证的产品。试试点击：
+              <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                {["这个结论还缺什么证据？", "这个需求适合做成工具站还是公众号选题？", "帮我把这段素材整理成三个内容方向"].map((q) => (
+                  <button key={q} className="button" style={{ justifyContent: "flex-start", fontSize: 13 }} onClick={() => setMessage(q)}>{q}</button>
+                ))}
+              </div>
             </Empty>
           )}
           {conversation.messages.map((m, i) => (
