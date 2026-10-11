@@ -20,8 +20,14 @@ type DoFetch = typeof fetch;
 //（=AI 提词日报与外部双写的当日产出）。
 // 三档闸（种子池污染清洗批 ①）：只有 relevance=strong 的词可回流种子池——
 // off 词（含历史误标）绝不回流，未判定词（联想展开天然缺档）过不了闸，等 LLM 判 strong。
-export function collectSeeds(db: Store, limit = SEED_LIMIT): { term: string; status: string }[] {
-  const terms = db.list<any>("seen-terms").filter((t) => t.status !== "archived" && !t.offTopic && t.relevance === "strong");
+// region 分流（海外定位批）：region 参数指定时只取该线种子（global 引擎展开海外词、
+// cn 引擎展开中文词），两条内容线数据不混；region 缺失按 global 兜底。
+export function collectSeeds(db: Store, limit = SEED_LIMIT, region?: "global" | "cn"): { term: string; status: string; region?: string }[] {
+  const terms = db.list<any>("seen-terms").filter((t) => {
+    if (t.status === "archived" || t.offTopic || t.relevance !== "strong") return false;
+    if (region && (t.region ?? "global") !== region) return false;
+    return true;
+  });
   const now = Date.now();
   const priority = terms.filter((t) => t.status === "rising" || t.status === "sustained")
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0));
@@ -152,6 +158,132 @@ export async function runSuggestExpansion(db: Store, doFetch: DoFetch = fetch, o
 }
 
 function doneKey(date: string) { return "seen-dig-done:" + date; }
+
+// ── 引擎 A 扩展（海外定位批 4）：YouTube/Amazon 联想（global）+ 百度/B站联想（cn）──
+// 容器内实测可达、零 key 零成本；限流 500ms、失败静默；region 种子分流（数据不混）。
+const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" };
+const EN_SUFFIXES = ["how to", "best", "free", "alternative", "tutorial", "vs"];
+
+// 各 provider 的展开计划：YouTube=字母+英文后缀（32/种子）、Amazon=纯字母前缀（26/种子）、
+// 中文引擎=字母+中文后缀（34/种子）。
+export function providerQueries(seed: string, kind: "yt" | "amazon" | "cn"): string[] {
+  const letters = "abcdefghijklmnopqrstuvwxyz".split("").map((l) => `${seed} ${l}`);
+  if (kind === "amazon") return letters;
+  if (kind === "yt") return [...letters, ...EN_SUFFIXES.map((s) => `${seed} ${s}`)];
+  return [...letters, ...SUFFIXES.map((s) => `${seed}${s}`)];
+}
+
+// YouTube client=youtube 返回 JSONP（window.google.ac.h([...])），兼容裸 JSON 两种形状。
+export function parseJsonpSuggest(raw: string): string[] {
+  const trimmed = raw.trim();
+  const m = trimmed.match(/^[\w.$]+\(([\s\S]*)\);?\s*$/);
+  return parseSuggestPayload(m ? m[1] : trimmed);
+}
+
+// Amazon completion API：{suggestions:[{value}]}
+export function parseAmazonPayload(raw: string): string[] {
+  try {
+    const data = JSON.parse(raw);
+    return (Array.isArray(data?.suggestions) ? data.suggestions : []).map((s: any) => String(s?.value ?? ""));
+  } catch { return []; }
+}
+
+// B站 suggest：{code:0, result:[{term}]}（兼容 value 字段）
+export function parseBiliPayload(raw: string): string[] {
+  try {
+    const data = JSON.parse(raw);
+    const list = Array.isArray(data?.result) ? data.result : [];
+    return list.map((s: any) => String(s?.term ?? s?.value ?? ""));
+  } catch { return []; }
+}
+
+export type SuggestProvider = {
+  id: string;
+  region: "global" | "cn";
+  kind: "yt" | "amazon" | "cn";
+  buildUrl: (q: string) => string;
+  headers: Record<string, string>;
+  parse: (raw: string) => string[];
+  budget: number;
+};
+
+export const SUGGEST_PROVIDERS: SuggestProvider[] = [
+  {
+    id: "youtube-suggest", region: "global", kind: "yt",
+    buildUrl: (q) => `https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&hl=en&q=${encodeURIComponent(q)}`,
+    headers: { ...UA, Accept: "application/json, text/plain, */*" },
+    parse: parseJsonpSuggest, budget: 340,
+  },
+  {
+    id: "amazon-suggest", region: "global", kind: "amazon",
+    buildUrl: (q) => `https://completion.amazon.com/api/2017/suggestions?mid=ATVPDKIKX0DER&alias=aps&prefix=${encodeURIComponent(q)}&limit=11`,
+    headers: { ...UA, Accept: "application/json, text/plain, */*" },
+    parse: parseAmazonPayload, budget: 270,
+  },
+  {
+    id: "baidu-suggest", region: "cn", kind: "cn",
+    buildUrl: (q) => `https://www.baidu.com/sugrec?prod=pc&wd=${encodeURIComponent(q)}`,
+    headers: { ...UA, Referer: "https://www.baidu.com/", Accept: "application/json, text/plain, */*" },
+    parse: (raw) => parseSuggestPayload(raw), budget: 340,
+  },
+  {
+    id: "bili-suggest", region: "cn", kind: "cn",
+    buildUrl: (q) => `https://s.search.bilibili.com/main/suggest?main_ver=v1&term=${encodeURIComponent(q)}&build=0&mobi_app=web`,
+    headers: { ...UA, Referer: "https://www.bilibili.com/", Accept: "application/json, text/plain, */*" },
+    parse: parseBiliPayload, budget: 340,
+  },
+];
+
+const PROVIDER_INTERVAL_MS = 500;
+const PROVIDER_CONCURRENCY = 2;
+
+// 单 provider 主流程：region 种子分流 → 展开计划 → 频控抓取 → 去重入库
+//（source=provider.id，region 由写入层按来源端点判定）。返回统计供日志与验收。
+// intervalMs/concurrency 可注入（测试快速档；线上 500ms/2）。
+export async function runProviderExpansion(db: Store, provider: SuggestProvider, doFetch: DoFetch = fetch, opts: { outer?: AbortSignal; intervalMs?: number; concurrency?: number } = {}): Promise<{
+  requests: number; failed: number; newTerms: number; updated: number; terms: number;
+}> {
+  const seeds = collectSeeds(db, SEED_LIMIT, provider.region);
+  const stats = { requests: 0, failed: 0, newTerms: 0, updated: 0, terms: 0 };
+  if (!seeds.length) return stats;
+  const stop = opts.outer ?? AbortSignal.timeout(10 * 60000);
+  const written = new Set<string>();
+  const tasks: (() => Promise<void>)[] = [];
+  for (const seed of seeds)
+    for (const q of providerQueries(seed.term, provider.kind))
+      tasks.push(async () => {
+        if (stats.requests >= provider.budget || stop.aborted) return;
+        stats.requests++;
+        let suggestions: string[];
+        try {
+          const response = await doFetch(provider.buildUrl(q), {
+            signal: AbortSignal.any([stop, AbortSignal.timeout(8000)]),
+            headers: provider.headers,
+          });
+          if (!response.ok) throw new Error(`suggest HTTP ${response.status}`);
+          suggestions = provider.parse(await response.text())
+            .map((s) => s.trim()).filter((s) => s.length >= 1 && s.length <= 80);
+        } catch { stats.failed++; return; }
+        for (const term of suggestions) {
+          const id = termId(term);
+          if (written.has(id)) continue;
+          written.add(id);
+          const prev = db.get<any>("seen-terms", id);
+          observeSuggestion(db, term, seed.term, { source: provider.id });
+          if (prev) stats.updated++;
+          else stats.newTerms++;
+        }
+      });
+  await new Limiter(opts.intervalMs ?? PROVIDER_INTERVAL_MS, opts.concurrency ?? PROVIDER_CONCURRENCY).run(tasks);
+  stats.terms = written.size;
+  return stats;
+}
+
+// 扩展 provider 汇总：并行跑（不同站点互不限流），单词失败静默不拖累其他线。
+export async function runExtraSuggestProviders(db: Store, doFetch: DoFetch = fetch, providers: SuggestProvider[] = SUGGEST_PROVIDERS, limiterOpts: { intervalMs?: number; concurrency?: number } = {}): Promise<Record<string, { requests: number; failed: number; newTerms: number; updated: number; terms: number }>> {
+  const entries = await Promise.all(providers.map(async (p) => [p.id, await runProviderExpansion(db, p, doFetch, limiterOpts).catch(() => ({ requests: 0, failed: 0, newTerms: 0, updated: 0, terms: 0 }))] as const));
+  return Object.fromEntries(entries);
+}
 
 // ── 引擎 B · People Also Ask ──
 // 对 rising 词直抓 Google SERP，解析「大家还在问」区块的问题词；
@@ -288,7 +420,7 @@ export async function runTrendsRising(db: Store, doFetch: DoFetch = fetch): Prom
 
 // 每分钟 tick：手动请求（UI「立即整理」）优先，其次随整理闸门每日一次。
 // 全程 fire-and-forget：挖掘耗时数分钟，不得阻塞研究任务循环。
-export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number } = {}) {
+export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number; providerIntervalMs?: number; providerConcurrency?: number } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const manual = db.get<any>("meta", "seen-dig-manual");
   const gate = db.get<any>("meta", "seen-terms-gate");
@@ -300,16 +432,20 @@ export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { int
   if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
   db.put("meta", "seen-dig-running", { at: new Date().toISOString() });
   void (async () => {
-    console.log("[seen-dig] 热词挖掘开始（Trends Rising → 联想展开 → PAA）");
+    console.log("[seen-dig] 热词挖掘开始（Trends Rising → 联想展开 → 扩展联想 → PAA）");
     try {
       // C 先行：Trends 配额与 suggest 共享 IP 信誉，A 的 680 请求会污染 C 的窗口
       const c = await runTrendsRising(db, doFetch).catch((e) => ({ keywords: 0, rising: 0, skipped: 0, error: String(e) }));
       console.log(`[seen-dig] 引擎C TrendsRising：关键词 ${c.keywords} / 上升词 ${c.rising}（跳过 ${(c as any).skipped ?? 0}）`);
       const a = await runSuggestExpansion(db, doFetch, opts);
       console.log(`[seen-dig] 引擎A 联想展开：种子 ${a.seeds} / 请求 ${a.requests}（失败 ${a.failed}）/ 新词 ${a.newTerms} / 更新 ${a.updated}`);
+      // 扩展联想（海外定位批）：YouTube/Amazon（global）+ 百度/B站（cn），并行互不拖累
+      const extras = await runExtraSuggestProviders(db, doFetch, SUGGEST_PROVIDERS, { intervalMs: opts.providerIntervalMs, concurrency: opts.providerConcurrency });
+      const extraBrief = Object.entries(extras).map(([id, s]) => `${id} ${s.requests}req/新${s.newTerms}`).join("，");
+      console.log(`[seen-dig] 引擎A+ 扩展联想：${extraBrief || "无"}`);
       const b = await runPaa(db, doFetch).catch((e) => ({ rising: 0, questions: 0, skipped: 0, error: String(e) }));
       console.log(`[seen-dig] 引擎B PAA：rising ${b.rising} / 问题词 ${b.questions}（跳过 ${(b as any).skipped ?? 0}）`);
-      const summary = { at: new Date().toISOString(), suggest: a, paa: b, trends: c };
+      const summary = { at: new Date().toISOString(), suggest: a, extras, paa: b, trends: c };
       db.put("meta", doneKey(today), summary);
       db.put("meta", "seen-dig-last", { date: today, ...summary });
     } catch (e) {

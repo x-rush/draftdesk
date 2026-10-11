@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
-import { collectSeeds, expansionQueries, parseSuggestPayload, parsePaa, parseRelatedRising, Limiter, runPaa, runSuggestExpansion, runTrendsRising, seenDiggingTick } from "../core/seen-dig";
+import { collectSeeds, expansionQueries, providerQueries, parseSuggestPayload, parseJsonpSuggest, parseAmazonPayload, parseBiliPayload, parsePaa, parseRelatedRising, Limiter, runPaa, runProviderExpansion, runSuggestExpansion, runTrendsRising, seenDiggingTick, SUGGEST_PROVIDERS } from "../core/seen-dig";
 import { termId } from "../core/seen-terms";
 
 function cleanup(dir: string) {
@@ -132,11 +132,11 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     const db = new Store(dir);
     seedTerm(db, "notion", "rising");
     const fakeFetch = (async () => new Response(JSON.stringify(["seed", [["notion tools", 0]]]), { status: 200 })) as unknown as typeof fetch;
-    seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
+    seenDiggingTick(db, fakeFetch, { intervalMs: 1, providerIntervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(db.get("seen-terms", termId("notion tools")), undefined, "无手动标记且无闸门不应触发");
     db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
-    seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
+    seenDiggingTick(db, fakeFetch, { intervalMs: 1, providerIntervalMs: 1 });
     await new Promise((r) => setTimeout(r, 3500));
     assert.ok(db.get("seen-terms", termId("notion tools")), "手动标记应触发挖掘");
     const done = db.get<any>("meta", "seen-dig-done:" + new Date().toISOString().slice(0, 10));
@@ -144,7 +144,7 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
     db.put("meta", "seen-terms-gate", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
     seedTerm(db, "another", "rising");
-    seenDiggingTick(db, fakeFetch, { intervalMs: 1 });
+    seenDiggingTick(db, fakeFetch, { intervalMs: 1, providerIntervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(db.get("seen-terms", termId("another tools")), undefined, "完成键当日应幂等跳过");
   } finally { cleanup(dir); }
@@ -216,5 +216,59 @@ test("引擎 C：explore 换 token 后取 Rising 列表，入库带 seed", async
     assert.equal(doc.status, "new");
     assert.deepEqual(doc.sources, ["trends-rising"]);
     assert.equal(db.get("seen-terms", termId("top 关键词不应出现")), undefined, "Top 列表不入库");
+  } finally { cleanup(dir); }
+});
+
+test("扩展联想（海外定位批 4）：展开计划、三种响应解析", () => {
+  assert.equal(providerQueries("notion", "amazon").length, 26);
+  assert.equal(providerQueries("notion", "yt").length, 32);
+  assert.equal(providerQueries("notion", "cn").length, 34);
+  assert.ok(providerQueries("notion", "yt").includes("notion how to"));
+  assert.ok(providerQueries("notion", "cn").includes("notion替代"));
+  // YouTube JSONP 与裸 JSON 双形状
+  assert.deepEqual(parseJsonpSuggest('window.google.ac.h(["q",[["ai tools",0]]]);'), ["ai tools"]);
+  assert.deepEqual(parseJsonpSuggest('["q",[["ai tools",0]]]'), ["ai tools"]);
+  assert.deepEqual(parseAmazonPayload('{"suggestions":[{"value":"ai notebook"}]}'), ["ai notebook"]);
+  assert.deepEqual(parseBiliPayload('{"code":0,"result":[{"term":"ai 短剧"}]}'), ["ai 短剧"]);
+  assert.deepEqual(parseBiliPayload("bad json"), []);
+});
+
+test("扩展联想：region 种子分流（global 词只喂 YouTube/Amazon，cn 词只喂百度/B站），入库带来源", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-dig-prov-"));
+  try {
+    const db = new Store(dir);
+    seedTerm(db, "global词", "rising", { relevance: "strong" });
+    seedTerm(db, "global词", "rising");  // region 缺失按 global 兜底
+    db.put("seen-terms", "global词", { id: "global词", term: "global词", status: "rising", observations: 2, sources: ["rss"], relatedSearches: [], daysSeen: [], firstSeenAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), relevance: "strong", region: "global" });
+    db.put("seen-terms", "中文词", { id: "中文词", term: "中文词", status: "rising", observations: 2, sources: ["weibo-hotsearch"], relatedSearches: [], daysSeen: [], firstSeenAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), relevance: "strong", region: "cn" });
+    const yt = SUGGEST_PROVIDERS.find((p) => p.id === "youtube-suggest")!;
+    const baidu = SUGGEST_PROVIDERS.find((p) => p.id === "baidu-suggest")!;
+    const seen = { yt: new Set<string>(), baidu: new Set<string>() };
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("ds=yt")) {
+        seen.yt.add(decodeURIComponent(u.match(/q=([^&]+)/)![1]));
+        return new Response('window.google.ac.h(["q",[["yt 新词",0]]]);', { status: 200 });
+      }
+      if (u.includes("sugrec")) {
+        seen.baidu.add(decodeURIComponent(u.match(/wd=([^&]+)/)![1]));
+        return new Response(JSON.stringify({ g: [{ q: "百度新词" }] }), { status: 200 });
+      }
+      throw new Error("unexpected " + u);
+    }) as unknown as typeof fetch;
+    const ytStats = await runProviderExpansion(db, yt, fakeFetch, { intervalMs: 1 });
+    const baiduStats = await runProviderExpansion(db, baidu, fakeFetch, { intervalMs: 1 });
+    assert.ok(ytStats.newTerms >= 1);
+    assert.ok(baiduStats.newTerms >= 1);
+    assert.ok([...seen.yt].every((q) => !q.includes("中文词")), "YouTube 不得展开 cn 种子");
+    assert.ok([...seen.baidu].every((q) => !q.includes("global词")), "百度不得展开 global 种子");
+    const ytDoc = db.get<any>("seen-terms", termId("yt 新词"));
+    assert.equal(ytDoc.source, undefined);
+    assert.deepEqual(ytDoc.sources, ["youtube-suggest"]);
+    assert.equal(ytDoc.region, "global");
+    assert.equal(ytDoc.seed, "global词");
+    const bdDoc = db.get<any>("seen-terms", termId("百度新词"));
+    assert.deepEqual(bdDoc.sources, ["baidu-suggest"]);
+    assert.equal(bdDoc.region, "cn");
   } finally { cleanup(dir); }
 });
