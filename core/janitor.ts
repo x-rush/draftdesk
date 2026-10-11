@@ -16,20 +16,23 @@ export const RETENTION = {
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; backup?: JanitorBackup; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
   // consumerMode=external：消费与回收由外部 Agent 负责，内置 janitor 停用（§4.2 干净分解）。
   const seenPurged = purgeArchivedSeenTerms(db);
+  const metricsPurged = purgeOldModelMetrics(db);
+  // 挂载期保险丝批 8：每日库完整性自检 + 全集合行数快照（设置页「昨日 vs 今日」异动看板）
+  const integrity = integrityCheck(db);
+  snapshotCollectionsReport(db);
   // 备份通道（存储根治批）：volume 内的库每日快照到 bind mount backups/；失败不阻塞主流程。
   let backup: JanitorBackup;
   try { backup = runDailyBackup(db); }
   catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
-  const metricsPurged = purgeOldModelMetrics(db);
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, backup, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, backup, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, integrity, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, integrity, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -121,4 +124,33 @@ export function purgeOldModelMetrics(db: Store): number {
     if (String(m.id) < cutoff) { db.del("model-metrics", m.id); purged++; }
   }
   return purged;
+}
+
+// 库完整性自检（保险丝批 8）：每日 PRAGMA integrity_check；异常 console 告警并记录结果。
+export function integrityCheck(db: Store): string {
+  try {
+    const row = db.db.prepare("PRAGMA integrity_check").get() as { integrity_check?: string } | undefined;
+    const result = String(row?.integrity_check ?? "unknown");
+    if (result !== "ok") console.error(`[janitor] integrity_check 异常：${result}`);
+    return result;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[janitor] integrity_check 执行失败：${message}`);
+    return "error: " + message;
+  }
+}
+
+// 全集合行数快照（保险丝批 8）：documents 表 GROUP BY collection，
+// 存 collections-report 集合（id=上海日期），供设置页「昨日 vs 今日」异动对比；保留 14 天。
+export function snapshotCollectionsReport(db: Store): Record<string, number> {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const rows = db.db.prepare("SELECT collection, COUNT(*) c FROM documents GROUP BY collection").all() as Array<{ collection: string; c: number }>;
+  const counts: Record<string, number> = Object.fromEntries(rows.map((r) => [String(r.collection), Number(r.c)]));
+  db.put("collections-report", today, { id: today, at: new Date().toISOString(), counts });
+  const cutoff = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" })
+    .format(new Date(Date.now() - 14 * 86400000));
+  for (const doc of db.list<any>("collections-report")) {
+    if (String(doc.id) < cutoff) db.del("collections-report", doc.id);
+  }
+  return counts;
 }

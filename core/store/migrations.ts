@@ -1,6 +1,6 @@
 // 全部启动迁移（含首版种子）集中于此：每块幂等（meta 键守卫），按注册序在单个事务内跑完——
 // 与旧 Store 构造函数行为一致：任一块抛错则整批回滚，包括 initialized。
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy, defaultConsumerMode } from "../defaults";
 import { now } from "./helpers";
@@ -291,6 +291,11 @@ export const migrations: Migration[] = [
 ];
 
 export function runMigrations(ctx: MigrationCtx) {
+  // 挂载期保险丝（存储保险丝批 8）：有 pending 迁移（建索引/结构变更=大写入）时，
+  // 先在 volume 内快照一份库文件（VACUUM INTO 一致性导出），保留最近 3 份。
+  // 空库首启跳过；快照失败只告警不阻塞启动（与备份通道同类语义）。
+  const pending = migrations.filter((m) => !ctx.kv.get("meta", m.id));
+  if (pending.length && ctx.kv.get("meta", "initialized")) snapshotFuse(ctx, pending.map((m) => m.id));
   ctx.kv.transaction(() => {
     for (const migration of migrations) {
       if (ctx.kv.get("meta", migration.id)) continue;
@@ -298,4 +303,22 @@ export function runMigrations(ctx: MigrationCtx) {
       ctx.kv.put("meta", migration.id, migration.id === "initialized" ? { version: 2 } : { version: 1 });
     }
   });
+}
+
+export function snapshotFuse(ctx: { kv: KV; directory: string }, pendingIds: string[]) {
+  const dir = path.join(ctx.directory, "snapshots");
+  try {
+    mkdirSync(dir, { recursive: true });
+    // 毫秒级时间戳：同秒多次迁移（多 Store 实例）不撞文件名
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
+    const file = path.join(dir, `fuse-${stamp}.sqlite`);
+    ctx.kv.db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    const all = readdirSync(dir).filter((f) => /^fuse-.*\.sqlite$/.test(f)).sort();
+    for (const old of all.slice(0, Math.max(0, all.length - 3))) {
+      try { rmSync(path.join(dir, old)); } catch { /* best effort */ }
+    }
+    console.log(`[fuse] 迁移前快照（${pendingIds.join(", ")}）→ snapshots/${path.basename(file)}`);
+  } catch (e) {
+    console.error(`[fuse] 迁移前快照失败（继续迁移；请检查 volume 剩余空间）:`, e instanceof Error ? e.message : e);
+  }
 }

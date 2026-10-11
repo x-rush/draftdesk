@@ -12,8 +12,10 @@ export function Settings({
   onChange: () => Promise<void>;
 }) {
   const [metrics, setMetrics] = useState<any[]>([]);
+  const [collections, setCollections] = useState<{ today: any; yesterday: any } | null>(null);
   useEffect(() => {
     void api<{ items: any[] }>("model-metrics?days=7").then((r) => setMetrics(r.items || [])).catch(() => {});
+    void api<{ today: any; yesterday: any }>("collections-report").then(setCollections).catch(() => {});
   }, []);
   const [value, setValue] = useState({
     baseUrl: config.baseUrl,
@@ -159,6 +161,43 @@ export function Settings({
           );
         })()}
         {metrics.length === 0 && <p className="muted" style={{ marginTop: 8 }}>暂无调用记录（有内置模型调用后出现）。</p>}
+      </section>
+      <section className="form-section">
+        <h2>全集合核对（昨日 vs 今日）</h2>
+        <span className="helper-text">
+          janitor 每日快照 documents 全集合行数；行数有异动的集合标黄（🔶 = 今日与昨日不同）。
+          意外暴增/暴减先看备份（backups/）与 data/snapshots/ 保险丝快照。
+        </span>
+        {(() => {
+          const todayCounts = collections?.today?.counts as Record<string, number> | undefined;
+          const yesterdayCounts = collections?.yesterday?.counts as Record<string, number> | undefined;
+          if (!todayCounts) return <p className="muted" style={{ marginTop: 8 }}>今日快照尚未生成（janitor 每日首跑后出现）。</p>;
+          const names = [...new Set([...Object.keys(todayCounts), ...Object.keys(yesterdayCounts || {})])].sort();
+          return (
+            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 10, fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                  <th style={{ padding: "4px 8px" }}>集合</th><th>昨日</th><th>今日</th><th>Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {names.map((name) => {
+                  const t = todayCounts[name] ?? 0;
+                  const y = yesterdayCounts?.[name] ?? 0;
+                  const changed = t !== y;
+                  return (
+                    <tr key={name} style={{ background: changed ? "rgba(234,179,8,.14)" : undefined }}>
+                      <td style={{ padding: "4px 8px" }}>{name}{changed ? " 🔶" : ""}</td>
+                      <td>{y}</td>
+                      <td>{t}</td>
+                      <td>{changed ? (t > y ? "+" : "") + (t - y) : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          );
+        })()}
       </section>
       <section className="form-section">
         <h2>我的兴趣类别</h2>

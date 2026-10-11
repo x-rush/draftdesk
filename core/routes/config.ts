@@ -36,6 +36,18 @@ export const routes: RouteDef[] = [
     },
   },
   {
+    // 全集合核对（保险丝批 8）：昨日 vs 今日 documents 行数快照，UI 异动标黄。
+    methods: ["GET"],
+    pattern: "collections-report",
+    handler: ({ db }) => {
+      const day = (offset: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date(Date.now() - offset * 86400000));
+      return json({
+        today: db.get("collections-report", day(0)) || null,
+        yesterday: db.get("collections-report", day(1)) || null,
+      });
+    },
+  },
+  {
     methods: ["POST"],
     pattern: "config",
     handler: async ({ db, readBody }) => {
