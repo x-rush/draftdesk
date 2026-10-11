@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts } from "../seen-terms";
+import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts, seenRelevanceCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
 import { computeObsRatio, judgeVerdict } from "../seen-judge";
 
@@ -93,6 +93,7 @@ function seenListPayload(db: any, query: URLSearchParams) {
     offset,
     counts: seenIntentCounts(db.kv),
     regions: seenRegionCounts(db.kv),
+    relevances: seenRelevanceCounts(db.kv),
     zones: seenTermZones(db.kv),
   };
 }

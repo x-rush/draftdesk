@@ -396,6 +396,20 @@ export function seenIntentCounts(kv: SqlStore): Record<string, number> {
   return counts;
 }
 
+// relevance 计数（信号台统计条）：强相关/弱相关/圈外/未判定。
+export function seenRelevanceCounts(kv: SqlStore): Record<string, number> {
+  const rows = kv.sqlRows(
+    `SELECT json_extract(body,'$.relevance') rel, COUNT(*) c FROM documents WHERE collection='seen-terms' GROUP BY 1`,
+  );
+  const counts: Record<string, number> = { all: 0, strong: 0, weak: 0, off: 0 };
+  for (const row of rows) {
+    counts.all += Number(row.c);
+    const key = String(row.rel || "");
+    if (key in counts) counts[key] = Number(row.c);
+  }
+  return counts;
+}
+
 // region 计数（海外定位批）：词表筛选 tab 角标（海外/中文/全部）。
 export function seenRegionCounts(kv: SqlStore): Record<string, number> {
   const rows = kv.sqlRows(

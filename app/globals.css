@@ -1538,6 +1538,87 @@ details.activity-import-fold > summary { font-size: 14px; }
 .activity-step:last-child { padding-bottom: 4px; }
 
 
+
+/* ── 热词信号台（完全重设计批）：统计条 + 今日精选 hero 卡 + 分区标签行 ── */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: var(--s4);
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px 12px;
+  min-width: 0;
+}
+.stat-card strong { display: block; font-size: 26px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+.stat-card span { display: block; font-size: 12px; color: var(--ink); margin-top: 2px; }
+.stat-card small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-card.accent { background: #f4f8ef; border-color: #cdddc2; }
+.stat-card.accent strong { color: #476537; }
+.dash-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 22px 0 10px;
+}
+.dash-label:first-child { margin-top: 0; }
+.dash-label-sub { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; font-weight: 400; color: var(--muted); }
+.dash-label-sub button {
+  padding: 3px 10px; font-size: 12px; border-radius: 999px;
+  background: #fff; border: 1px solid var(--line); color: var(--muted);
+}
+.dash-label-sub button.active { background: #e9f0e2; border-color: #c9d8bd; color: var(--ink); }
+.dash-label .radar-refresh { margin-left: auto; }
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px 12px;
+  min-width: 0;
+}
+.hero-card:hover { border-color: #c9d8bd; }
+.hero-term {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.hero-term:hover { color: #476537; text-decoration: underline; text-underline-offset: 3px; }
+.hero-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.hero-badges .pill { font-size: 11px; padding: 1px 8px; }
+.hero-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 6px; border-top: 1px dashed #e4ebda; }
+.hero-foot small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1000px) {
+  .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .hero-grid { grid-template-columns: 1fr; }
+  .stat-card strong { font-size: 22px; }
+}
+
+
 /* ── 热词雷达：紧凑词行（密度重构批）——词名+徽章同列、动作右贴，一屏扫 20 条 ── */
 .radar-toolbar {
   display: flex;
