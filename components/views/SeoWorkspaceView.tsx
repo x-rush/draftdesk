@@ -74,27 +74,26 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
     window.open("https://www.google.com/search?q=" + encodeURIComponent(term) + "&hl=en", "_blank", "noopener");
   }
 
+  // 紧凑词行（密度重构）：词名+徽章同列、动作右贴，一屏扫 20 条
   const zoneRows = (items: any[]) => items.map((t) => (
-    <article className="discovery-row" key={t.id} role="listitem">
-      <div className="row-content">
-        <div className="row-meta">
+    <div className="term-row" key={t.id}>
+      <div className="term-main">
+        <button className="term-name" onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
+        <span className="term-meta">
           <RelevanceBadge relevance={t.relevance} />
           <RegionBadge region={t.region} />
           {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
           <VerdictBadge verdict={t.verdict} reason={t.verdictReason} />
           <ObsBadge obsRatio={t.obsRatio} />
-          <span>观测 {t.observations} 次</span>
-          {t.seed && <span>血缘：{t.seed}</span>}
-        </div>
-        <button className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
+          <span>×{t.observations}</span>
+          {t.seed && <span title="首见血缘">{t.seed}</span>}
+        </span>
       </div>
-      <div className="row-side">
-        <div style={{ display: "flex", gap: 6 }}>
-          <button aria-label={`搜索：${t.term}`} onClick={() => searchTerm(t.term)}>搜索 ↗</button>
-          <button aria-label={`复制：${t.term}`} onClick={() => copyTerm(t.term)}>复制</button>
-        </div>
+      <div className="term-actions">
+        <button aria-label={`搜索：${t.term}`} onClick={() => searchTerm(t.term)}>搜索 ↗</button>
+        <button aria-label={`复制：${t.term}`} onClick={() => copyTerm(t.term)}>复制</button>
       </div>
-    </article>
+    </div>
   ));
 
   return (
@@ -102,27 +101,27 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
       <section className="surface">
         <h2>🔥 热词雷达</h2>
         <p className="muted">新词（首见原始信号，含噪音）→ 突增（观测 ≥3 才晋级）→ 持续（连续 3 天在榜）。💎 强相关词才进挖掘种子；点词名直接去 Google 验证。</p>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-          <nav className="discovery-modes" aria-label="雷达分区" style={{ marginTop: 8 }}>
+        <div className="radar-toolbar">
+          <nav className="discovery-modes" aria-label="雷达分区">
             <button className={radarTab === "new" ? "active" : ""} aria-current={radarTab === "new" ? "page" : undefined} onClick={() => { setRadarTab("new"); setFullMode(false); }}>🆕 新词 {zoneTotals.new}</button>
             <button className={radarTab === "rising" ? "active" : ""} aria-current={radarTab === "rising" ? "page" : undefined} onClick={() => { setRadarTab("rising"); setFullMode(false); }}>📈 突增 {zoneTotals.rising}</button>
             <button className={radarTab === "sustained" ? "active" : ""} aria-current={radarTab === "sustained" ? "page" : undefined} onClick={() => { setRadarTab("sustained"); setFullMode(false); }}>🔥 持续 {zoneTotals.sustained}</button>
           </nav>
-          <button disabled={radarBusy} onClick={() => void (async () => {
+          {!fullMode && (
+            <nav className="discovery-modes" aria-label="词质筛选">
+              <button className={quality === "all" ? "active" : ""} aria-current={quality === "all" ? "page" : undefined} onClick={() => setQuality("all")}>全部</button>
+              <button className={quality === "strong" ? "active" : ""} aria-current={quality === "strong" ? "page" : undefined} onClick={() => setQuality("strong")}>💎 强相关</button>
+            </nav>
+          )}
+          <button className="radar-refresh" disabled={radarBusy} onClick={() => void (async () => {
             setRadarBusy(true);
             try {
               const r = await api<{ triggered: boolean; alreadyDone: boolean }>("seen-terms/extract", {});
               setNotice(r.alreadyDone ? "今日已整理。" : "热词整理与挖掘已触发（提取/联想展开/竞争度判定，需数分钟），完成后自动更新。");
               await ws.refresh();
             } catch (e) { setNotice((e as Error).message); } finally { setRadarBusy(false); }
-          })()}>{radarBusy ? "刷新中…" : "刷新雷达 · 触发提取"}</button>
+          })()}>{radarBusy ? "刷新中…" : "刷新雷达"}</button>
         </div>
-        {!fullMode && (
-          <nav className="discovery-modes" aria-label="词质筛选" style={{ marginTop: 8 }}>
-            <button className={quality === "all" ? "active" : ""} aria-current={quality === "all" ? "page" : undefined} onClick={() => setQuality("all")}>全部</button>
-            <button className={quality === "strong" ? "active" : ""} aria-current={quality === "strong" ? "page" : undefined} onClick={() => setQuality("strong")}>💎 只看强相关</button>
-          </nav>
-        )}
         {/* 单一列表区：分区前 20 条；「查看全部」或搜索/筛选切到全量模式 */}
         {fullMode && (
           <>
@@ -181,7 +180,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                 : radarTab === "new" ? "暂无新词。" : radarTab === "rising" ? "暂无突增词（观测 ≥3 次且 7 天内首见）。" : "暂无持续词（连续 3 天在榜即晋级）。"}
             </p>
           ) : (
-            <div className="discovery-list" role="list" aria-label={`${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区（前 20 条）`}>
+            <div className="term-list" role="list" aria-label={`${{ new: "新词", rising: "突增", sustained: "持续" }[radarTab]}区（前 20 条）`}>
               {zoneRows(zoneLists[radarTab])}
             </div>
           )

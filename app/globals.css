@@ -1503,6 +1503,57 @@ main {
   display: grid; gap: var(--s3);
 }
 
+
+/* ── 热词雷达：紧凑词行（密度重构批）——词名+徽章同列、动作右贴，一屏扫 20 条 ── */
+.radar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.radar-toolbar .radar-refresh { margin-left: auto; }
+.term-list {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  margin-top: var(--s3);
+}
+.term-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid #eef1e9;
+}
+.term-row:last-child { border-bottom: 0; }
+.term-row:hover { background: #fafcf8; }
+.term-main { min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.term-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.term-name:hover { color: #476537; text-decoration: underline; text-underline-offset: 3px; }
+.term-meta { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+.term-meta .pill { font-size: 11px; padding: 1px 8px; }
+.term-actions { display: flex; gap: 6px; }
+.term-actions button { padding: 4px 10px; font-size: 12px; }
+@media (max-width: 760px) {
+  .term-row { grid-template-columns: 1fr; padding: 10px 12px; }
+  .term-actions { justify-content: flex-end; }
+  .radar-toolbar .radar-refresh { margin-left: 0; }
+}
+
+
 /* ── 统一折叠卡（用户批复：全站 details 折叠块重设计）──
    收起 = 紧凑浅底条（右指小箭头 + 13px 中量标题，悬停加深）；
    展开 = summary 下分隔线 + 内容区（14px 横向缩进）。
