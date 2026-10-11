@@ -1263,6 +1263,8 @@ main {
 @keyframes skeleton-shimmer { to { background-position: -200% 0; } }
 .hotspot-controls-wide { grid-template-columns: minmax(200px,2fr) repeat(4,minmax(118px,1fr)); }
 @media(max-width:850px){.hotspot-controls-wide{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.hotspot-controls-wide{grid-template-columns:1fr}
+.hotspot-controls-wide > * { min-width: 0; width: 100%; }}
 .hotspot-health { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 8px var(--s4); margin-bottom: var(--s3); font-size: 13px; }
 .hotspot-health > summary { cursor: pointer; color: var(--muted); padding: 4px 0; gap: 10px; }
 .hotspot-health > summary::before { margin-right: 2px; }
@@ -1618,13 +1620,14 @@ legend {
     transition: none !important;
   }
 }
-.hotspot-view{display:grid;gap:18px}.hotspot-intro{display:flex;align-items:start;justify-content:space-between;gap:var(--s5);padding:22px;border:1px solid var(--line);background:#fff;border-radius:14px}.hotspot-intro h2{font-size:20px;margin:0 0 6px}.hotspot-intro p{max-width:820px;color:var(--muted);margin:0}.hotspot-intro>span{white-space:nowrap;color:var(--green);font-weight:700}.hotspot-controls{display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(140px,1fr));gap:10px}.hotspot-actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.hotspot-actions span,.hotspot-note{color:var(--muted);font-size:13px}.hotspot-note{margin:0}.hotspot-list{display:grid;gap:8px}
+.hotspot-view{display:grid;gap:18px}.hotspot-intro{display:flex;align-items:start;justify-content:space-between;gap:var(--s5);padding:22px;border:1px solid var(--line);background:#fff;border-radius:14px}.hotspot-intro h2{font-size:20px;margin:0 0 6px}.hotspot-intro p{max-width:820px;color:var(--muted);margin:0}.hotspot-intro>span{white-space:nowrap;color:var(--green);font-weight:700}.hotspot-controls{display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(140px,1fr));gap:10px}.hotspot-actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.hotspot-actions span,.hotspot-note{color:var(--muted);font-size:13px}.hotspot-note{margin:0}.hotspot-list{display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}
 /* 热点紧凑行（根因 D）：主信息一行，详情折叠 */
 .hotspot-row { padding: 12px var(--s4); border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .hotspot-row-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
-.hotspot-row-title { font-size: 15px; font-weight: 600; color: var(--ink); text-decoration: none; min-width: 0; flex: 1 1 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hotspot-row-title { font-size: 15px; font-weight: 600; color: var(--ink); text-decoration: none; min-width: 0; flex-shrink: 1; flex: 1 1 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hotspot-row-title:hover { color: #51734e; }
-.hotspot-row-meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.hotspot-row-meta { font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media(max-width:600px){.hotspot-row-meta{display:none}}
 .hotspot-row-side { display: flex; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap; }
 .hotspot-row-side button { font-size: 12px; padding: 5px 10px; }
 .hotspot-row-detail { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
