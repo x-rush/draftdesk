@@ -41,10 +41,14 @@ export function requestSeenTermsExtraction(db: Store): { triggered: boolean; alr
 }
 
 // 每分钟 tick：先处理手动请求（跳过一切等待），再走闸门 24h 兜底。
+// running 键守卫与 runExtraction 同口径：仅 10 分钟内的标记视为进行中——
+// 容器重建/崩溃留下的僵尸键不能永久卡死提取（2026-10-11 重建实测踩中）。
 export function seenTermsTick(db: Store, runModel: ModelRunner) {
   const today = new Date().toISOString().slice(0, 10);
   const manual = db.get<any>("meta", "seen-terms-manual");
-  if (manual?.date === today && !db.get("meta", extractDoneKey(today)) && !db.get("meta", extractRunningKey(today))) {
+  const running = db.get<any>("meta", extractRunningKey(today));
+  const runningFresh = running && Date.now() - Date.parse(running.at) < 10 * 60000;
+  if (manual?.date === today && !db.get("meta", extractDoneKey(today)) && !runningFresh) {
     void runExtraction(db, runModel, today, "manual");
     return;
   }
