@@ -35,16 +35,25 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
       <p className="helper-text">这些是线索，不是已验证事实、连续增长率或发布建议；榜单热度只表示该平台当时的信号。</p>
       {feed?.sourceHealth.filter(s=>s.status==="failed"&&(source==="all"||source===s.id)).map(s=><p className="helper-text" role="status" key={s.id} style={{ color: "#9a6948" }}>{s.name} 最近一次读取失败（{date(s.at)}）：{s.error||"请检查来源状态后重试"}。该来源的旧线索仍保留。</p>)}
     </details>
-    {loading&&!feed?.items.length?<Skeleton rows={3} label="热点加载中"/>:!feed?.items.length?<div className="lens-empty"><h2>当前筛选下没有热点</h2><p className="muted">去「研究策略」运行一次采集，或在上方刷新所选来源。</p><p>选择已启用来源刷新榜单，或清除搜索与状态筛选。来源读取失败可在「运行记录」和采集覆盖中核对。</p></div>:<div className="hotspot-list">{feed.items.map(row=><article className="hotspot-card" key={row.url}>
-      <div className="hotspot-card-top"><span>{row.sourceNames.join(" · ")}</span><small>{date(row.lastSeen)} · {row.observations>1?`观察 ${row.observations} 次`:`榜单位置 ${row.rank??"未知"}`}</small></div>
-      <h3><a href={row.url} target="_blank" rel="noopener noreferrer">{row.title} ↗</a></h3>
-      <div className="hotspot-card-meta"><span>{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span><span>{row.region||"地域未知"}</span>{row.category&&<span className="pill">{row.category}</span>}{row.mediaType==="video"&&<span className="pill">🎬 视频</span>}{row.mediaType==="image"&&<span className="pill">🖼 图片</span>}{row.metric&&<span>{row.metric.name}：{row.metric.value} {row.metric.unit}</span>}</div>
-      <p>{row.reason}</p><small>关联采集：{row.planNames.join("、")}</small>
-      <div className="hotspot-card-actions" style={{display:"flex",gap:6,marginTop:6}}>
+    {loading&&!feed?.items.length?<Skeleton rows={3} label="热点加载中"/>:!feed?.items.length?<div className="lens-empty"><h2>当前筛选下没有热点</h2><p className="muted">去「研究策略」运行一次采集，或在上方刷新所选来源。</p><p>选择已启用来源刷新榜单，或清除搜索与状态筛选。来源读取失败可在「运行记录」和采集覆盖中核对。</p></div>:<div className="hotspot-list">{feed.items.map(row=><article className="hotspot-row" key={row.url}>
+      <div className="hotspot-row-main">
+        <span className={row.status==="selected"?"coverage-dot ok":"coverage-dot"} title={row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"} />
+        <a className="hotspot-row-title" href={row.url} target="_blank" rel="noopener noreferrer" title={row.title}>{row.title}</a>
+        <span className="hotspot-row-meta">{row.sourceNames[0]} · {date(row.lastSeen)}{row.observations>1?` · 观察 ${row.observations} 次`:""}</span>
+      </div>
+      <div className="hotspot-row-side">
+        {row.category&&<span className="pill">{row.category}</span>}
+        {row.metric&&<span className="hotspot-row-meta">{row.metric.name} {row.metric.value}{row.metric.unit}</span>}
         <button aria-label={`讨论：${row.title}`} onClick={()=>onDiscuss(row)}>讨论</button>
         <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
         <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
       </div>
+      <details className="hotspot-row-detail">
+        <summary>筛选原因与关联采集</summary>
+        <span>状态：{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"} · 地域：{row.region||"未知"}{row.category?` · ${row.category}`:""}</span>
+        <span>筛选原因：{row.reason||"-"}</span>
+        <span>关联采集：{row.planNames.join("、")}</span>
+      </details>
       {promoting===row.url&&<div style={{display:"grid",gap:6,marginTop:6,padding:9,border:"1px solid var(--line)",borderRadius:9}}>
         <Select aria-label="适配平台" value={promotePlatform} onChange={e=>setPromotePlatform(e.target.value)}>{["公众号","小红书","哔哩哔哩","抖音","知乎"].map(p=><option key={p} value={p}>{p}</option>)}</Select>
         <Select aria-label="目标簇" value={promoteCluster} onChange={e=>setPromoteCluster(e.target.value)}><option value="clu-inbox">选题收集箱</option>{clusters.filter(c=>c.id!=="clu-inbox").map(c=><option key={c.id} value={c.id}>{c.topic}</option>)}</Select>

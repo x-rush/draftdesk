@@ -131,7 +131,6 @@ export function SeoWorkspaceView({ ws, data }: { ws: Workspace; data: Snapshot }
                     <div className="row-content">
                       <div className="row-meta">
                         <span className="pill">{t.status}</span>
-                        {t.intent && <span className="pill">{DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent}</span>}
                         {isLongTail(t.term) && <span className="pill">🎯 长尾</span>}
                         {t.seed && <span>血缘：{t.seed}</span>}
                         <span>观测 {t.observations} 次</span>
