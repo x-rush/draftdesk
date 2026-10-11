@@ -1,6 +1,9 @@
 "use client";
-// 模型与设置视图（PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
-// 每日成本看板（成本纪律批 7）：近 7 天调用台账（cheap/full 拆分），今日超昨日 150% 标黄。
+// 模型与设置 · 信号台版（完全重设计批）：
+// ① 统计条（今日调用/今日 tokens+占比 accent/昨日 tokens/升档——model-metrics 台账）
+// ② dash-label 分节：🔌 模型接入（测试就近）→ 💰 预算与成本看板 → 🔍 搜索（测试就近）
+//    → 🤖 执行方 → 🎯 内容方向 → 🗂 数据健康（全集合核对）→ ⚠️ 危险操作。
+// 全部字段与保存逻辑不动，只重排层级；测试按钮从页尾移进各自分区（就近原则）。
 import { useEffect, useState } from "react";
 import { api, Field } from "./ui";
 
@@ -46,9 +49,12 @@ export function Settings({
       setBusy(false);
     }
   }
+  const today = metrics[0], yesterday = metrics[1];
+  const spike = yesterday && yesterday.tokens > 0 && today.tokens > yesterday.tokens * 1.5;
+
   return (
     <form
-      className="settings-form surface page-form"
+      className="settings-form page-form"
       onSubmit={(e) => {
         e.preventDefault();
         void act(async () => {
@@ -64,79 +70,81 @@ export function Settings({
         });
       }}
     >
-      <section className="form-section">
-        <h2>消费执行方</h2>
-        <span className="helper-text">{(config.consumerMode || "external") === "external"
-          ? "当前：外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。"
-          : "当前：内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}</span>
-        <Field label="模式（保存前即时生效）">
-          <select
-            value={config.consumerMode || "external"}
-            onChange={(e) =>
-              void act(async () => {
-                await api("consumerMode", { consumerMode: e.target.value });
-              })
-            }
-          >
-            <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
-            <option value="builtin">内置管线（每晚自动采集与分析）</option>
-          </select>
-        </Field>
-      </section>
-      <section className="form-section">
-        <h2>参与方</h2>
-        <span className="helper-text">
-          内置 AI 与外部 Agent 各自负责消费链路的不同环节，产出在审查台可按来源筛选；停用某来源后其已产出的内容仍可查，只是不再新增。
-        </span>
-        <Field label="内置 AI 参与开关">
-          <p className="helper-text" style={{ margin: 0 }}>在审查台「内置 AI 参与开关（aiPolicy）」分区配置：triage / outline / draft / aiWriter 四开关。</p>
-        </Field>
-      </section>
-      <section className="form-section">
-        <h2>阿里云百炼</h2>
-        <span className="helper-text">
-          研究、审稿与讨论共用同一模型。填写百炼 API Key，而非阿里云 AccessKey ID / Secret。
-        </span>
-      <div className="form-grid-2">
-        <Field label="API Base URL">
-          <input
-            type="url"
-            required
-            value={value.baseUrl}
-            onChange={(e) => setValue({ ...value, baseUrl: e.target.value })}
-          />
-        </Field>
-        <Field label="模型标识">
-          <input
-            required
-            value={value.model}
-            onChange={(e) => setValue({ ...value, model: e.target.value })}
-          />
-        </Field>
+      {/* ① 统计条（模型台账） */}
+      <div className="stat-strip">
+        <div className="stat-card accent"><strong>{(today?.tokens ?? 0).toLocaleString()}</strong><span>今日 tokens{spike ? " 🔶 较昨日 +150%+" : ""}</span><small>{today?.calls ?? 0} 次调用 · 占每日上限 {config.dailyTokenLimit ? Math.round(((today?.tokens ?? 0) / config.dailyTokenLimit) * 100) + "%" : "—"}</small></div>
+        <div className="stat-card"><strong>{(yesterday?.tokens ?? 0).toLocaleString()}</strong><span>昨日 tokens</span><small>{yesterday?.calls ?? 0} 次调用 · 占上限 {config.dailyTokenLimit ? Math.round(((yesterday?.tokens ?? 0) / config.dailyTokenLimit) * 100) + "%" : "—"}</small></div>
+        <div className="stat-card"><strong>{today?.upgrades ?? 0}</strong><span>⬆ cheap→full 升档</span><small>判断类 cheap 连续 2 次不过合同自动升档</small></div>
+        <div className="stat-card"><strong>{config.hasApiKey ? "已连接" : "未配置"}</strong><span>模型状态</span><small>{config.model} · {config.hasTavilyKey ? "Tavily 已配置" : "Tavily 未配置"}</small></div>
       </div>
-      <Field
-        label={
-          "百炼 API Key · " +
-          (config.hasApiKey ? "已配置，留空保留" : "尚未配置")
-        }
-      >
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={value.apiKey}
-          onChange={(e) => setValue({ ...value, apiKey: e.target.value })}
-        />
-      </Field>
-      </section>
+
+      {/* ② 模型接入 */}
+      <p className="dash-label">🔌 模型接入<span className="dash-label-sub">百炼统一用于分析与讨论；研究、审稿与讨论共用同一模型</span></p>
       <section className="form-section">
-        <h2>每日成本看板</h2>
-        <span className="helper-text">
-          内置模型调用台账（判断/分类记 cheap，产出记 full；cheap 连续 2 次不过合同自动升 full 重试并记升级）。
-          今日 tokens 超昨日 150% 标黄提示。零价值调用零容忍：已消费不重跑、空池跳过、联想/竞争度只做高分词。
-        </span>
+        <div className="form-grid-2">
+          <Field label="API Base URL">
+            <input
+              type="url"
+              required
+              value={value.baseUrl}
+              onChange={(e) => setValue({ ...value, baseUrl: e.target.value })}
+            />
+          </Field>
+          <Field label="模型标识">
+            <input
+              required
+              value={value.model}
+              onChange={(e) => setValue({ ...value, model: e.target.value })}
+            />
+          </Field>
+        </div>
+        <Field
+          label={
+            "百炼 API Key · " +
+            (config.hasApiKey ? "已配置，留空保留" : "尚未配置")
+          }
+        >
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={value.apiKey}
+            onChange={(e) => setValue({ ...value, apiKey: e.target.value })}
+          />
+        </Field>
+        <button
+          type="button"
+          disabled={busy || !config.hasApiKey}
+          onClick={() =>
+            void act(async () => {
+              const r = await api("test-model", {});
+              setNotice("已保存配置：" + r.message);
+            })
+          }
+        >
+          测试模型连接
+        </button>
+        <p className="helper-text" style={{ marginBottom: 0 }}>填写百炼 API Key，而非阿里云 AccessKey ID / Secret。模型标识如需更换，注意 .env 的 DRAFTDESK_AI_MODEL 会覆盖此处配置。</p>
+      </section>
+
+      {/* ③ 预算与成本看板 */}
+      <p className="dash-label">💰 预算与成本看板<span className="dash-label-sub">判断/分类记 cheap，产出记 full；今日 tokens 超昨日 150% 标黄</span></p>
+      <section className="form-section">
+        <Field
+          label="每日模型 token 预留上限"
+          hint="覆盖内置研究与讨论；保守预留不返还，可防止连续失败产生无上限调用。不是人民币账单。"
+        >
+          <input
+            type="number"
+            min={30000}
+            max={2000000}
+            required
+            value={value.dailyTokenLimit}
+            onChange={(e) =>
+              setValue({ ...value, dailyTokenLimit: Number(e.target.value) })
+            }
+          />
+        </Field>
         {metrics.length > 0 && (() => {
-          const today = metrics[0], yesterday = metrics[1];
-          const spike = yesterday && yesterday.tokens > 0 && today.tokens > yesterday.tokens * 1.5;
           return (
             <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 10, fontSize: 13 }}>
               <thead>
@@ -147,7 +155,7 @@ export function Settings({
               <tbody>
                 {metrics.slice(0, 2).map((m, i) => (
                   <tr key={m.id} style={{ background: i === 0 && spike ? "rgba(234,179,8,.14)" : undefined }}>
-                    <td style={{ padding: "4px 8px" }}>{i === 0 ? "今日" : "昨日"} {m.id}{i === 0 && spike ? " 🔶 较昨日 +150%+" : ""}</td>
+                    <td style={{ padding: "4px 8px" }}>{i === 0 ? "今日" : "昨日"} {m.id}{i === 0 && spike ? " 🔶" : ""}</td>
                     <td>{m.calls}</td>
                     <td>{m.tokens.toLocaleString()}</td>
                     <td>{m.byPlan?.cheap?.calls ?? 0} 次 / {(m.byPlan?.cheap?.tokens ?? 0).toLocaleString()}</td>
@@ -161,20 +169,134 @@ export function Settings({
           );
         })()}
         {metrics.length === 0 && <p className="muted" style={{ marginTop: 8 }}>暂无调用记录（有内置模型调用后出现）。</p>}
+        <p className="helper-text" style={{ marginBottom: 0 }}>
+          零价值调用零容忍：已消费不重跑、空池跳过、联想/竞争度只做高分词。台账保留 35 天。
+        </p>
       </section>
+
+      {/* ④ 搜索后端 */}
+      <p className="dash-label">🔍 搜索后端<span className="dash-label-sub">hybrid=Tavily 先行 + 本地 SearXNG 补位合并</span></p>
       <section className="form-section">
-        <h2>全集合核对（昨日 vs 今日）</h2>
-        <span className="helper-text">
-          janitor 每日快照 documents 全集合行数；行数有异动的集合标黄（🔶 = 今日与昨日不同）。
-          意外暴增/暴减先看备份（backups/）与 data/snapshots/ 保险丝快照。
-        </span>
+        <Field
+          label="网页搜索后端"
+          hint="先走 Tavily，无 Key、请求失败或相关结果不足 3 条时自动用本地 SearXNG 补位合并；仅 SearXNG 则完全不消耗 Tavily 额度。"
+        >
+          <select
+            value={value.webSearchProvider}
+            onChange={(e) =>
+              setValue({ ...value, webSearchProvider: e.target.value })
+            }
+          >
+            <option value="hybrid">Tavily 先行 + SearXNG 补位</option>
+            <option value="tavily">仅 Tavily</option>
+            <option value="searxng">仅 SearXNG（本地）</option>
+          </select>
+        </Field>
+        {(value.webSearchProvider === "hybrid" || value.webSearchProvider === "searxng") && (
+          <Field
+            label="SearXNG 地址"
+            hint="随工作台内置，默认 http://searxng:8080；自建在其他位置时修改。"
+          >
+            <input
+              type="url"
+              placeholder="http://searxng:8080"
+              value={value.searxngUrl}
+              onChange={(e) => setValue({ ...value, searxngUrl: e.target.value })}
+            />
+          </Field>
+        )}
+        <Field
+          label={
+            "Tavily Key · " +
+            (config.hasTavilyKey ? "已配置，留空保留" : "可选，网页搜索需要")
+          }
+        >
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={value.tavilyKey}
+            onChange={(e) => setValue({ ...value, tavilyKey: e.target.value })}
+          />
+        </Field>
+        <button
+          type="button"
+          disabled={busy || (value.webSearchProvider === "tavily" && !config.hasTavilyKey)}
+          onClick={() => void act(async () => {
+            const r = await api("test-search", {});
+            setNotice(r.message);
+          })}
+        >
+          测试搜索
+        </button>
+      </section>
+
+      {/* ⑤ 执行方 */}
+      <p className="dash-label">🤖 执行方与参与方<span className="dash-label-sub">谁来干研究：内置管线或外部 Agent 二选一</span></p>
+      <section className="form-section">
+        <Field label="消费执行方（保存前即时生效）">
+          <select
+            value={config.consumerMode || "external"}
+            onChange={(e) =>
+              void act(async () => {
+                await api("consumerMode", { consumerMode: e.target.value });
+              })
+            }
+          >
+            <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
+            <option value="builtin">内置管线（每晚自动采集与分析）</option>
+          </select>
+        </Field>
+        <p className="helper-text" style={{ marginBottom: 0 }}>
+          当前：{(config.consumerMode || "external") === "external" ? "外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。" : "内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}
+          内置 AI 与外部 Agent 各自负责消费链路的不同环节；停用某来源后其已产出的内容仍可查。内置 AI 参与开关（triage / outline / draft / aiWriter 四开关）在审查台「内置 AI 参与开关（aiPolicy）」分区配置。
+        </p>
+      </section>
+
+      {/* ⑥ 内容方向 */}
+      <p className="dash-label">🎯 内容方向<span className="dash-label-sub">受众定位与兴趣类别，影响热点排序与推荐</span></p>
+      <section className="form-section">
+        <Field label="受众与内容定位">
+          <textarea
+            required
+            rows={4}
+            value={value.profile}
+            onChange={(e) => setValue({ ...value, profile: e.target.value })}
+          />
+        </Field>
+        <Field label="兴趣类别（可多选）">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {(["模型动态", "Agent生态", "图像视频", "开发工具", "成本额度", "教程实战", "其他"] as const).map((cat) => (
+              <label className="check" key={cat}>
+                <input
+                  type="checkbox"
+                  checked={(value.interestedCategories || []).includes(cat)}
+                  onChange={(e) =>
+                    setValue({
+                      ...value,
+                      interestedCategories: e.target.checked
+                        ? [...(value.interestedCategories || []), cat]
+                        : (value.interestedCategories || []).filter((c: string) => c !== cat),
+                    })
+                  }
+                />
+                {cat}
+              </label>
+            ))}
+          </div>
+        </Field>
+        <p className="helper-text" style={{ marginBottom: 0 }}>勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</p>
+      </section>
+
+      {/* ⑦ 数据健康 */}
+      <p className="dash-label">🗂 数据健康<span className="dash-label-sub">全集合行数快照 · 异动标黄 · 保险丝快照在 data/snapshots/</span></p>
+      <section className="form-section">
         {(() => {
           const todayCounts = collections?.today?.counts as Record<string, number> | undefined;
           const yesterdayCounts = collections?.yesterday?.counts as Record<string, number> | undefined;
-          if (!todayCounts) return <p className="muted" style={{ marginTop: 8 }}>今日快照尚未生成（janitor 每日首跑后出现）。</p>;
+          if (!todayCounts) return <p className="muted" style={{ margin: 0 }}>今日快照尚未生成（janitor 每日首跑后出现）。</p>;
           const names = [...new Set([...Object.keys(todayCounts), ...Object.keys(yesterdayCounts || {})])].sort();
           return (
-            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 10, fontSize: 13 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: "left", opacity: 0.7 }}>
                   <th style={{ padding: "4px 8px" }}>集合</th><th>昨日</th><th>今日</th><th>Δ</th>
@@ -198,100 +320,14 @@ export function Settings({
             </table>
           );
         })()}
+        <p className="helper-text" style={{ marginBottom: 0 }}>
+          janitor 每日快照 documents 全集合行数；意外暴增/暴减先看备份（backups/）与保险丝快照（data/snapshots/，保留 3 份）。
+        </p>
       </section>
-      <section className="form-section">
-        <h2>我的兴趣类别</h2>
-        <span className="helper-text">勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</span>
-      <Field label="兴趣类别（可多选）">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {(["模型动态", "Agent生态", "图像视频", "开发工具", "成本额度", "教程实战", "其他"] as const).map((cat) => (
-            <label className="check" key={cat}>
-              <input
-                type="checkbox"
-                checked={(value.interestedCategories || []).includes(cat)}
-                onChange={(e) =>
-                  setValue({
-                    ...value,
-                    interestedCategories: e.target.checked
-                      ? [...(value.interestedCategories || []), cat]
-                      : (value.interestedCategories || []).filter((c: string) => c !== cat),
-                  })
-                }
-              />
-              {cat}
-            </label>
-          ))}
-        </div>
-      </Field>
-      </section>
-      <section className="form-section">
-        <h2>搜索与质量预算</h2>
-      <Field
-        label="网页搜索后端"
-        hint="Tavily 先行 + SearXNG 补位：先走 Tavily，无 Key、请求失败或相关结果不足 3 条时自动用本地 SearXNG 补位合并；仅 SearXNG 则完全不消耗 Tavily 额度。"
-      >
-        <select
-          value={value.webSearchProvider}
-          onChange={(e) =>
-            setValue({ ...value, webSearchProvider: e.target.value })
-          }
-        >
-          <option value="hybrid">Tavily 先行 + SearXNG 补位</option>
-          <option value="tavily">仅 Tavily</option>
-          <option value="searxng">仅 SearXNG（本地）</option>
-        </select>
-      </Field>
-      <Field
-        label="SearXNG 地址"
-        hint="随工作台内置，默认 http://searxng:8080；自建在其他位置时修改。"
-      >
-        <input
-          type="url"
-          placeholder="http://searxng:8080"
-          value={value.searxngUrl}
-          onChange={(e) => setValue({ ...value, searxngUrl: e.target.value })}
-        />
-      </Field>
-      <Field
-        label={
-          "Tavily Key · " +
-          (config.hasTavilyKey ? "已配置，留空保留" : "可选，网页搜索需要")
-        }
-      >
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={value.tavilyKey}
-          onChange={(e) => setValue({ ...value, tavilyKey: e.target.value })}
-        />
-      </Field>
 
-      <Field label="受众与内容定位">
-        <textarea
-          required
-          rows={4}
-          value={value.profile}
-          onChange={(e) => setValue({ ...value, profile: e.target.value })}
-        />
-      </Field>
-      <Field
-        label="每日模型 token 预留上限"
-        hint="覆盖内置研究与讨论；保守预留不返还，可防止连续失败产生无上限调用。不是人民币账单。"
-      >
-        <input
-          type="number"
-          min={30000}
-          max={2000000}
-          required
-          value={value.dailyTokenLimit}
-          onChange={(e) =>
-            setValue({ ...value, dailyTokenLimit: Number(e.target.value) })
-          }
-        />
-      </Field>
-      </section>
+      {/* ⑧ 危险操作 */}
+      <p className="dash-label">⚠️ 危险操作</p>
       <section className="danger-zone">
-        <h2>危险操作</h2>
         <label className="check">
           <input
             type="checkbox"
@@ -324,25 +360,6 @@ export function Settings({
         </p>
       )}
       <footer className="form-actions">
-        <button
-          type="button"
-          disabled={busy || !config.hasApiKey}
-          onClick={() =>
-            void act(async () => {
-              const r = await api("test-model", {});
-              setNotice("已保存配置：" + r.message);
-            })
-          }
-        >
-          测试模型连接
-        </button>
-        <button type="button" disabled={busy || (config.webSearchProvider || "hybrid") === "tavily" && !config.hasTavilyKey}
-          onClick={() => void act(async () => {
-            const r = await api("test-search", {});
-            setNotice(r.message);
-          })}>
-          测试搜索
-        </button>
         <button className="primary" disabled={busy}>
           {busy ? "处理中…" : "保存设置"}
         </button>
