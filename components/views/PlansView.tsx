@@ -3,7 +3,7 @@
 // ① 统计条（策略/启用调度/数据源/运行中）② 工具行（＋新建策略）
 // ③ 策略卡 2 列网格（分类/调度胶囊归一头部 + 目标钳 2 行 + 观察设计 fold + 资源脚注 + 运行右贴）。
 // 「立即整理热词」是热词页动作，不再在此页重复。
-import { Layers, Play } from "lucide-react";
+import { ChevronDown, Layers, Play } from "lucide-react";
 import { useState } from "react";
 import { api } from "../ui";
 import { kindPlanLabels } from "../ui";
@@ -82,7 +82,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                     </button>
                   )}
                   <details className="more-menu" data-popover>
-                    <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}>⋯更多</summary>
+                    <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}>更多 <ChevronDown size={13} /></summary>
                     <span className="menu-pop">
                       {p.kind !== "activities" && (
                         <button disabled={busy || analyzeBusy === p.id} onClick={() => void (async () => {

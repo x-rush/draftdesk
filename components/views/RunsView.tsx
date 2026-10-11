@@ -30,8 +30,8 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
       {/* ① 统计条（点卡切筛选） */}
       <div className="stat-strip">
         <button type="button" className={"stat-card clickable accent" + (runFilter === "all" ? " active" : "")} onClick={() => setRunFilter("all")}>
-          <strong>{data.budget.reserved.toLocaleString()}</strong><span>今日 token 预留 · {pct}%</span>
-          <small>上限 {data.budget.limit.toLocaleString()}；保守预算非账单</small>
+          <strong>{data.budget.reserved.toLocaleString()}</strong><span>今日预留 · {pct}%</span>
+          <small>上限 {Math.round(data.budget.limit / 1000)}k · 非账单</small>
         </button>
         <button type="button" className={"stat-card clickable" + (runFilter === "active" ? " active" : "")} onClick={() => setRunFilter(runFilter === "active" ? "all" : "active")}>
           <strong>{activeCount}</strong><span>▶ 进行中</span><small>排队与运行中的任务</small>
