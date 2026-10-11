@@ -125,13 +125,17 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                     <ResearchBrief job={j} />
                     {j.calls > 0 && j.state !== "completed" && <p className="muted">进行中或中断的调用可能尚未回传用量，0 不代表未计费。</p>}
                     <ol className="timeline">
-                      {j.steps.map((s: any, i: number) => (
-                        <li key={i}>
-                          <strong>{s.name}</strong>
-                          <span>{s.detail}</span>
-                          <small>{date(s.at)}</small>
-                        </li>
-                      ))}
+                      {j.steps.map((s: any, i: number) => {
+                        const next = j.steps[i + 1];
+                        const dur = next ? Math.max(0, Math.round((Date.parse(next.at) - Date.parse(s.at)) / 1000)) : null;
+                        return (
+                          <li key={i}>
+                            <strong>{s.name}</strong>
+                            <span>{s.detail}{dur !== null && dur > 0 ? ` · 耗时 ${dur >= 60 ? Math.floor(dur / 60) + " 分 " + (dur % 60) + " 秒" : dur + " 秒"}` : ""}</span>
+                            <small>{date(s.at)}</small>
+                          </li>
+                        );
+                      })}
                     </ol>
                     <p>预留 {j.reservedTokens.toLocaleString()} / {j.plan.maxTokens.toLocaleString()} tokens</p>
                     {Object.entries(j.skillVersions).map(([k, v]) => (

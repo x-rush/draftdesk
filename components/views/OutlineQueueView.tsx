@@ -160,6 +160,8 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
 
 export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
+  const evidenceRefs = o.evidenceRefs || [];
+  const statusLabel = ({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[o.decision] || o.decision;
   return (
     <Drawer
       title={o.title}
@@ -167,22 +169,53 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outl
       onClose={onClose}
       wide
     >
-      <div className="detail-actions">
-        <button className="primary" disabled={busy} onClick={() => void onDecide("approved").then(onClose)}>通过</button>
-        <button disabled={busy} onClick={() => void onDecide("deferred").then(onClose)}>暂缓</button>
-        <button disabled={busy} onClick={() => void onDecide("rejected", "其他").then(onClose)}>否决</button>
+      {/* 状态与拍板：收进一张状态卡，拍板键不再悬浮 */}
+      <div className="drawer-status">
+        <span className={"creation-badge " + (o.decision === "pending" ? "" : "ready")}>{statusLabel}</span>
+        {o.decision === "pending" ? (
+          <div className="term-actions">
+            <button className="primary" disabled={busy} onClick={() => void onDecide("approved").then(onClose)}>通过</button>
+            <button disabled={busy} onClick={() => void onDecide("deferred").then(onClose)}>暂缓</button>
+            <button disabled={busy} onClick={() => void onDecide("rejected", "其他").then(onClose)}>否决</button>
+          </div>
+        ) : (
+          o.decision === "published" && o.publishedRef ? <a className="decision-meta" href={o.publishedRef} target="_blank" rel="noreferrer">{o.publishedRef}</a> : null
+        )}
       </div>
-      {o.keyPoints?.length ? <p className="lead">{o.keyPoints.join("；")}</p> : <p className="lead muted">暂无写作要点。可在研究讨论里补齐角度，或直接拍板进入选题库。</p>}
-      {o.draftBody && <div className="draft-preview"><h3>草稿正文</h3><pre style={{ whiteSpace: "pre-wrap" }}>{o.draftBody}</pre></div>}
-      <section>
-        <h3>数据源（{o.evidenceRefs?.length || 0}）</h3>
-        {(o.evidenceRefs || []).map((ref: string) => (
-          <p key={ref}><a href={ref} target="_blank" rel="noopener noreferrer">{ref} ↗</a></p>
-        ))}
+
+      {/* 写作要点 */}
+      <section className="drawer-section">
+        <h3>写作要点</h3>
+        {o.keyPoints?.length ? (
+          <ul className="drawer-points">{o.keyPoints.map((k: string, i: number) => <li key={i}>{k}</li>)}</ul>
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>暂无写作要点——可在「研究讨论」里围绕这个选题补齐角度，或直接拍板进入选题库。</p>
+        )}
       </section>
+
+      {/* 数据源：空态给引导而非留白 */}
+      <section className="drawer-section">
+        <h3>数据源（{evidenceRefs.length}）</h3>
+        {evidenceRefs.length ? (
+          <ul className="drawer-sources">
+            {evidenceRefs.map((ref: string) => (
+              <li key={ref}>
+                <a href={ref} target="_blank" rel="noopener noreferrer">{ref.length > 90 ? ref.slice(0, 90) + "…" : ref} ↗</a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>
+            这个选题还没有登记原始出处。补证据的两条路：在「热点资讯」找到相关线索点「讨论」带入；
+            或在讨论里让 AI 给出待核实的来源清单，逐条核对后再引用。
+          </p>
+        )}
+      </section>
+
+      {/* 外部建议 */}
       {!!o.suggestions?.length && (
-        <section>
-          <h3>外部建议</h3>
+        <section className="drawer-section">
+          <h3>外部建议（{o.suggestions.length}）</h3>
           {o.suggestions.map((s: any, i: number) => (
             <div className="claim" key={i}>
               <span className="pill">{s.by}</span>
@@ -191,7 +224,14 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outl
           ))}
         </section>
       )}
-      <p className="muted">当前状态：{({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[o.decision] || o.decision}</p>
+
+      {/* 草稿正文 */}
+      {o.draftBody && (
+        <section className="drawer-section">
+          <h3>草稿正文</h3>
+          <div className="draft-preview"><pre style={{ whiteSpace: "pre-wrap" }}>{o.draftBody}</pre></div>
+        </section>
+      )}
     </Drawer>
   );
 }

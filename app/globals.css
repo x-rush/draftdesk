@@ -1723,6 +1723,42 @@ button:disabled, .button:disabled {
 button:disabled:hover { filter: none; }
 
 
+
+/* ── 大纲抽屉重构（R3+D2）：状态行 + 分节卡 ── */
+.drawer-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcf9;
+}
+.drawer-status .creation-badge { font-size: 12px; padding: 3px 10px; }
+.drawer-status .creation-badge.ready { background: #e4f1e3; color: #32633c; }
+.drawer-section { margin-top: 18px; }
+.drawer-section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.drawer-section h3::before { content: ""; width: 3px; height: 12px; border-radius: 2px; background: #6f8560; }
+.drawer-points { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.drawer-sources { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.drawer-sources a {
+  display: block; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: #fbfcf9; color: #38634a; font-size: 12px; text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.drawer-sources a:hover { border-color: #c9d8bd; background: #f6f9f2; }
+
+
 /* D1 发现页评分列收敛（58 项清单批三） */
 .row-number { font-size: 13px !important; font-weight: 600; color: var(--muted); min-width: 34px; }
 

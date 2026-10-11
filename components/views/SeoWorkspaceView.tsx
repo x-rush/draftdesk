@@ -106,7 +106,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
 
   if (bankEmpty && !fullMode) {
     return (
-      <Empty title="词库还是空的。">
+      <Empty icon={<Sparkles size={22} />} title="词库还是空的。">
         <button className="primary" disabled={radarBusy} onClick={() => void triggerExtract()}>{radarBusy ? "启动中…" : "开始第一次采集"}</button>
         <p className="muted" style={{ marginTop: 10 }}>标题流提词 → 联想展开 → 相关性判定，全程约几分钟，完成后这个页面会出现统计条与今日精选。</p>
       </Empty>

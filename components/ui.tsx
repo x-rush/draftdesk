@@ -116,14 +116,16 @@ export function Drawer({
 }
 export function Empty({
   title,
+  icon,
   children,
 }: {
   title: string;
+  icon?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="empty">
-      <span className="empty-symbol">✳</span>
+      <span className="empty-symbol">{icon || "✳"}</span>
       <h2>{title}</h2>
       <p>{children}</p>
     </div>
