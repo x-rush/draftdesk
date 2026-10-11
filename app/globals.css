@@ -1679,15 +1679,11 @@ legend {
     grid-template-columns: 1fr;
   }
   .history {
-    max-height: 170px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    max-height: 200px;
   }
-  .history > input {
-    grid-column: 1/-1;
-  }
-  .history > button {
+  .history > button:not(.new-chat) {
     font-size: 12px;
+    padding: 10px 12px;
   }
   .messages {
     padding: 0 12px;
