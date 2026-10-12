@@ -129,7 +129,7 @@ test("判定 tick：竞争度入库 + 站点发现 + 品牌词 + 永久缓存；
     assert.equal(nice.terms[0], "nice app");
     const openai = db.get<any>("site-discoveries", "openai-tool.vercel.app");
     assert.equal(openai.brand, true, "域名含品牌名 → 不建议做");
-    assert.equal(openai.brandReason, "域名含品牌名");
+    assert.equal(openai.brandReason, "域名含 AI 大厂品牌名", "规则表 reason 文案");
     // suggest 无该词 → brand（用第二个词验证 suggest 路径）
     assert.ok(suggestCalls >= 1);
     // 永久缓存：当日 done 键后不再发请求

@@ -7,6 +7,7 @@ import { now } from "./helpers";
 import { cleanSeedPollution } from "../seen-clean";
 import { backfillSeenTermRegions, mergeSpaceVariants } from "../seen-terms";
 import { retightenNewsOpportunities } from "../opportunity";
+import { reapplySiteRules } from "../seen-judge";
 import type { KV } from "./kv";
 
 interface MigrationCtx {
@@ -307,6 +308,28 @@ export const migrations: Migration[] = [
         for (const sid of cfg.add) if (!sourceIds.includes(sid) && kv.get("sources", sid)) sourceIds.push(sid);
         kv.put("plans", planId, { ...plan, sourceIds, ...(plan.platformAffinity ? {} : { platformAffinity: cfg.affinity }) });
       }
+    },
+  },
+  {
+    id: "site-discovery-rules-v1",
+    // 网站发现补完（收尾批 §3①）：品牌/作品集过滤规则表化后按表复核存量
+    // site-discoveries——增量补标（未标而表命中的升 brand、portfolio 命中补降权标记）。
+    run: ({ kv }) => {
+      const r = reapplySiteRules(kv as unknown as Parameters<typeof reapplySiteRules>[0]);
+      if (r.scanned) console.log(`[migration] site-discovery-rules-v1：扫描 ${r.scanned} 站，补 brand ${r.branded} / 补 portfolio ${r.portfolio}`);
+    },
+  },
+  {
+    id: "receipts-testdata-cleanup-v1",
+    // 收件箱清理（收尾批 §7②）：9 月验收期的测试回执出库（receipts 集合 + submissions
+    // 表对应行一起删）；10 月起的真实回执不动。fresh clone 无数据自然幂等跳过。
+    run: ({ kv }) => {
+      const cutoff = "2026-10-01";
+      const stale = kv.list<any>("receipts").filter((r) => String(r.receivedAt || "") < cutoff);
+      if (!stale.length) return;
+      for (const r of stale) kv.del("receipts", r.id);
+      const del = kv.db.prepare("DELETE FROM submissions WHERE json_extract(receipt,'$.receivedAt') < ?").run(cutoff);
+      console.log(`[migration] receipts-testdata-cleanup-v1：清出测试回执 ${stale.length} 条（submissions 表删 ${del.changes} 行）`);
     },
   },
   {

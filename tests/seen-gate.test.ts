@@ -167,3 +167,32 @@ test("判定吞吐扩容（第五轮 §5）：judgeBackfillTick 日多批 + 批�
     cleanup(dir);
   }
 });
+
+test("fixture 探针词黑名单（收尾批 §7①）：测试探针词不得进种子池", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-fixtureguard-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    const { collectSeeds } = await import("../core/seen-dig");
+    const { judgeSeenTerm, termId } = await import("../core/seen-terms");
+    // 历史fixture 探针词族：即使被误写入词库（联想展开/测试残留），也绝不能回流种子池
+    const probes = ["小 拾 染", "小拾染", "s0", "s1", "s2", "s3"];
+    for (const w of probes) {
+      db!.put("seen-terms", termId(w), { id: termId(w), term: w, status: "rising", observations: 99, sources: ["fixture"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "" });
+    }
+    let seeds = collectSeeds(db, 100);
+    assert.equal(seeds.length, 0, "无 relevance 判定的探针词过不了三档闸");
+    // 恶化场景：探针词被误判 strong（守护 strongest 场景仍然拦截 off/weak 之外的漏网）
+    for (const w of probes) judgeSeenTerm(db, w, "strong");
+    seeds = collectSeeds(db, 100);
+    const uniqueIds = new Set(probes.map((w) => termId(w)));
+    assert.equal(seeds.length, uniqueIds.size, "strong 判定的词按闸放行（小 拾 染 与 小拾染 同 id 去重）");
+    for (const w of probes) judgeSeenTerm(db, w, "off");
+    seeds = collectSeeds(db, 100);
+    assert.equal(seeds.length, 0, "off 判定绝对拦截（off 永不回流）");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});

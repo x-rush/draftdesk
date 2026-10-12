@@ -107,7 +107,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
 }
 
 // 新站发现 tab（第五轮 §2）：site-launches 站卡片（host/六类判定/中文转译/核心词/HN 数据/撞词标记）
-function SiteLaunchesTab({ siteLaunches }: { siteLaunches: any[] }) {
+function SiteLaunchesTab({ siteLaunches, onJumpSites }: { siteLaunches: any[]; onJumpSites: (host: string) => void }) {
   const [motive, setMotive] = useState("");
   const [clashOnly, setClashOnly] = useState(false);
   const filtered = siteLaunches.filter((l) =>
@@ -148,7 +148,7 @@ function SiteLaunchesTab({ siteLaunches }: { siteLaunches: any[] }) {
                   ) : <span className="pill">待判定</span>}
                   <span className="pill">{l.source === "showhn" ? "Show HN" : "Product Hunt"}</span>
                   {(l.clashTerms || []).length > 0 && <span className="pill" style={{ color: "#8a3a3a", borderColor: "#8a3a3a" }}>⚠️ 与我们撞词：{(l.clashTerms || []).join("、")}</span>}
-                  {l.crossLinked && <span className="pill"><CheckCircle2 size={11} /> 已在站点发现</span>}
+                  {l.crossLinked && <button className="pill" style={{ cursor: "pointer" }} onClick={() => onJumpSites(l.host)}><CheckCircle2 size={11} /> 已在站点发现 ↗</button>}
                   <span>首见 {l.firstFoundAt ? date(l.firstFoundAt) : ""}</span>
                   {l.source === "showhn" && <span>⬆ {l.hnScore ?? 0} · 💬 {l.hnComments ?? 0}{l.hnBy ? ` · @${l.hnBy}` : ""}</span>}
                 </div>
@@ -180,6 +180,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const [siteType, setSiteType] = useState("all");
   const [ignored, setIgnored] = useState<string[]>([]);
   const [tab, setTab] = useState<"candidates" | "sites" | "launches" | "opportunities">("candidates");
+  const [siteSort, setSiteSort] = useState("ref");
   const candidates = useMemo(
     () => (seoTerms || []).filter((t) => t.siteCandidate === true && !ignored.includes(t.term)),
     [seoTerms, ignored],
@@ -187,6 +188,13 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const filtered = siteType === "all" ? candidates : candidates.filter((t) => t.siteType === siteType);
   const projects = siteProjects || [];
   const discoveries = siteDiscoveries || [];
+  // 客户端排序兜底：useWorkspaceData 拉的是默认（可参考度）序；切「首见」时本地按首见重排。
+  // portfolio 站折叠到列表尾部（展开按钮查看）。
+  const siteSorted = useMemo(() => {
+    const list = [...discoveries];
+    if (siteSort === "first") list.sort((a, b) => String(b.firstFoundAt).localeCompare(String(a.firstFoundAt)));
+    return [...list.filter((d) => !d.portfolio), ...list.filter((d) => d.portfolio)];
+  }, [discoveries, siteSort]);
   const opportunityList = opportunities || [];
   const launchList = siteLaunches || [];
 
@@ -198,25 +206,34 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
         <button className={tab === "launches" ? "active" : ""} aria-current={tab === "launches" ? "page" : undefined} onClick={() => setTab("launches")}>🚀 新站发现 {launchList.length}</button>
         <button className={tab === "opportunities" ? "active" : ""} aria-current={tab === "opportunities" ? "page" : undefined} onClick={() => setTab("opportunities")}><Sparkles size={13} /> 机会引擎 {opportunityList.length}</button>
       </nav>
-      {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} />}
+      {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} onJumpSites={(host) => { setTab("sites"); setNotice("新站发现交叉站：" + host + "（已在站点发现列表中，可按排序查看）。"); }} />}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
       {tab === "sites" && (
         discoveries.length === 0 ? (
           <Empty title="还没有站点发现。">
-            判定层每天对 score TOP100 强相关海外词查 DDG 竞争度（vercel/github.io/pages.dev/netlify.app），
+            判定层每天对 score TOP100 强相关海外词查 SERP 竞争度（vercel/github.io/pages.dev/netlify.app），
             查到的同题独立站会自动出现在这里。首跑约需 3-5 分钟。
           </Empty>
         ) : (
+          <>
+          <div className="filter-row">
+            <Select aria-label="按排序" placeholder="可参考度排序" value={siteSort} onChange={(e) => setSiteSort(e.target.value)}>
+              <option value="ref">可参考度（撞词 &gt; 非品牌 &gt; 有功能）</option>
+              <option value="first">首见时间</option>
+            </Select>
+            <span className="muted">portfolio 个人作品集降权折叠 · 撞词 = 命中词命中我们热词库高分词</span>
+          </div>
           <div className="discovery-list">
-            {discoveries.map((s) => (
+            {siteSorted.map((s) => (
               <article className="discovery-row" key={s.host}>
                 <div className="row-content">
                   <div className="row-meta">
                     <span className="pill">{s.platform}</span>
                     {s.brand ? <span className="pill"><Ban size={11} /> 不建议做</span> : <span className="pill"><CheckCircle2 size={11} /> 候选</span>}
+                    {(s.clashTerms || []).length > 0 && <span className="pill" style={{ color: "#1a7f4b", borderColor: "#1a7f4b" }}>与我们撞词：{(s.clashTerms || []).join("、")}</span>}
                     {s.brandReason && <span>原因：{s.brandReason}</span>}
                     <span>首次发现 {s.firstFoundAt ? date(s.firstFoundAt) : ""}</span>
-                    <span>DDG 最低排名 {s.bestRank}</span>
+                    <span>SERP 最低排名 {s.bestRank}</span>
                   </div>
                   <a className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} href={`https://${s.host}`} target="_blank" rel="noopener noreferrer">{s.host} ↗</a>
                   <div className="tags">
@@ -224,11 +241,15 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
                   </div>
                 </div>
                 <div className="row-side">
+                  {launchList.some((l) => l.host === s.host) && (
+                    <button className="button-secondary" onClick={() => setTab("launches")}>🚀 新站发现也有 ↗</button>
+                  )}
                   <button onClick={() => { void navigator.clipboard.writeText(s.host); setNotice("已复制域名：" + s.host); }}>复制域名</button>
                 </div>
               </article>
             ))}
           </div>
+          </>
         )
       )}
       {tab === "candidates" && (

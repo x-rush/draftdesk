@@ -32,7 +32,23 @@ const GAP_HEAVY_MS = 100 * 60000;
 const DDG_INTERVAL_MS = 500;
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept-Language": "en;q=0.9" };
 // 品牌词黑名单：命中即「不建议做」（大厂域名/产品词没有独立站机会）
-const BRAND_RE = /openai|google|anthropic|claude|gemini|microsoft|github|amazon|netflix|facebook|apple|nvidia|bytedance|baidu|alibaba|tencent|perplexity|midjourney|notion|slack|zoom|figma|spotify|youtube|tesla|x\.ai/i;
+// 品牌与低值模式规则表（收尾批 §3①）：规则驱动替代散落正则；reapplySiteRules 按表复核存量。
+export type SiteRule = { id: string; pattern: RegExp; kind: "brand" | "portfolio"; reason: string };
+export const SITE_RULES: SiteRule[] = [
+  { id: "brand-ai-labs", kind: "brand", pattern: /openai|anthropic|claude|gemini|midjourney|perplexity|x\.ai/i, reason: "域名含 AI 大厂品牌名" },
+  { id: "brand-bigtech", kind: "brand", pattern: /google|microsoft|github|amazon|netlify|facebook|apple|nvidia|bytedance|baidu|alibaba|tencent|notion|slack|zoom|figma|spotify|youtube|tesla/i, reason: "域名含大厂品牌名" },
+  // 个人作品集/简历页：非品牌但无产品参考价值 → 降权折叠（不做「不建议做」硬判）
+  { id: "portfolio", kind: "portfolio", pattern: /portfolio|(^|[.-])about([.-]|$)|(^|[.-])cv([.-]|$)|(^|[.-])resume([.-]|$)/i, reason: "个人作品集/简历页" },
+];
+
+// 平台后缀（四大静态托管）：品牌匹配前剥掉——user.github.io / foo.netlify.app
+// 是用户站不是品牌站（旧 BRAND_RE 子串匹配曾把整个 github.io 全军误标「不建议做」）。
+const PLATFORM_SUFFIX = /\.(?:vercel\.app|github\.io|pages\.dev|netlify\.app)$/i;
+
+export function matchSiteRule(host: string): SiteRule | undefined {
+  const core = host.replace(PLATFORM_SUFFIX, "");
+  return SITE_RULES.find((r) => r.pattern.test(core));
+}
 const STATIC_PLATFORMS: [RegExp, string][] = [
   [/\.vercel\.app$/i, "vercel"],
   [/\.github\.io$/i, "github.io"],
@@ -296,8 +312,13 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
           let demand = true;
           try { demand = hasSuggestDemand(t.term, await fetchSuggest(t.term, "en", doFetch, outer)); } catch { /* 静默 */ }
           for (const r of platformResults) {
-            const brand = BRAND_RE.test(r.host) || !demand;
-            mergeSiteDiscovery(db, r.host, r.platform!, t.term, r.rank, brand, !demand ? "suggest 无该词" : BRAND_RE.test(r.host) ? "域名含品牌名" : undefined);
+            const rule = matchSiteRule(r.host);
+            const brand = rule?.kind === "brand" || !demand;
+            mergeSiteDiscovery(db, r.host, r.platform!, t.term, r.rank, brand, !demand ? "suggest 无该词" : rule?.kind === "brand" ? rule.reason : undefined);
+            if (rule?.kind === "portfolio") {
+              const p = db.get<any>("site-discoveries", r.host);
+              if (p && !p.portfolio) db.put("site-discoveries", r.host, { ...p, portfolio: true, portfolioReason: rule.reason, updatedAt: new Date().toISOString() });
+            }
             sites++;
           }
           const prev = db.get<any>("seen-terms", String(t.id));
@@ -344,4 +365,35 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
       console.log(`[seen-judge] 第 ${batchNo} 批完成：查询 ${queried}（失败 ${failed}${topReasons ? "：" + topReasons : ""}）/ 发现站点 ${sites} / 游标 ${summary.cursor.slice(0, 24)}`);
     }
   })();
+}
+
+// ---- 规则表存量复核（收尾批 §3①）----
+// 按 SITE_RULES 重扫 site-discoveries：增量补标不翻旧账——
+// 已 brand=true 的保留原 reason（含「suggest 无该词」判据）；未标而表命中的升 brand；
+// portfolio 命中的补 portfolio 标记（降权折叠用）。迁移 site-discovery-rules-v1 调用。
+export function reapplySiteRules(db: Store): { scanned: number; branded: number; portfolio: number; unbranded: number } {
+  let scanned = 0, branded = 0, portfolio = 0, unbranded = 0;
+  for (const d of db.list<any>("site-discoveries")) {
+    scanned++;
+    const rule = matchSiteRule(d.host);
+    const patch: Record<string, unknown> = {};
+    if (rule?.kind === "brand" && !d.brand) {
+      patch.brand = true;
+      patch.brandReason = rule.reason;
+      branded++;
+    } else if (rule === undefined && d.brand && typeof d.brandReason === "string" && d.brandReason.includes("品牌名")) {
+      // 双向复核：域名子串判据标的（reason 含「品牌名」）但剥平台后缀后不命中 → 清误标；
+      // 「suggest 无该词」判据的 brand 保留（独立判据，不由本表翻转）。
+      patch.brand = false;
+      patch.brandReason = "";
+      unbranded++;
+    }
+    if (rule?.kind === "portfolio" && !d.portfolio) {
+      patch.portfolio = true;
+      patch.portfolioReason = rule.reason;
+      portfolio++;
+    }
+    if (Object.keys(patch).length) db.put("site-discoveries", d.host, { ...d, ...patch, updatedAt: new Date().toISOString() });
+  }
+  return { scanned, branded, portfolio, unbranded };
 }

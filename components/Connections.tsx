@@ -197,13 +197,11 @@ export function Connections({
           </button>
         </div>
       </section>
-      <p className="dash-label step-flow"><span className="step-no">3</span>第三步 · 收件箱<span className="dash-label-sub">外部提交的回执、产物与入口 · 共 {receipts.length} 份</span></p>
-      <section className="surface">
-        {!receipts.length && (
-          <p className="muted">
-            还没有外部提交。收到证据包后，会在这里显示来源、数量与回执。
-          </p>
-        )}
+
+      {receipts.length > 0 && (
+      <details className="fold-card" style={{ marginTop: 22 }}>
+        <summary>📥 收件箱 · 外部提交回执（{receipts.length} 份）——功能保留，日常折叠在页底</summary>
+        <div style={{ marginTop: 10 }}>
         {receipts.map((r) => {
           const linked:Job[]=r.jobs || jobs.filter(j=>j.receiptId===r.id || (!j.receiptId && j.external && j.evidenceIds.length===r.evidenceIds.length && j.evidenceIds.every(id=>r.evidenceIds.includes(id))));
           const latest=linked[0];
@@ -242,7 +240,9 @@ export function Connections({
           </div>
         );})}
         {pagination}
-      </section>
+        </div>
+      </details>
+      )}
       </div>
       <aside className="split-side">
         <section className="surface">
