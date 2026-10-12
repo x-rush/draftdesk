@@ -13,6 +13,7 @@ import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
 import { outlineCategoryTick } from "../core/outline-categorize";
+import { outlineDraftTick } from "../core/outline-draft";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -37,6 +38,9 @@ export function startWorkerLoop(db: Store) {
         rootProbeTick(db);
         // 选题题材标注（第六轮批 A）：存量 outlines 六类一次性回填（cheap 档，初筛不受 consumerMode 门控）
         outlineCategoryTick(db, requestModel);
+        // 双端兜底链（第六轮批 B §2④）：builtin 模式 approved → 自动第一版大纲 → drafting；
+        // external 模式此 tick 零动作（大纲由外部 Agent 写）。
+        outlineDraftTick(db, requestModel);
         seenJudgeTick(db);
         // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定（初筛，不受 consumerMode 门控）
         siteLaunchesTick(db, requestModel);

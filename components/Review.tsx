@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Field, formatApiError, date } from "./ui";
 import { OutlineDrawer } from "./views/OutlineQueueView";
+import { PLATFORM_KEYS, PLATFORM_LABELS, platformLabel, aggregateOutlineDecision } from "../core/platforms";
+import { MessageContent } from "./MessageContent";
 import { Select } from "./Select";
 import { creationLabels } from "../core/workspace-ui";
 
@@ -9,7 +11,7 @@ import { creationLabels } from "../core/workspace-ui";
 // 语义红线：quality 是证据可信度（AI 判），decision 是要不要写（人拍板）——两层不互相推导。
 type Row = {
   sourceType: string; id: string; kind: string; title: string; summary?: string; quality?: string;
-  decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string;
+  decision: string; platform?: string; category?: string; perPlatformDecision?: Record<string, string>; outline?: string[]; platforms?: string[]; rejectReason?: string; publishedRef?: string;
   suggestions?: { by: string; verdict: string; score?: number; reason?: string }[];
   producedBy?: string;
   draftBody?: string;
@@ -109,13 +111,29 @@ export function Review() {
     if (next.has(title)) next.delete(title); else next.add(title);
     return next;
   });
+  // 同题×N 不再连拍（第六轮批 B §2①）：组拍板=对组内每个平台行各拍各的平台——
+  // 主行写 perPlatformDecision[platform]，同题同平台行由路由行级同步；
+  // 跨平台状态互不影响（旧 batch 全组连拍已撤）。
   async function decideGroup(group: { primary: Row; members: Row[] }, decision: string, reason?: string) {
-    const ids = group.members.map((m) => m.id);
-    if (ids.length === 1) return decide(group.primary, decision, reason);
+    if (group.primary.sourceType !== "outline") return decide(group.primary, decision, reason);
     await act(async () => {
-      const r = await api<{ applied: number; failed: any[] }>("decisions/batch", { ids, decision, ...(decision === "rejected" ? { rejectReason: reason || "其他" } : {}) });
+      let platforms = 0;
+      for (const m of group.members) {
+        const key = PLATFORM_KEYS.find((k) => PLATFORM_LABELS[k] === m.platform || k === m.platform);
+        if (!key) continue;
+        await api(`outlines/${m.id}/platform-decision`, { platform: key, decision });
+        platforms++;
+      }
       await reload();
-      setNotice(`已拍板 ${r.applied} 条（含同题重复 ${ids.length - 1} 条）。`);
+      setNotice(`已按平台拍板 ${platforms} 个平台（${decision}）——各平台状态独立，可点平台徽章分别改。`);
+    });
+  }
+
+  // 平台徽章点拍：主行 perPlatformDecision 单平台改状态（其他平台不动）
+  async function decidePlatform(row: Row, platform: string, decision: string) {
+    await act(async () => {
+      await api(`outlines/${row.id}/platform-decision`, { platform, decision });
+      await reload();
     });
   }
 
@@ -274,8 +292,25 @@ export function Review() {
                   <button className="creation-badge" style={{ cursor: "pointer" }} onClick={() => toggleGroup(row.title)}>同题 ×{dupCount}{openGroups.has(row.title) ? " ▲" : " ▼"}</button>
                 )}
                 {row.quality && <span className="creation-badge">可信度 {qualityLabels[row.quality] || row.quality}</span>}
+                {row.draftBody && <span className="creation-badge" style={{ color: "#1a7f4b" }}>有草稿</span>}
                 {row.rejectReason && <span className="creation-badge">否决：{row.rejectReason}</span>}
               </div>
+              {row.sourceType === "outline" && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }} aria-label="按平台拍板">
+                  {PLATFORM_KEYS.map((k) => {
+                    const st = (row.perPlatformDecision?.[k] || (platformLabel(row.platform) === PLATFORM_LABELS[k] ? row.decision : "pending")) as string;
+                    const color = st === "approved" || st === "published" ? "#1a7f4b" : st === "drafting" ? "#8a6d1a" : st === "rejected" ? "#8a3a3a" : undefined;
+                    const cycle: Record<string, string> = { pending: "approved", approved: "drafting", drafting: "published", published: "rejected", rejected: "deferred", deferred: "pending" };
+                    return (
+                      <button key={k} className="pill" style={{ cursor: "pointer", color, borderColor: color }}
+                        title={`点击拍板：${PLATFORM_LABELS[k]} → ${statusLabels[cycle[st]] || cycle[st]}（其余平台不受影响）`}
+                        disabled={busy} onClick={() => void decidePlatform(row, k, cycle[st] || "pending")}>
+                        {PLATFORM_LABELS[k]} · {statusLabels[st] || st}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {row.summary && <p className="decision-summary" style={{ cursor: "pointer" }} title="点击展开/收起全文" onClick={(e) => { (e.currentTarget as HTMLElement).classList.toggle("open"); }}>{row.summary.slice(0, 400)}</p>}
               <div className="decision-meta">
                 <span className="creation-badge" style={{ background: "transparent", padding: 0 }}>{statusLabels[row.decision]}</span>
@@ -304,22 +339,30 @@ export function Review() {
                   ))}
                 </div>
               )}
-              {["approved", "drafting", "published"].includes(row.decision) && (
+              {(row.draftBody || ["approved", "drafting", "published"].includes(row.decision)) && (
                 <details className="row-fold">
-                  <summary>草稿正文（可直接读、改、发布）</summary>
-                  <Field label="草稿正文">
-                    <textarea
-                      rows={6}
-                      value={draftText[row.id] ?? row.draftBody ?? ""}
-                      onChange={(e) => setDraftText({ ...draftText, [row.id]: e.target.value })}
-                    />
-                  </Field>
-                  {row.decision !== "published" && (
-                    <button disabled={busy} onClick={() => void act(async () => {
-                      await api(`decisions/${row.id}/draft`, { draftBody: draftText[row.id] ?? "" });
-                      await reload();
-                      setNotice("草稿正文已保存。");
-                    })}>保存草稿</button>
+                  <summary>草稿正文{row.decision === "pending" && row.draftBody ? "（有草稿 · pending 只读预览）" : "（可直接读、改、发布）"}</summary>
+                  {row.decision === "pending" ? (
+                    <Field label="草稿正文（只读预览——拍板通过后可编辑）">
+                      <div className="draft-preview"><MessageContent text={row.draftBody || ""} /></div>
+                    </Field>
+                  ) : (
+                    <>
+                      <Field label="草稿正文">
+                        <textarea
+                          rows={6}
+                          value={draftText[row.id] ?? row.draftBody ?? ""}
+                          onChange={(e) => setDraftText({ ...draftText, [row.id]: e.target.value })}
+                        />
+                      </Field>
+                      {row.decision !== "published" && (
+                        <button disabled={busy} onClick={() => void act(async () => {
+                          await api(`decisions/${row.id}/draft`, { draftBody: draftText[row.id] ?? "" });
+                          await reload();
+                          setNotice("草稿正文已保存。");
+                        })}>保存草稿</button>
+                      )}
+                    </>
                   )}
                 </details>
               )}
@@ -451,6 +494,19 @@ export function Review() {
             await decide(detail, decision, rejectReason);
             const refreshed = rows.find((x) => x.id === detail.id);
             setDetail(refreshed && refreshed.decision !== detail.decision ? refreshed : null);
+          }}
+          onPlatformDecide={async (platform, decision) => {
+            await act(async () => {
+              // functional 更新：act 后的 rows 闭包是旧渲染，直接用服务端响应改 detail
+              const res = await api<{ perPlatformDecision: Record<string, string>; decision: string }>(`outlines/${detail.id}/platform-decision`, { platform, decision });
+              setDetail((d: typeof detail | null) => (d && d.id === detail.id ? { ...d, perPlatformDecision: res.perPlatformDecision, decision: res.decision } : d));
+            });
+          }}
+          onCategory={async (category) => {
+            await act(async () => {
+              const res = await api<{ category: string }>(`outlines/${detail.id}/category`, { category });
+              setDetail((d: typeof detail | null) => (d && d.id === detail.id ? { ...d, category: res.category } : d));
+            });
           }}
         />
       )}

@@ -57,3 +57,16 @@ export function normalizeCategory(v: string): CategoryKey | undefined {
   const byLabel = Object.entries(CATEGORY_LABELS).find(([, label]) => label === t);
   return byLabel ? (byLabel[0] as CategoryKey) : undefined;
 }
+
+// ---- 按平台拍板（第六轮批 B §2①）----
+// 聚合优先序：分化时取最前进的正向状态展示（published > drafting > approved > rejected > deferred > pending）。
+export const DECISION_PRIORITY = ["published", "drafting", "approved", "rejected", "deferred", "pending"] as const;
+export type OutlineDecision = (typeof DECISION_PRIORITY)[number];
+
+export function aggregateOutlineDecision(o: { decision?: string; perPlatformDecision?: Record<string, string> }): OutlineDecision {
+  const per = Object.values(o.perPlatformDecision || {}) as OutlineDecision[];
+  if (per.length) {
+    for (const s of DECISION_PRIORITY) if (per.includes(s)) return s;
+  }
+  return (o.decision as OutlineDecision) || "pending";
+}

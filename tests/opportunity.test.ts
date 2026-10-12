@@ -309,3 +309,53 @@ test("选题体系批 A：platform 五枚举迁移 + 题材六值标注（normal
     cleanup(dir);
   }
 });
+
+test("选题体系批 B：按平台拍板聚合 + siteCandidate 站群卡 + builtin 自动大纲 + 提示词矩阵", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-batchb-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    const { aggregateOutlineDecision } = await import("../core/platforms");
+    assert.equal(aggregateOutlineDecision({ decision: "pending" }), "pending");
+    assert.equal(aggregateOutlineDecision({ decision: "approved", perPlatformDecision: { gzh: "published", "xhs-note": "pending" } }), "published", "分化取最前进正向");
+    assert.equal(aggregateOutlineDecision({ decision: "approved", perPlatformDecision: { gzh: "rejected", "xhs-note": "deferred" } }), "rejected");
+
+    // siteCandidate 站群卡生成
+    db.put("seo-terms", "pdfconverter", { term: "pdf converter", siteCandidate: true, siteType: "工具站", sources: ["hn-algolia"], siteRationale: "工具意图强且竞争弱" });
+    db.put("seo-terms", "notmarked", { term: "not marked", siteCandidate: false });
+    const run = generateOpportunities(db, { source: "agent" });
+    const card = db.list<any>("opportunities").find((o) => o.dedupeKey === "site:cand:pdfconverter");
+    assert.ok(card, "siteCandidate:true 词出站群卡");
+    assert.equal(card.kind, "site");
+    assert.ok(card.oneLiner.includes("工具站"), "卡带站型与来源标注");
+    assert.equal(db.list<any>("opportunities").filter((o) => o.term === "not marked").length, 0, "未标注词不出卡");
+
+    // 提示词矩阵：文件解析 + 组合生成
+    const { composeOutlinePrompt } = await import("../core/prompts-matrix");
+    const prompt = composeOutlinePrompt("xhs-video", "hot", "某社会热点改编", ["要点一"]);
+    assert.ok(prompt.includes("口播稿"), "平台模板节命中");
+    assert.ok(prompt.includes("48h") || prompt.includes("正能量"), "题材角度节命中");
+    assert.ok(prompt.includes("要点一"), "素材要点拼入");
+    assert.ok(prompt.includes("JSON"), "输出合同在提示词内");
+
+    // builtin 自动大纲：approved 无草稿 → 出稿进 drafting；external 零动作
+    db.put("outlines", "out-b1", { id: "out-b1", clusterId: "clu-inbox", platform: "gzh", category: "newtech", contentType: "长文", title: "测试自动大纲选题", outline: [], keyPoints: ["要点A"], evidenceRefs: [], decision: "approved", decidedAt: new Date().toISOString() });
+    const draftModel = (async (_db: any, messages: any[]) => ({ text: JSON.stringify({ keyPoints: ["新要点"], outline: ["第一部分", "第二部分"], draftBody: "## 完整初稿\n\n这是按平台模板写的初稿正文。公众号长文结构：标题带钩子，核心论点先行，论据清单逐条引用证据链接，目标读者收益明确，建议工作日早间发布。\n\n第一部分展开：一周内可用性检验，读者这周能拿它做什么，对个人工作流的具体影响点在哪个环节被改变。\n\n第二部分展开：与已报道内容的差异点，给出别人没说的角度，避免重复报道，附上三步演示路径。" }) })) as any;
+    const { outlineDraftTick } = await import("../core/outline-draft");
+    outlineDraftTick(db, draftModel);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(db.get<any>("outlines", "out-b1").draftBody, undefined, "external 模式不自动出稿");
+    db.put("config", "consumerMode", "builtin");
+    outlineDraftTick(db, draftModel);
+    await new Promise((r) => setTimeout(r, 250));
+    const drafted = db.get<any>("outlines", "out-b1");
+    assert.ok(drafted.draftBody?.includes("完整初稿"), "builtin 自动出稿");
+    assert.equal(drafted.decision, "drafting", "自动推进 drafting");
+    assert.deepEqual(drafted.outline, ["第一部分", "第二部分"], "outline 数组回写");
+    assert.equal(db.get<any>("meta", "outline-draft-done:" + new Date().toISOString().slice(0, 13)).drafted, 1, "小时闸置位");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});

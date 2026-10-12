@@ -85,7 +85,15 @@ function seenListPayload(db: any, query: URLSearchParams) {
   // 判定层（海外定位批 5）：每词附 obsRatio 与值不值得做三档（无外部调用，纯读时计算）
   const items = list.items.map((t) => {
     const { verdict, reason } = judgeVerdict(t);
-    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason, serpDerived: deriveSerpFields(t) };
+    // siteCandidate 双通道判定口（第六轮批 B §2.5②）：
+    // 观测通道 = global + obs≥3 + 来源≥2；竞争通道 = global + strong + SERP 已查且 serpDedicated≤1。
+    const globalWord = (t.region ?? "global") === "global";
+    const sourceCount = Array.isArray(t.sources) ? t.sources.length : 0;
+    const siteCandidateEligible = globalWord && (
+      ((t.observations ?? 0) >= 3 && sourceCount >= 2) ||
+      (t.relevance === "strong" && typeof t.serpDedicated === "number" && t.serpDedicated <= 1)
+    );
+    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason, serpDerived: deriveSerpFields(t), siteCandidateEligible };
   });
   return {
     items,

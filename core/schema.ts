@@ -216,6 +216,7 @@ export type ContentOutline = {
   keyPoints: string[];
   evidenceRefs: string[];
   decision: DecisionState;
+  perPlatformDecision?: Record<string, DecisionState>; // 按平台拍板（第六轮批 B）：{gzh: approved, xhs-note: pending…}，decision 字段保留为聚合视图
   decidedBy?: "human" | "agent";
   decidedAt?: string;
   draftRef?: string;

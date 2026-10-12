@@ -3,7 +3,8 @@
 // outlines(decision=pending) 按综合分降序；卡片直接拍板，拍完移出。
 // 综合评分 = 证据数 + suggestions 评分均值（派生式，schema 预留 score 字段位待外部 Agent）。
 import { useState } from "react";
-import { platformLabel, categoryLabel } from "../../core/platforms";
+import { platformLabel, categoryLabel, PLATFORM_KEYS, PLATFORM_LABELS, CATEGORY_KEYS, CATEGORY_LABELS } from "../../core/platforms";
+import { MessageContent } from "../MessageContent";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Select } from "../Select";
 import { ArrowUpRight } from "lucide-react";
@@ -97,6 +98,7 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                       </button>
                     )}
                     <span>{platformLabel(o.platform)}{o.category ? ` · ${categoryLabel(o.category)}` : ""}</span>
+                    {o.draftBody && <span className="pill" style={{ color: "#1a7f4b", borderColor: "#1a7f4b" }}>有草稿</span>}
                     {cluster && cluster.id !== "clu-inbox" && <span>{cluster.topic}</span>}
                     {cluster && cluster.id === "clu-inbox" && <span>选题收集箱</span>}
                     <span>{date(o.createdAt)}</span>
@@ -154,25 +156,37 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
           })}
         </div>
       )}
-      {detail && <OutlineDrawer outline={detail} cluster={clusterOf(detail)} onClose={() => setDetail(null)} onDecide={(d, rr) => decide(detail, d, rr)} />}
+      {detail && <OutlineDrawer outline={detail} cluster={clusterOf(detail)} onClose={() => setDetail(null)} onDecide={(d, rr) => decide(detail, d, rr)}
+        onPlatformDecide={async (platform, decision) => { await ws.act(async () => { await api(`outlines/${detail.id}/platform-decision`, { platform, decision }); }); }}
+        onCategory={async (category) => { await ws.act(async () => { await api(`outlines/${detail.id}/category`, { category }); }); }} />}
     </>
   );
 }
 
-export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void> }) {
+export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatformDecide, onCategory }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void>; onPlatformDecide?: (platform: string, decision: string) => Promise<void>; onCategory?: (category: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const evidenceRefs = o.evidenceRefs || [];
   const statusLabel = ({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[o.decision] || o.decision;
+  const cycle: Record<string, string> = { pending: "approved", approved: "drafting", drafting: "published", published: "rejected", rejected: "deferred", deferred: "pending" };
   return (
     <Drawer
       title={o.title}
-      subtitle={[o.platform, cluster ? cluster.topic : "选题收集箱", date(o.createdAt)].filter(Boolean).join(" · ")}
+      subtitle={[platformLabel(o.platform) || o.platform, o.category ? categoryLabel(o.category) : "", cluster ? cluster.topic : "选题收集箱", date(o.createdAt)].filter(Boolean).join(" · ")}
       onClose={onClose}
       wide
     >
       {/* 状态与拍板：收进一张状态卡，拍板键不再悬浮 */}
       <div className="drawer-status">
         <span className={"creation-badge " + (o.decision === "pending" ? "" : "ready")}>{statusLabel}</span>
+        {/* 题材徽章（可点改：LLM 初标的人工纠偏口，第六轮批 B） */}
+        {onCategory && (
+          <button className="pill" style={{ cursor: "pointer" }} title="点击切换题材（LLM 初标可人工纠偏）"
+            disabled={busy} onClick={() => {
+              const current = CATEGORY_KEYS.indexOf(o.category) ;
+              const next = CATEGORY_KEYS[(current + 1 + CATEGORY_KEYS.length) % CATEGORY_KEYS.length];
+              void onCategory(next);
+            }}>{categoryLabel(o.category) || "标题材"} ↻</button>
+        )}
         {o.decision === "pending" ? (
           <div className="term-actions">
             <button className="primary" disabled={busy} onClick={() => void onDecide("approved").then(onClose)}>通过</button>
@@ -183,6 +197,32 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outl
           o.decision === "published" && o.publishedRef ? <a className="decision-meta" href={o.publishedRef} target="_blank" rel="noreferrer">{o.publishedRef}</a> : null
         )}
       </div>
+
+      {/* 按平台拍板（第六轮批 B）：五平台徽章，点击循环状态——同题×N 互不连拍 */}
+      {onPlatformDecide && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} aria-label="按平台拍板">
+          {PLATFORM_KEYS.map((k) => {
+            const st = (o.perPlatformDecision?.[k] || (platformLabel(o.platform) === PLATFORM_LABELS[k] ? o.decision : "pending")) as string;
+            const color = st === "approved" || st === "published" ? "#1a7f4b" : st === "drafting" ? "#8a6d1a" : st === "rejected" ? "#8a3a3a" : undefined;
+            return (
+              <button key={k} className="pill" style={{ cursor: "pointer", color, borderColor: color }}
+                title={`点击拍板：${PLATFORM_LABELS[k]} → ${({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[cycle[st]] || cycle[st]}`}
+                disabled={busy || !o.id?.startsWith?.("out") && false}
+                onClick={() => void onPlatformDecide(k, cycle[st] || "pending")}>
+                {PLATFORM_LABELS[k]} · {({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[st] || st}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 内容结构（outline 数组）：每日发现与审查台共用渲染（第六轮批 B 补渲染位） */}
+      {o.outline?.length ? (
+        <section className="drawer-section">
+          <h3>内容结构（{o.outline.length} 段）</h3>
+          <ol className="drawer-points">{o.outline.map((k: string, i: number) => <li key={i}>{k}</li>)}</ol>
+        </section>
+      ) : null}
 
       {/* 写作要点 */}
       <section className="drawer-section">
@@ -226,11 +266,11 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide }: { outl
         </section>
       )}
 
-      {/* 草稿正文 */}
+      {/* 草稿正文（Markdown 渲染——贴图号图卡组/视频分镜是结构化内容；pending 有草稿同样可见） */}
       {o.draftBody && (
         <section className="drawer-section">
-          <h3>草稿正文</h3>
-          <div className="draft-preview"><pre style={{ whiteSpace: "pre-wrap" }}>{o.draftBody}</pre></div>
+          <h3>草稿正文{o.decision === "pending" ? "（有草稿 · pending 只读）" : ""}</h3>
+          <div className="draft-preview"><MessageContent text={o.draftBody} /></div>
         </section>
       )}
     </Drawer>

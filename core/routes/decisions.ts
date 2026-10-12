@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
+import { normalizePlatform, normalizeCategory, aggregateOutlineDecision } from "../platforms";
 
 // 决策拍板入参：rejected 必须给否决原因；published 建议给发布链接（回填）。
 const decisionInput = z.object({
@@ -102,6 +103,48 @@ export const routes: RouteDef[] = [
     handler: async ({ db, params, readBody }) => {
       const parsed = decisionInput.parse(await readBody());
       return json(db.setDecision(params.id, { ...parsed, decidedBy: "human" }));
+    },
+  },
+  {
+    // 按平台拍板（第六轮批 B §2①）：写主行 perPlatformDecision[platform]，
+    // 聚合 decision 同步，并把同题同平台的行级 decision 一并同步（同题×N 不再连拍——
+    // 每次点拍只影响所选平台）。UI api() 二参即 POST，PUT/POST 双开。
+    methods: ["PUT", "POST"],
+    pattern: "outlines/:id/platform-decision",
+    handler: async ({ db, params, readBody }) => {
+      const parsed = z.object({
+        platform: z.string().min(1).max(30),
+        decision: z.enum(["approved", "rejected", "deferred", "drafting", "published", "pending"]),
+      }).strict().parse(await readBody());
+      const outline = db.get<any>("outlines", params.id);
+      if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
+      const key = normalizePlatform(parsed.platform) ?? parsed.platform;
+      const per = { ...(outline.perPlatformDecision || {}), [key]: parsed.decision };
+      const aggregate = aggregateOutlineDecision({ ...outline, perPlatformDecision: per });
+      db.put("outlines", params.id, { ...outline, perPlatformDecision: per, decision: aggregate, decidedBy: "human", decidedAt: now() });
+      let synced = 0;
+      const title = String(outline.title || "").trim();
+      for (const row of db.list<any>("outlines")) {
+        if (row.id === params.id || String(row.title || "").trim() !== title) continue;
+        if ((normalizePlatform(row.platform) ?? row.platform) !== key) continue;
+        db.put("outlines", row.id, { ...row, decision: parsed.decision, decidedBy: "human", decidedAt: now() });
+        synced++;
+      }
+      return json({ ok: true, platform: key, perPlatformDecision: per, decision: aggregate, synced });
+    },
+  },
+  {
+    // 题材点改（第六轮批 B §2②）：审查台题材徽章可点改（LLM 初标的人工纠偏口）
+    methods: ["PUT", "POST"],
+    pattern: "outlines/:id/category",
+    handler: async ({ db, params, readBody }) => {
+      const parsed = z.object({ category: z.string().min(1).max(30) }).strict().parse(await readBody());
+      const outline = db.get<any>("outlines", params.id);
+      if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
+      const category = normalizeCategory(parsed.category);
+      if (!category) throw new AppError("未知题材，允许值：" + "newtech/news/oss/selfproduct/thinking/hot");
+      db.put("outlines", params.id, { ...outline, category, updatedAt: now() });
+      return json({ ok: true, category });
     },
   },
 ];

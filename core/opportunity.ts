@@ -9,6 +9,7 @@ import type { Store } from "./store";
 import { hash, now } from "./store";
 import { urlKey } from "./hotspots";
 import { judgeVerdict } from "./seen-judge";
+import { termId } from "./seen-terms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
 export type OpportunityKind = "site" | "app";
@@ -304,6 +305,7 @@ export function generateOpportunities(db: Store, opts: { source?: "auto" | "agen
   generateFromNewtech(db, source, counters, since);
   generateFromNews(db, source, counters, since);
   generateFromTrend(db, source, counters);
+  generateFromSiteCandidates(db, source, counters);
   return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal };
 }
 
@@ -324,6 +326,22 @@ export function retightenNewsOpportunities(db: Store): { checked: number; demote
     demoted++;
   }
   return { checked, demoted };
+}
+
+// e. siteCandidate（应用机会页单入口 §2.5②）：外部 Agent 标注 siteCandidate:true 的词
+// → 站群机会卡（观测通道 obs≥3+来源≥2 ｜ 竞争通道 strong+serpDedicated≤1 达标后由 Agent 复核标注）。
+function generateFromSiteCandidates(db: Store, source: "auto" | "agent", counters: Counters) {
+  for (const t of db.list<any>("seo-terms")) {
+    if (t.siteCandidate !== true || !t.term) continue;
+    upsert(db, {
+      dedupeKey: `site:cand:${termId(String(t.term))}`, kind: "site", signals: ["trend"], term: String(t.term),
+      evidenceIds: [], title: String(t.term),
+      oneLiner: `站群候选词（siteCandidate 标注）：${[t.siteType, ...(Array.isArray(t.sources) ? t.sources : [])].filter(Boolean).join(" · ") || "双通道达标"}`,
+      form: "内容页 / 工具页", verdict: "待验证",
+      verdictReason: String(t.siteRationale || "siteCandidate 标注（观测或竞争通道达标）").slice(0, 110),
+      verifyPlan: VERIFY.site(String(t.term)), source,
+    }, counters);
+  }
 }
 
 // ---- worker tick（每日一道闸）----

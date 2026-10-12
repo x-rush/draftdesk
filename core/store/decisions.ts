@@ -102,7 +102,8 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       }
       for (const o of kv.list<any>("outlines"))
         rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
-          decision: o.decision, platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt });
+          decision: o.decision, platform: o.platform, category: o.category, perPlatformDecision: o.perPlatformDecision, outline: o.outline,
+          platforms: [o.platform], suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt });
       for (const d of kv.list<any>("decisions"))
         rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
           platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", draftBody: d.draftBody, createdAt: d.createdAt });

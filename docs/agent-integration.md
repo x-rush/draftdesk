@@ -164,3 +164,36 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - `seed`：首见血缘标记；`status`：new/rising/sustained（只升不降）。
 
 判定由工作台内置 AI 兜底：未判定词会在每日整理时按 persona 标尺回填三档（只写档位，不虚增观测）。词表与统计在「热词趋势」页；同题重复回传按 termId 归一（trim+小写+去内部空格）。
+
+## ⑧ 大纲提交（选题体系 · 第六轮批 B）
+
+外部 Agent（external 模式）是「approved → 第一版大纲」的主执行者。builtin 兜底仅在没有外部 Agent 时启用（aiPolicy.draft 联动），两者不双跑。
+
+### 双标注口径（平台 × 题材）
+
+- `platform` 五值枚举：`gzh`（公众号）/ `tiebuhao`（贴图号）/ `xhs-note`（小红书笔记）/ `xhs-video`（小红书视频笔记）/ `threads`。旧值（公众号/小红书/Threads）与中文标签提交时自动归一。
+- `category` 六值枚举：`newtech`（AI 新技术）/ `news`（新资讯）/ `oss`（开源工具）/ `selfproduct`（自研产品）/ `thinking`（个人思考）/ `hot`（社会热点）。
+
+### 提交大纲
+
+```bash
+# upsert（带 id 更新，不带新建）；clusterId 必须是已存在的簇（clu-inbox 收集箱可用）
+curl -X PUT "$BASE/api/v1/agent/outlines" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "id": "out-optional-for-update",
+    "clusterId": "clu-inbox",
+    "platform": "gzh",
+    "category": "newtech",
+    "contentType": "长文",
+    "title": "选题标题",
+    "outline": ["第一部分", "第二部分", "第三部分"],
+    "keyPoints": ["要点一", "要点二"],
+    "evidenceRefs": ["https://…"],
+    "draftBody": "完整的 Markdown 初稿（approved 选题的第一版大纲写在这里）"
+  }'
+```
+
+- approved 选题写完 `draftBody` 后，把决策推进到 drafting：`PUT /api/v1/outlines/:id/decision`（无令牌 UI 口）或集群工具同义口。
+- **提示词矩阵**（平台模板 × 题材角度，与内置 AI 共用的单一来源）随 Skill 包分发：`skills/prompts/outline-matrix.md`——按「平台模板节 + 题材角度节 + 选题素材」组合，不硬编码 24 组合。
+- **按平台拍板**：`PUT /api/v1/outlines/:id/platform-decision`，body `{"platform":"gzh","decision":"approved"}`——写 `perPlatformDecision[platform]` 并同步同题同平台的行；同题 ×N 聚合组内各平台分别拍，互不连拍。聚合 `decision` 取最前进正向状态（published > drafting > approved > rejected > deferred > pending）。
