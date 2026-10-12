@@ -127,7 +127,7 @@ function SiteLaunchesTab({ siteLaunches }: { siteLaunches: any[] }) {
         <button className={clashOnly ? "active" : "button-secondary"} aria-pressed={clashOnly} onClick={() => setClashOnly(!clashOnly)}>⚠️ 只看撞词 {clashCount}</button>
       </div>
       <p className="muted" style={{ fontSize: 12 }}>
-        Show HN + Product Hunt 每日新发布站（host 去重，PH 抽不到官网域名的条目跳过）；已判定 {judged}/{siteLaunches.length}。
+        Show HN + Product Hunt 每日新发布站（host 去重；PH 按帖子标识入库，官网域名抽到就展示）；已判定 {judged}/{siteLaunches.length}。
         「与我们撞词」= 新站核心词命中我们热词库高分词（竞品早期形态信号）；「已在站点发现」= 与判定层独立站池交叉。
       </p>
       {filtered.length === 0 ? (
@@ -152,7 +152,8 @@ function SiteLaunchesTab({ siteLaunches }: { siteLaunches: any[] }) {
                   <span>首见 {l.firstFoundAt ? date(l.firstFoundAt) : ""}</span>
                   {l.source === "showhn" && <span>⬆ {l.hnScore ?? 0} · 💬 {l.hnComments ?? 0}{l.hnBy ? ` · @${l.hnBy}` : ""}</span>}
                 </div>
-                <a className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} href={`https://${l.host}`} target="_blank" rel="noopener noreferrer">{l.host} ↗</a>
+                <a className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} href={`https://${l.host}`} target="_blank" rel="noopener noreferrer">{l.source === "showhn" ? l.host : `${l.host}（PH 条目）`} ↗</a>
+                {l.siteUrl && <p style={{ margin: "4px 0 0", fontSize: 13 }}><a href={l.siteUrl} target="_blank" rel="noopener noreferrer">官网：{l.siteUrl.replace(/^https?:\/\//, "")} ↗</a></p>}
                 {l.titleZh && <p style={{ margin: "4px 0 0" }}>{l.titleZh}</p>}
                 <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
                   原题：{l.title}

@@ -64,10 +64,26 @@ test("解析：Show HN 取部署域名（过滤 GitHub/无 url）；PH 从 descr
   assert.ok(hits[0].text!.includes("needed it myself"));
 
   const { items, skipped } = parseProductHuntFeed(PH_XML);
-  assert.equal(skipped, 1, "抽不到官网域名的条目跳过");
-  assert.equal(items.length, 1);
-  assert.equal(items[0].host, "toolx.io");
-  assert.equal(items[0].source, "producthunt");
+  assert.equal(skipped, 0, "批 2b 口径：无官网域名也入库（仅坏条目跳过）");
+  assert.equal(items.length, 2);
+  assert.equal(items[0].host, "producthunt.com/posts/toolx", "host = PH 帖子去重标识");
+  assert.equal(items[0].siteUrl, "https://toolx.io", "抽到的外链官网存 siteUrl");
+  assert.equal(items[0].source, "producthunt-rss");
+  assert.equal(items[1].host, "producthunt.com/posts/nodomain", "无域名条目照常入库");
+  assert.equal(items[1].siteUrl, undefined);
+
+  // Atom 形状（PH feed 实测）：link 是带属性对象，路径为 /products/<slug>
+  const atomXml = `<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+  <title>Scrape Anything by Context.dev</title>
+  <link rel="alternate" type="text/html" href="https://www.producthunt.com/products/context-dev"/>
+  <content type="html">&lt;p&gt;Turn any website into clean data.&lt;/p&gt;&lt;p&gt;&lt;a href="https://www.producthunt.com/r/p/1277022"&gt;Discussion&lt;/a&gt;&lt;/p&gt;</content>
+  </entry></feed>`;
+  const atom = parseProductHuntFeed(atomXml);
+  assert.equal(atom.skipped, 0, "Atom link 对象形状不再误跳过");
+  assert.equal(atom.items.length, 1);
+  assert.equal(atom.items[0].host, "producthunt.com/products/context-dev");
+  assert.equal(atom.items[0].sourceUrl, "https://www.producthunt.com/products/context-dev");
+  assert.equal(atom.items[0].siteUrl, undefined, "PH 自家重定向链接不算官网");
 });
 
 test("入库去重 + LLM 六类判定 + 撞词标记 + 交叉标注 + tick 日闸", async () => {
@@ -89,7 +105,7 @@ test("入库去重 + LLM 六类判定 + 撞词标记 + 交叉标注 + tick 日�
     siteLaunchesTick(db, model, fakeFetch({ "hn.algolia.com": HN_JSON, "producthunt.com/feed": PH_XML }));
     await new Promise((r) => setTimeout(r, 300));
     const launches = db.list<any>("site-launches");
-    assert.equal(launches.length, 2, "Show HN 1 站 + PH 1 站");
+    assert.equal(launches.length, 3, "Show HN 1 站 + PH 2 条（新口径无域名也入库）");
     const launch = db.get<any>("site-launches", "mysaas.vercel.app");
     assert.ok(launch.titleZh && launch.titleZh.startsWith("转译"), "LLM 中文转译入库（批内序号不定，按前缀断言）");
     assert.equal(launch.motive, "pain");
@@ -98,19 +114,21 @@ test("入库去重 + LLM 六类判定 + 撞词标记 + 交叉标注 + tick 日�
     assert.ok(launch.judgedAt, "判定时间置位");
     assert.deepEqual(launch.clashTerms, ["saas tool"], "obs 高分词精确命中");
     assert.equal(launch.crossLinked, true, "site-discoveries 交叉标注");
-    const ph = db.get<any>("site-launches", "toolx.io");
+    const ph = db.get<any>("site-launches", "producthunt.com/posts/toolx");
     assert.deepEqual(ph.clashTerms, ["AI agents"], "strong 低观测词也进撞词池（首批实测教训）");
     assert.equal(ph.crossLinked, false, "未交叉的站显式标 false");
     const done = db.get<any>("meta", "site-launches-done:" + new Date().toISOString().slice(0, 10));
-    assert.equal(done.added, 2);
-    assert.equal(done.classified, 2, "两条都被分类（同批次 mock）");
-    assert.equal(done.clashed, 2, "两口径各撞一站");
+    assert.equal(done.added, 3, "HN 1 站 + PH 2 条");
+    assert.equal(done.classified, 3, "三条都被分类（同批次 mock）");
+    assert.equal(done.phSkipped, 0, "新口径无域名不跳过");
+    assert.equal(done.clashed, 3, "mysaas 撞 obs 高分 + 两条 PH 撞 strong 低观测");
     assert.equal(done.crossLinked, 1);
 
+    // mock 关键词锚定：toolx 条目标题含 "ToolX"
     // tick 日闸：同日二次调用不重跑（无新增）
     siteLaunchesTick(db, model, fakeFetch({ "hn.algolia.com": HN_JSON }));
     await new Promise((r) => setTimeout(r, 120));
-    assert.equal(db.list<any>("site-launches").length, 2, "日闸幂等");
+    assert.equal(db.list<any>("site-launches").length, 3, "日闸幂等");
 
     // 去重：已存在的 host upsert 只升 HN 数据
     const r = upsertSiteLaunch(db, { host: "mysaas.vercel.app", title: "t", sourceUrl: "s", source: "showhn", hnScore: 99 });

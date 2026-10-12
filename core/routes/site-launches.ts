@@ -37,7 +37,7 @@ export const routes: RouteDef[] = [
         judged: all.filter((l) => l.titleZh).length,
         clash: all.filter((l) => (l.clashTerms || []).length > 0).length,
         crossLinked: all.filter((l) => l.crossLinked).length,
-        bySource: { showhn: all.filter((l) => l.source === "showhn").length, producthunt: all.filter((l) => l.source === "producthunt").length },
+        bySource: { showhn: all.filter((l) => l.source === "showhn").length, "producthunt-rss": all.filter((l) => l.source === "producthunt-rss").length },
         byMotive: Object.fromEntries(["keyword", "pain", "others", "hobby", "business", "unclear"].map((m) => [m, all.filter((l) => (l.motive || "unclear") === m).length])),
       };
       return json({ items, total: all.length, limit, counts, last: db.get("meta", "site-launches-last") || null });

@@ -6,6 +6,7 @@ import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiP
 import { now } from "./helpers";
 import { cleanSeedPollution } from "../seen-clean";
 import { backfillSeenTermRegions, mergeSpaceVariants } from "../seen-terms";
+import { retightenNewsOpportunities } from "../opportunity";
 import type { KV } from "./kv";
 
 interface MigrationCtx {
@@ -306,6 +307,16 @@ export const migrations: Migration[] = [
         for (const sid of cfg.add) if (!sourceIds.includes(sid) && kv.get("sources", sid)) sourceIds.push(sid);
         kv.put("plans", planId, { ...plan, sourceIds, ...(plan.platformAffinity ? {} : { platformAffinity: cfg.affinity }) });
       }
+    },
+  },
+  {
+    id: "opportunity-news-tighten-v1",
+    // news 卡收紧复检（批 1 收尾②，老大「宁可少不可滥」）：存量 news/newtech 卡按
+    // 收紧后的 launch gate 重跑，纯营销话术标题（Introducing/Meet/Now available…）
+    // 无实体变化词的降档「不值得做」并标营销推演。
+    run: ({ kv }) => {
+      const r = retightenNewsOpportunities(kv as unknown as Parameters<typeof retightenNewsOpportunities>[0]);
+      if (r.checked) console.log(`[migration] opportunity-news-tighten-v1：复检 ${r.checked} 张 news/newtech 卡，降档 ${r.demoted} 张`);
     },
   },
 ];

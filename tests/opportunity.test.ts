@@ -70,8 +70,11 @@ test("四信号源：complaint(idea 产物) + newtech(news 产物推演) + news(
     const run = generateOpportunities(db, { source: "agent" });
     assert.ok(run.created >= 5, `四信号源都应出卡（实际 ${run.created}）`);
     const opps = db.list<any>("opportunities");
-    const complaint = opps.find((o) => o.signals.includes("complaint") && o.kind === "app");
+    // alternative 探针词也会出 complaint app 卡（批 2b），按 dedupeKey 锚定 idea 卡
+    const complaint = opps.find((o) => o.dedupeKey === "app:idea:idea-1");
     assert.equal(complaint.title, "会议纪要负责人核对小工具");
+    const altCard = opps.find((o) => o.dedupeKey?.startsWith("app:altterm:"));
+    assert.ok(altCard && altCard.term === "notif alternative", "alternative 词根 strong 词出 complaint 信号卡");
     assert.equal(complaint.verdict, "可以试试", "quality=ready 的 idea 卡可以试试");
     const newtech = opps.find((o) => o.signals.includes("newtech"));
     assert.ok(newtech.oneLiner.includes("配套缺口"), "newtech 卡带配套缺口推演");
@@ -209,6 +212,49 @@ test("源绑定矩阵迁移：三策略补源 + platformAffinity 落库（存量
     assert.deepEqual(products.platformAffinity, ["gzh"]);
     assert.deepEqual(trend.platformAffinity, ["gzh", "xhs-note"]);
     assert.ok(trend.sourceIds.length <= 24, "sourceIds 不超新上限");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("news 卡收紧（批 1 收尾）：营销话术标题不出新卡 + 存量复检降档", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-tighten-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    // 营销话术标题（Introducing…）不推演；实体变化词（launches/releases/GA）照常
+    db.put("artifacts", "news-mkt", {
+      id: "news-mkt", kind: "news", archived: false, title: "Introducing ChatGPT for Financial Services",
+      summary: "官方行业版宣传。", evidenceIds: ["ev-m1"], quality: "ready",
+      details: { whatChanged: "面向金融行业的定制版本", availability: "API", limitations: [] }, createdAt: iso(2),
+    });
+    putEvidence(db, "ev-m1", "https://openai.com/news/financial");
+    db.put("artifacts", "news-real", {
+      id: "news-real", kind: "news", archived: false, title: "OpenAI releases batch API rate limit increases",
+      summary: "官方提升批量接口限额。", evidenceIds: ["ev-m2"], quality: "ready",
+      details: { whatChanged: "上线批量 API 限额提升", availability: "API", limitations: [] }, createdAt: iso(2),
+    });
+    putEvidence(db, "ev-m2", "https://openai.com/news/rate-limits");
+    const run = generateOpportunities(db, { source: "agent" });
+    const opps = db.list<any>("opportunities");
+    assert.equal(opps.find((o) => o.title.includes("Financial Services")), undefined, "Introducing 营销标题不出卡");
+    assert.ok(opps.find((o) => o.title.includes("rate limit increases")), "实体变化词照常出卡");
+    // 存量复检：老规则出的营销卡被降档标注
+    const legacy = {
+      id: "opp-legacy", dedupeKey: "app:ev:legacy", kind: "app", signals: ["news"], evidenceIds: ["ev-m1"],
+      title: "Meet the new Atlas browser", oneLiner: "官方新品推演", form: "web 工具",
+      verdict: "待验证", verdictReason: "官方发布推演缺口", verifyPlan: [], source: "auto",
+      createdAt: iso(1), updatedAt: iso(1),
+    };
+    db.put("opportunities", legacy.id, legacy);
+    const { retightenNewsOpportunities } = await import("../core/opportunity");
+    const r = retightenNewsOpportunities(db);
+    assert.equal(r.checked, 2, "复检池=待验证的 news/newtech 卡（legacy + 新出的 rate limit 卡）");
+    assert.equal(r.demoted, 1, "只有营销卡降档，实体变化卡不动");
+    const after = db.get<any>("opportunities", "opp-legacy");
+    assert.equal(after.verdict, "不值得做");
+    assert.ok(after.verdictReason.includes("营销推演"), "降档标注营销推演");
   } finally {
     db?.close();
     cleanup(dir);

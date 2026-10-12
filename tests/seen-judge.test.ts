@@ -288,3 +288,62 @@ test("判定重档（验收反推）：积压>2000 → 12 批×250 词、间隔 
     cleanup(dir);
   }
 });
+
+test("谷歌自答守门（批 2b）：换算/汇率类词上限「可以试试」不判推荐；非自答词不受影响", () => {
+  const now = new Date();
+  const mk = (term: string) => {
+    const byDay: Record<string, number> = {};
+    for (let o = 0; o <= 1; o++) byDay[dayKey(o, now)] = 4;
+    for (let o = 2; o <= 4; o++) byDay[dayKey(o, now)] = 1;
+    return { term, serpDedicated: 0, obsByDay: byDay };
+  };
+  const guarded = judgeVerdict(mk("bmi converter"), now);
+  assert.equal(guarded.verdict, "可以试试", "换算类词推荐降档");
+  assert.ok(guarded.reason.includes("谷歌自答"), "理由注明守门");
+  assert.equal(judgeVerdict(mk("unit 换算器"), now).verdict, "可以试试", "中文换算词同样守门");
+  assert.equal(judgeVerdict(mk("nice app"), now).verdict, "推荐", "非自答词照常推荐");
+  const weak = judgeVerdict({ term: "currency calculator", serpDedicated: 0, obsByDay: { [dayKey(0, now)]: 2 }, observations: 2 }, now);
+  assert.equal(weak.verdict, "可以试试", "保守档本就 ≤可以试试，守门不追加降档");
+});
+
+test("SERP 全量结果入库（serpAll）+ 三派生字段（批 2b）", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-serpderived-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const today = new Date().toISOString();
+    db.put("seen-terms", "notionresume", { id: "notionresume", term: "notion resume", status: "rising", observations: 9, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: today, lastSeenAt: today, relevance: "strong", region: "global" });
+    const SEARXNG_JSON = JSON.stringify({ results: [
+      { url: "https://notionresume.vercel.app/", title: "Notion Resume" },
+      { url: "https://resume-builder.vercel.app/", title: "Resume Builder" },
+      { url: "https://www.reddit.com/r/resumes/comments/abc/", title: "Reddit thread" },
+      { url: "https://www.youtube.com/watch?v=xyz", title: "YouTube video" },
+    ] });
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("searxng")) return new Response(SEARXNG_JSON, { status: 200 });
+      if (u.includes("suggestqueries.google.com")) return new Response('["q",[["x",0]]]', { status: 200 });
+      throw new Error("unexpected");
+    }) as unknown as typeof fetch;
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0 });
+    await new Promise((r) => setTimeout(r, 150));
+    const term = db.get<any>("seen-terms", "notionresume");
+    assert.equal(term.serpAll.length, 4, "全量结果入库");
+    assert.equal(term.serpDedicated, 2, "平台过滤判定不变");
+    const { deriveSerpFields } = await import("../core/seen-judge");
+    assert.equal(term.serpWeb.length, 4, "形态查询（无 site: 过滤）结果入库");
+    const d = deriveSerpFields(term)!;
+    assert.equal(d.source, "full");
+    assert.equal(d.exact, 1, "host 含完整词（notionresume）");
+    assert.equal(d.homeShare, 50, "2 根路径首页 + 2 内页（reddit 深路径、youtube 单段功能路径）");
+    assert.equal(d.forumShare, 50, "reddit + youtube");
+    // 存量词只有 serpHosts：hosts-only 降级派生，homeShare 无 URL 数据
+    const legacy = deriveSerpFields({ term: "notion resume", serpHosts: ["notionresume.vercel.app", "resume.vercel.app"] })!;
+    assert.equal(legacy.source, "hosts-only");
+    assert.equal(legacy.exact, 1);
+    assert.equal(legacy.homeShare, null);
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});

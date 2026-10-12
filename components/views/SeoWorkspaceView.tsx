@@ -258,6 +258,11 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                           {isLongTail(t.term) && <span className="pill"><Crosshair size={11} /> 长尾</span>}
                           {t.seed && <span>血缘：{t.seed}</span>}
                           <span>观测 {t.observations} 次</span>
+                          {t.serpDerived && (
+                            <span title={`SERP 派生信号（${t.serpDerived.source === "full" ? "全量结果" : "仅静态平台 host"}，共 ${t.serpDerived.total} 条）：精确匹配域名 ${t.serpDerived.exact} 个 · 首页占比 ${t.serpDerived.homeShare === null ? "无 URL 数据" : t.serpDerived.homeShare + "%"} · 论坛/视频站 ${t.serpDerived.forumShare}%`}>
+                              🔍 精确 {t.serpDerived.exact} · 首页 {t.serpDerived.homeShare === null ? "—" : `${t.serpDerived.homeShare}%`} · 论坛/视频 {t.serpDerived.forumShare}%
+                            </span>
+                          )}
                         </div>
                         <button className="article-title" style={{ fontSize: 16, padding: "3px 0 0" }} onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
                       </div>

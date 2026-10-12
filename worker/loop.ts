@@ -11,6 +11,7 @@ import { seenDiggingTick } from "../core/seen-dig";
 import { seenJudgeTick } from "../core/seen-judge";
 import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { siteLaunchesTick } from "../core/site-launches";
+import { rootProbeTick } from "../core/seen-dig";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -31,6 +32,8 @@ export function startWorkerLoop(db: Store) {
         // 判定吞吐扩容（第五轮 §5）：relevance 回填判定日多批（积压 7112 → 48h <2000 的反推口径）
         judgeBackfillTick(db, requestModel);
         seenDiggingTick(db);
+        // 词根探针（第五轮批 2b）：34 工具词根+AI 词根轮转喂联想，≤48 词/日不冲判定重档
+        rootProbeTick(db);
         seenJudgeTick(db);
         // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定（初筛，不受 consumerMode 门控）
         siteLaunchesTick(db, requestModel);

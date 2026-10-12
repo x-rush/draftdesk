@@ -420,8 +420,7 @@ export async function runTrendsRising(db: Store, doFetch: DoFetch = fetch): Prom
 
 // 每分钟 tick：手动请求（UI「立即整理」）优先，其次随整理闸门每日一次。
 // 全程 fire-and-forget：挖掘耗时数分钟，不得阻塞研究任务循环。
-export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number; providerIntervalMs?: number; providerConcurrency?: number } = {}) {
-  const today = new Date().toISOString().slice(0, 10);
+export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number; providerIntervalMs?: number; providerConcurrency?: number } = {}) {  const today = new Date().toISOString().slice(0, 10);
   const manual = db.get<any>("meta", "seen-dig-manual");
   const gate = db.get<any>("meta", "seen-terms-gate");
   const byManual = manual?.date === today;
@@ -453,6 +452,87 @@ export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { int
     } finally {
       db.del("meta", "seen-dig-running");
       db.del("meta", "seen-dig-manual");
+    }
+  })();
+}
+
+// ── 引擎 D · 词根探针（第五轮批 2b §4.8①）──
+// 工具词根 × AI 词根轮转喂 Google 联想：搜「XX alternative/converter/generator」的人
+// 是带着需求形状来的，联想结果=正在形成的需求词。产出进 seen-terms（seed=词根，
+// source=root-probe，region=global）走既有判定层。
+// 体量纪律：每天只拉 ROOTS_PER_DAY 个词根 × 前 8 条联想（≤48 词/日），
+// 与 LLM 判定层 16 批/日重档协同，首批不一次灌 >500；cursor 轮转防同根连拉
+//（重复词隔数日再遇 +1 观测，是「再次观测」语义而非虚增）。
+export const TOOL_ROOTS = [
+  "generator", "converter", "calculator", "checker", "maker", "template", "editor",
+  "translator", "downloader", "creator", "builder", "planner", "tracker", "detector",
+  "extractor", "simulator", "viewer", "compressor", "remover", "enhancer", "upscaler",
+  "resizer", "finder", "counter", "quiz", "test", "chart", "worksheet", "printable",
+  "coloring pages", "font", "name ideas", "alternative", "online free",
+];
+export const AI_ROOTS = [
+  "ai photo", "ai video", "ai voice", "ai detector", "ai humanizer",
+  "ai music", "ai writing", "ai image", "ai code", "ai chatbot",
+];
+export const ROOTS_PER_DAY = 6;
+const ROOT_SUGGEST_TOP = 8;
+
+export function rootProbeCursorRoots(cursor: { roots?: string[] } | undefined): string[] {
+  return Array.isArray(cursor?.roots) ? cursor!.roots.map(String) : [];
+}
+
+// 轮转计划：取 cursor 之后未拉过的下一批词根；全部拉过则重置从头再来（二轮=再次观测）。
+export function nextRootBatch(cursor: { roots?: string[] } | undefined, perDay = ROOTS_PER_DAY): { batch: string[]; wrap: boolean } {
+  const done = new Set(rootProbeCursorRoots(cursor));
+  const all = [...TOOL_ROOTS, ...AI_ROOTS];
+  const pending = all.filter((r) => !done.has(r));
+  if (pending.length) return { batch: pending.slice(0, perDay), wrap: false };
+  return { batch: all.slice(0, perDay), wrap: true };
+}
+
+export async function runRootProbe(db: Store, doFetch: DoFetch = fetch, opts: { perDay?: number; top?: number; intervalMs?: number } = {}): Promise<{
+  roots: string[]; requests: number; failed: number; newTerms: number; updated: number;
+}> {
+  const cursor = db.get<any>("meta", "root-probe-cursor");
+  const { batch, wrap } = nextRootBatch(cursor, opts.perDay ?? ROOTS_PER_DAY);
+  const top = opts.top ?? ROOT_SUGGEST_TOP;
+  const stats = { roots: batch, requests: 0, failed: 0, newTerms: 0, updated: 0 };
+  const outer = AbortSignal.timeout(5 * 60000);
+  for (const root of batch) {
+    stats.requests++;
+    let suggestions: string[];
+    try { suggestions = await fetchSuggest(root, "en", doFetch, outer); }
+    catch { stats.failed++; continue; }
+    for (const term of suggestions.slice(0, top)) {
+      const prev = db.get<any>("seen-terms", termId(term));
+      observeSuggestion(db, term, root, { source: "root-probe" });
+      if (prev) stats.updated++;
+      else stats.newTerms++;
+    }
+    await new Promise((r) => setTimeout(r, opts.intervalMs ?? 300));
+  }
+  db.put("meta", "root-probe-cursor", { roots: wrap ? batch : [...rootProbeCursorRoots(cursor), ...batch], updatedAt: new Date().toISOString() });
+  return stats;
+}
+
+// 词根探针 tick：独立日闸（不依赖整理闸门），fire-and-forget，失败静默。
+export function rootProbeTick(db: Store, doFetch: DoFetch = fetch, opts: { perDay?: number; top?: number; intervalMs?: number } = {}) {
+  const day = new Date().toISOString().slice(0, 10);
+  const doneKey = "root-probe-done:" + day;
+  if (db.get("meta", doneKey)) return;
+  const running = db.get<any>("meta", "root-probe-running");
+  if (running && Date.now() - Date.parse(running.at) < 10 * 60000) return;
+  db.put("meta", "root-probe-running", { at: new Date().toISOString() });
+  void (async () => {
+    try {
+      const s = await runRootProbe(db, doFetch, opts);
+      db.put("meta", doneKey, { at: new Date().toISOString(), ...s });
+      console.log(`[root-probe] 词根探针：词根 ${s.roots.join("/")} / 请求 ${s.requests}（失败 ${s.failed}）/ 新词 ${s.newTerms} / 更新 ${s.updated}`);
+    } catch (e) {
+      console.error("[root-probe] 词根探针失败（次日重试）:", e instanceof Error ? e.message : e);
+      db.put("meta", doneKey, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 120) });
+    } finally {
+      db.del("meta", "root-probe-running");
     }
   })();
 }

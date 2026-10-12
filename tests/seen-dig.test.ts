@@ -272,3 +272,48 @@ test("扩展联想：region 种子分流（global 词只喂 YouTube/Amazon，cn 
     assert.equal(bdDoc.region, "cn");
   } finally { cleanup(dir); }
 });
+
+test("词根探针（批 2b）：轮转批次 + 联想入库 seed=词根 + cursor 推进 + 体量上限", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-rootprobe-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    let calls = 0;
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("suggestqueries.google.com")) {
+        calls++;
+        const q = decodeURIComponent(u.match(/q=([^&]+)/)?.[1] || "");
+        return new Response(JSON.stringify([q, [[`${q} free`, 0], [`${q} online`, 0], [`best ${q}`, 0], [`${q} app`, 0]]]), { status: 200 });
+      }
+      throw new Error("unexpected " + u.slice(0, 60));
+    }) as unknown as typeof fetch;
+    const { runRootProbe, nextRootBatch, TOOL_ROOTS, AI_ROOTS } = await import("../core/seen-dig");
+    assert.equal(TOOL_ROOTS.length, 34, "34 个工具词根");
+    assert.ok(AI_ROOTS.length >= 5, "AI 词根若干");
+    const first = nextRootBatch(undefined, 6);
+    assert.equal(first.batch.length, 6, "首批 6 词根");
+    assert.equal(first.wrap, false);
+    const s = await runRootProbe(db, fakeFetch, { perDay: 6, intervalMs: 0 });
+    assert.equal(s.requests, 6);
+    assert.equal(s.newTerms, 24, "6 词根 × 前 4 条联想（mock 每根 4 条）");
+    const term = db.get<any>("seen-terms", "generatorfree");
+    assert.ok(term, "联想词入库（termId 去空格）");
+    assert.equal(term.seed, "generator", "seed=词根血缘");
+    assert.equal(term.sources[0], "root-probe");
+    assert.equal(term.region, "global", "root-probe 源判 global");
+    const cursor = db.get<any>("meta", "root-probe-cursor");
+    assert.equal(cursor.roots.length, 6, "cursor 推进 6 词根");
+    const second = nextRootBatch(cursor, 6);
+    assert.equal(second.batch.length, 6);
+    assert.ok(!second.batch.some((r: string) => cursor.roots.includes(r)), "轮转不重复");
+    // 全部拉完后 wrap 重置
+    const db2cursor = { roots: [...TOOL_ROOTS, ...AI_ROOTS] };
+    const wrapped = nextRootBatch(db2cursor, 6);
+    assert.equal(wrapped.wrap, true, "全拉完重置");
+    assert.equal(wrapped.batch[0], TOOL_ROOTS[0]);
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});

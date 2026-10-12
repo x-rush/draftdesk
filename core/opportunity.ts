@@ -55,8 +55,16 @@ export function platformFitOf(title: string, affinity: string[] | undefined): st
   return affinity.find((p) => PLATFORM_FIT[p]?.test(title));
 }
 
-// 新品/上新措辞（newtech/news 信号）：产品级变化才推演配套缺口。
-const LAUNCH_RE = /发布|上线|推出|开放|新增|开启|上线了|launch|releas|introduc|announc|now available|rolling out|starts rolling/i;
+// 新品/上新措辞（newtech/news 信号，批 1 收尾收紧）：只认真·产品级变化
+//（发布/上线/开放/GA/降价/接口/下线/区域扩展等实体变化词）；
+// MARKETING_RE 命中的纯营销话术标题（Introducing/Meet/Now available/announcing…）
+// 除非同含实体变化词，否则不推演——宁可少不可滥。
+const LAUNCH_RE = /发布|上线|推出|开放|新增|开启|降价|免费|正式版|general availability|price (cut|drop)|cuts? (its? )?prices?|deprecat|sunset|end.of.life|expands?|launch(es|ed)?|releas(es|ed)?|rolls? out|rate limit|new (model|api|feature)|open.?sourc/i;
+const MARKETING_RE = /^(introducing|now available|meet [\W"']?\w|announcing|celebrating|welcome|say hello|the story|behind)/i;
+
+export function passesLaunchGate(title: string, detail: string): boolean {
+  return LAUNCH_RE.test(`${title} ${detail}`) && !MARKETING_RE.test(title.trim());
+}
 const GAP_FORMS = "额度监控 / 状态页 / 迁移工具 / 格式转换";
 const VERIFY = {
   app: (what: string): string[] => [
@@ -206,7 +214,7 @@ function generateFromNewtech(db: Store, source: "auto" | "agent", counters: Coun
     if (a.kind !== "news" || a.archived) continue;
     if (Date.parse(a.createdAt || "") < since) continue;
     const changed = String(a.details?.whatChanged || "");
-    if (!LAUNCH_RE.test(`${a.title} ${changed}`)) continue;
+    if (!passesLaunchGate(a.title, changed)) continue;
     upsert(db, {
       dedupeKey: `app:evlist:${(a.evidenceIds || []).slice().sort().join(",") || a.id}`,
       kind: "app", signals: ["newtech"], evidenceIds: a.evidenceIds || [],
@@ -234,7 +242,7 @@ function generateFromNews(db: Store, source: "auto" | "agent", counters: Counter
     if (Date.parse(e.collectedAt || "") < since) continue;
     let host = ""; try { host = new URL(e.url).hostname.replace(/^www\./, ""); } catch { continue; }
     if (![...officialHosts].some((h) => host === h || host.endsWith("." + h))) continue;
-    if (!LAUNCH_RE.test(`${e.title} ${e.excerpt}`)) continue;
+    if (!passesLaunchGate(e.title, e.excerpt)) continue;
     upsert(db, {
       dedupeKey: `app:ev:${e.id}`, kind: "app", signals: ["news"], evidenceIds: [e.id],
       title: e.title.slice(0, 120), oneLiner: `官方新品：「${e.title.slice(0, 80)}」→ 配套缺口推演（${GAP_FORMS}）`,
@@ -245,9 +253,14 @@ function generateFromNews(db: Store, source: "auto" | "agent", counters: Counter
   }
 }
 
-// d. trend：seen-terms verdict=推荐 → site 蓝海词卡；toolSignal 强（工具意图+强相关+多观测）→ app 卡。
+// d. trend：seen-terms verdict=推荐 → site 蓝海词卡；toolSignal 强（工具意图+强相关+多观测）→ app 卡；
+// alternative 词根（词根探针 seed=alternative）的 strong 词 = 替代缺口信号 → complaint app 卡（批 2b §4.8①）。
 export function toolSignalOf(t: { intent?: string; relevance?: string; observations?: number }): boolean {
   return (t.intent === "comparison" || t.intent === "commercial") && t.relevance === "strong" && (t.observations ?? 0) >= 2;
+}
+function isAlternativeProbe(t: { term?: string; seed?: string }): boolean {
+  if (t.seed === "alternative") return true;
+  return /(^|[\s-])alternative(s)?($|[\s-])/i.test(t.term || "");
 }
 function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counters) {
   for (const t of db.list<any>("seen-terms")) {
@@ -270,6 +283,16 @@ function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counte
         verifyPlan: VERIFY.app(t.term), source,
       }, counters);
     }
+    if (t.relevance === "strong" && isAlternativeProbe(t)) {
+      upsert(db, {
+        dedupeKey: `app:altterm:${t.id}`, kind: "app", signals: ["complaint"], term: t.term,
+        evidenceIds: [], title: t.term,
+        oneLiner: `替代缺口词：「${t.term}」的搜索=对现有方案不满（alternative 词根探针产出）`,
+        form: "web 工具", verdict: "待验证",
+        verdictReason: "alternative 搜索=替代缺口信号，待核验被替代方与缺口真伪",
+        verifyPlan: VERIFY.app(t.term), source,
+      }, counters);
+    }
   }
 }
 
@@ -282,6 +305,25 @@ export function generateOpportunities(db: Store, opts: { source?: "auto" | "agen
   generateFromNews(db, source, counters, since);
   generateFromTrend(db, source, counters);
   return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal };
+}
+
+// 存量 news/newtech 卡复检（批 1 收尾②）：按收紧后的 launch gate 重跑，
+// 不符合的降档「不值得做」并标注营销推演——迁移 opportunity-news-tighten-v1 调用。
+export function retightenNewsOpportunities(db: Store): { checked: number; demoted: number } {
+  let checked = 0, demoted = 0;
+  for (const op of db.list<any>("opportunities")) {
+    if (op.verdict !== "待验证" || !(op.signals || []).some((s: string) => s === "news" || s === "newtech")) continue;
+    checked++;
+    if (passesLaunchGate(String(op.title || ""), String(op.oneLiner || ""))) continue;
+    db.put("opportunities", op.id, {
+      ...op,
+      verdict: "不值得做",
+      verdictReason: `营销推演（规则收紧复检降档）：标题无实体变化词——${String(op.verdictReason || "").slice(0, 60)}`,
+      updatedAt: now(),
+    });
+    demoted++;
+  }
+  return { checked, demoted };
 }
 
 // ---- worker tick（每日一道闸）----

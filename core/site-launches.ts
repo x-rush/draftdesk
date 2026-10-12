@@ -22,10 +22,11 @@ export const MOTIVE_LABELS: Record<LaunchMotive, string> = {
 export const MOTIVE_SOURCE_LABELS: Record<string, string> = { quote: "作者原话", guess: "推测" };
 
 export type SiteLaunch = {
-  id: string; // host
+  id: string; // host；PH 条目 = producthunt.com/posts/<slug> 去重标识（PH RSS 无官网域名，不强求）
   host: string;
-  source: "showhn" | "producthunt";
+  source: "showhn" | "producthunt-rss";
   sourceUrl: string;
+  siteUrl?: string; // PH 条目偶有 description 外链官网（抽到就存，不强求）
   hnScore?: number;
   hnComments?: number;
   hnBy?: string;
@@ -56,7 +57,7 @@ function hostOf(url: string): string | undefined {
 }
 
 // ---- 抓取解析 ----
-export type LaunchInput = { host: string; title: string; sourceUrl: string; source: "showhn" | "producthunt"; hnScore?: number; hnComments?: number; hnBy?: string; text?: string };
+export type LaunchInput = { host: string; title: string; sourceUrl: string; source: "showhn" | "producthunt-rss"; siteUrl?: string; hnScore?: number; hnComments?: number; hnBy?: string; text?: string };
 
 export function parseShowHnPayload(json: string): LaunchInput[] {
   const data = JSON.parse(json) as { hits?: Array<Record<string, unknown>> };
@@ -84,6 +85,10 @@ function decodeEntities(s: string): string {
   return s.replace(/&quot;/g, '"').replace(/&#x27;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
+// PH feed（批 2b 口径调整）：实为 **Atom** 格式——link 是带属性对象（@_href），
+// 必须按 rel=alternate 解析（批 2a 的 50/50 全跳过即此处形状误判）。外链官网抽到就存
+//（siteUrl，PH content 里多为自家 /r/p/ 重定向链接，抽不到不强求）；
+// host 用帖子真实路径去重标识（producthunt.com/products/<slug>），判定与撞词照常。
 export function parseProductHuntFeed(xml: string): { items: LaunchInput[]; skipped: number } {
   const doc = new XMLParser({ ignoreAttributes: false, processEntities: false }).parse(xml);
   const raw = doc.rss?.channel?.item ?? doc.feed?.entry;
@@ -92,20 +97,29 @@ export function parseProductHuntFeed(xml: string): { items: LaunchInput[]; skipp
   let skipped = 0;
   for (const item of list) {
     const title = String(item.title || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    const link = typeof item.link === "string" ? item.link : "";
-    if (!title || !link) { skipped++; continue; }
+    const linkRaw = item.link;
+    let link = "";
+    if (typeof linkRaw === "string") link = linkRaw;
+    else {
+      const links = Array.isArray(linkRaw) ? linkRaw : linkRaw ? [linkRaw] : [];
+      const alt = links.find((l: any) => !l?.["@_rel"] || l["@_rel"] === "alternate");
+      link = String(alt?.["@_href"] ?? "");
+    }
+    let path = "";
+    try { path = new URL(link).pathname.replace(/\/+$/, "").toLowerCase(); } catch { skipped++; continue; }
+    if (!title || !path || path === "") { skipped++; continue; }
     const html = decodeEntities(String(item.description ?? item["content:encoded"] ?? item.content ?? ""));
-    let host: string | undefined;
+    let siteUrl: string | undefined;
     for (const m of html.matchAll(/href="(https?:\/\/[^"]+)"/g)) {
       const h = hostOf(m[1]);
-      if (h && !/(^|\.)producthunt\.com$/i.test(h)) { host = h; break; }
+      if (h && !/(^|\.)producthunt\.com$/i.test(h)) { siteUrl = m[1]; break; }
     }
-    if (!host) { skipped++; continue; }
     items.push({
-      host,
+      host: `producthunt.com${path}`.slice(0, 120),
       title: title.slice(0, 300),
       sourceUrl: link,
-      source: "producthunt",
+      source: "producthunt-rss",
+      siteUrl,
       text: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 400) || undefined,
     });
   }
@@ -129,6 +143,7 @@ export function upsertSiteLaunch(db: Store, input: LaunchInput): "created" | "ex
     host: input.host,
     source: input.source,
     sourceUrl: input.sourceUrl,
+    siteUrl: input.siteUrl,
     hnScore: input.hnScore,
     hnComments: input.hnComments,
     hnBy: input.hnBy,

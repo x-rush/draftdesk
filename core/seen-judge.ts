@@ -57,18 +57,31 @@ export function computeObsRatio(term: { obsByDay?: Record<string, number> }, now
 
 export type TermVerdict = "推荐" | "可以试试" | "不值得做" | "竞争度待查";
 
+// 「谷歌自答」守门（第五轮批 2b §4.8②）：单位换算/汇率/翻译/计算类词的流量被
+// Google 自答框直接吃掉，做站上限「可以试试」、不判「推荐」（保守分支本就 ≤可以试试）。
+// 命中是词级正则；存量已出档词读时复算即生效，无需迁移。
+const GOOGLE_ANSWER_RE = /unit|converter|calculator|exchange.?rate|currency|翻译|换算|单位|汇率/i;
+
+export function isGoogleAnswerTerm(term: string | undefined): boolean {
+  return !!term && GOOGLE_ANSWER_RE.test(term);
+}
+
 // 值不值得做三档判定（第五轮 §6）：
-// · 满基线（obsByDay 前 3 天有观测）：完整三档，「推荐」必须满基线；
+// · 满基线（obsByDay 前 3 天有观测）：完整三档，「推荐」必须满基线且非谷歌自答类词；
 // · 不足基线：保守兜底——只用 observations 总量与 daysSeen，只出 可以试试/不值得做，
 //   已查 SERP 的词立即出档不再滞留「待查」（读时计算，改口径即回填）。
-export function judgeVerdict(term: { serpDedicated?: number; obsByDay?: Record<string, number>; observations?: number; daysSeen?: string[] }, now: Date = new Date()): { verdict: TermVerdict; reason: string } {
+export function judgeVerdict(term: { term?: string; serpDedicated?: number; obsByDay?: Record<string, number>; observations?: number; daysSeen?: string[] }, now: Date = new Date()): { verdict: TermVerdict; reason: string } {
   if (typeof term.serpDedicated !== "number") return { verdict: "竞争度待查", reason: "SERP 竞争度未查" };
+  const googleAnswer = isGoogleAnswerTerm(term.term);
   const ratio = computeObsRatio(term, now);
   if (ratio !== undefined) {
     const obs = ratio.toFixed(2);
     if (ratio < 0.5) return { verdict: "不值得做", reason: `obs ${obs} 明显退坡` };
     if (term.serpDedicated! >= 5) return { verdict: "不值得做", reason: `竞争站 ${term.serpDedicated} 个扎堆` };
-    if (ratio >= 2 && term.serpDedicated === 0) return { verdict: "推荐", reason: `obs ${obs} 上升且零竞争站` };
+    if (ratio >= 2 && term.serpDedicated === 0) {
+      if (googleAnswer) return { verdict: "可以试试", reason: `谷歌自答类词（换算/汇率/单位），obs ${obs} 再好也只做到可以试试` };
+      return { verdict: "推荐", reason: `obs ${obs} 上升且零竞争站` };
+    }
     if (ratio >= 1 && term.serpDedicated! <= 2) return { verdict: "可以试试", reason: `obs ${obs}、竞争站 ${term.serpDedicated}` };
     return term.serpDedicated! <= 4
       ? { verdict: "可以试试", reason: `obs ${obs}、竞争站 ${term.serpDedicated}（中位）` }
@@ -77,7 +90,7 @@ export function judgeVerdict(term: { serpDedicated?: number; obsByDay?: Record<s
   const obs = term.observations ?? 0;
   const days = term.daysSeen?.length ?? 0;
   if (term.serpDedicated! >= 5) return { verdict: "不值得做", reason: `竞争站 ${term.serpDedicated} 个扎堆（未满基线）` };
-  if (obs >= 2 && term.serpDedicated === 0) return { verdict: "可以试试", reason: `观测 ${obs} 次零竞争站（未满基线，保守档）` };
+  if (obs >= 2 && term.serpDedicated === 0) return { verdict: "可以试试", reason: googleAnswer ? `谷歌自答类词，观测 ${obs} 次零竞争站（未满基线，保守档）` : `观测 ${obs} 次零竞争站（未满基线，保守档）` };
   if (days >= 2 && obs >= 3 && term.serpDedicated! <= 2) return { verdict: "可以试试", reason: `${days} 天复现、竞争站 ${term.serpDedicated}（未满基线）` };
   return { verdict: "不值得做", reason: `观测 ${obs} 次、竞争站 ${term.serpDedicated}，无增速基线` };
 }
@@ -85,6 +98,36 @@ export function judgeVerdict(term: { serpDedicated?: number; obsByDay?: Record<s
 // score 口径（配额纪律）：观测次数即热度分；每天只查 TOP100。
 export function wordScore(term: { observations?: number }): number {
   return term.observations ?? 0;
+}
+
+// ---- SERP 派生字段（批 2b §4.8③，免费派生不改判定阈值）----
+// · exact：host 含完整词（去空格小写包含，词长 ≥4 防误匹配）——精确匹配域名数
+// · homeShare：首页占比（URL 路径深度启发；存量词只有 serpHosts 无 url → null）
+// · forumShare：论坛/视频站占比（reddit/youtube/quora 等归类）
+// 数据源：优先 serpAll（新查词全量结果）；降级 serpHosts（存量词，只有四大平台 host）。
+const FORUM_VIDEO_HOST = /reddit|youtube|quora|stackoverflow|tiktok|twitter|x\.com|instagram|news\.ycombinator|medium|hackernoon|dev\.to|pinterest|facebook/i;
+
+export type SerpDerived = { exact: number; homeShare: number | null; forumShare: number; total: number; source: "full" | "hosts-only" };
+
+// 数据源优先级：serpWeb（普通查询，论坛/视频占比的真实原料）> serpAll（带 site: 过滤
+// 的平台站结果，结构性无论坛站）> serpHosts（存量词）。homeShare 需要 URL。
+export function deriveSerpFields(t: { term?: string; serpWeb?: { host: string; url: string }[]; serpAll?: { host: string; url: string }[]; serpHosts?: string[] }): SerpDerived | null {
+  const source: "full" | "hosts-only" = t.serpWeb?.length ? "full" : t.serpAll?.length ? "full" : "hosts-only";
+  const all = t.serpWeb?.length ? t.serpWeb
+    : t.serpAll?.length ? t.serpAll
+      : (t.serpHosts?.length ? t.serpHosts.map((h) => ({ host: h, url: `https://${h}/` })) : []);
+  if (!all.length) return null;
+  const id = termId(t.term || "");
+  const exact = id.length >= 4 ? all.filter((e) => termId(e.host).includes(id)).length : 0;
+  let home: number | null = null;
+  if (t.serpWeb?.length || t.serpAll?.length) {
+    const homeCount = all.filter((e) => {
+      try { const p = new URL(e.url).pathname.replace(/\/+$/, ""); return p === "" || p.split("/").length <= 1; } catch { return true; }
+    }).length;
+    home = Math.round((homeCount / all.length) * 100);
+  }
+  const forum = all.filter((e) => FORUM_VIDEO_HOST.test(e.host)).length;
+  return { exact, homeShare: home, forumShare: Math.round((forum / all.length) * 100), total: all.length, source };
 }
 
 // ---- DDG SERP ----
@@ -130,24 +173,29 @@ export async function fetchDdg(q: string, doFetch: typeof fetch, outer?: AbortSi
 // 主力改内网 SearXNG（聚合后端、site: 语义正确、零反爬；hybrid 搜索同源），DDG html 降为兜底。
 export type SerpHit = { host: string; url: string; title: string };
 
+// SearXNG 裸查询（searxng 主力层共用）：无 site: 过滤的普通查询供形态分析（serpWeb）。
+export async function searchSearxngRaw(db: Store, query: string, doFetch: typeof fetch, outer?: AbortSignal): Promise<SerpHit[]> {
+  const base = (db.config().searxngUrl || "http://searxng:8080").replace(/\/+$/, "");
+  const response = await doFetch(`${base}/search?q=${encodeURIComponent(query)}&format=json`, {
+    signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(20000)]),
+  });
+  if (!response.ok) throw new Error(`searxng HTTP ${response.status}`);
+  const data = JSON.parse(await response.text()) as { results?: { url?: string; title?: string }[] };
+  const results: SerpHit[] = [];
+  for (const item of data.results || []) {
+    try {
+      const url = new URL(String(item.url || ""));
+      results.push({ host: url.hostname.replace(/^www\./, ""), url: url.toString(), title: String(item.title || "").replace(/<[^>]+>/g, "").trim() });
+    } catch { continue; }
+    if (results.length >= 30) break;
+  }
+  return results;
+}
+
 export async function searchSerp(db: Store, term: string, doFetch: typeof fetch, outer?: AbortSignal): Promise<{ engine: string; results: SerpHit[] }> {
   const errors: string[] = [];
-  const base = (db.config().searxngUrl || "http://searxng:8080").replace(/\/+$/, "");
   try {
-    const query = `"${term}" ${SITE_FILTERS}`;
-    const response = await doFetch(`${base}/search?q=${encodeURIComponent(query)}&format=json`, {
-      signal: AbortSignal.any([outer ?? AbortSignal.timeout(10 * 60000), AbortSignal.timeout(20000)]),
-    });
-    if (!response.ok) throw new Error(`searxng HTTP ${response.status}`);
-    const data = JSON.parse(await response.text()) as { results?: { url?: string; title?: string }[] };
-    const results: SerpHit[] = [];
-    for (const item of data.results || []) {
-      try {
-        const url = new URL(String(item.url || ""));
-        results.push({ host: url.hostname.replace(/^www\./, ""), url: url.toString(), title: String(item.title || "").replace(/<[^>]+>/g, "").trim() });
-      } catch { continue; }
-      if (results.length >= 30) break;
-    }
+    const results = await searchSearxngRaw(db, `"${term}" ${SITE_FILTERS}`, doFetch, outer);
     return { engine: "searxng", results };
   } catch (e) {
     errors.push("searxng: " + String((e as Error)?.message || e).slice(0, 80));
@@ -240,6 +288,10 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
           consecutiveFailures = 0;
           const platformResults = results.map((r, i) => ({ ...r, rank: i + 1, platform: platformOf(r.host) })).filter((r) => r.platform);
           const hosts = new Set(platformResults.map((r) => r.host));
+          // 形态查询（批 2b §4.8③）：不带 site: 的普通查询，论坛/视频占比的原料
+          //（带过滤查询的结果里结构性没有论坛站）。失败静默，不阻塞判定主流程。
+          let webResults: SerpHit[] = [];
+          try { webResults = await searchSearxngRaw(db, `"${t.term}"`, doFetch, outer); } catch { /* 静默 */ }
           // suggest 需求判定：失败不阻塞（按有需求处理，不误标品牌词）
           let demand = true;
           try { demand = hasSuggestDemand(t.term, await fetchSuggest(t.term, "en", doFetch, outer)); } catch { /* 静默 */ }
@@ -255,6 +307,9 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
               serpDedicated: platformResults.length,
               serpInternal: hosts.size,
               serpHosts: [...hosts].slice(0, 10),
+              // 全量结果摘要（批 2b §4.8③）：三派生字段的原料（存量词只有 serpHosts）
+              serpAll: results.slice(0, 24).map((r) => ({ host: r.host, url: r.url.slice(0, 120), title: r.title.slice(0, 80) })),
+              serpWeb: webResults.slice(0, 15).map((r) => ({ host: r.host, url: r.url.slice(0, 120) })),
               serpEngine: engine,
               serpCheckedAt: new Date().toISOString(),
               serpFailDays: 0,
