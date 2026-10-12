@@ -377,7 +377,6 @@ export function Review() {
         <button className="primary" disabled={busy} onClick={() => void addManual()}>加入待决策队列</button>
       </details>
 
-      <p className="dash-label">⚙ 队列配置<span className="dash-label-sub">手动入口 · AI 参与开关 · 人设</span></p>
       <details className="fold-card review-form-fold">
         <summary><h2 style={{ display: "inline", margin: 0 }}>内容簇与多平台大纲</h2></summary>
         <p className="muted">多条同类资讯合并为一个簇；一个簇可产出多份不同平台的大纲，各自独立拍板。AI 自动聚合即将上线，当前支持手动登记。</p>
@@ -399,7 +398,6 @@ export function Review() {
         <button disabled={busy} onClick={() => void addOutline()}>创建大纲</button>
       </details>
 
-      <p className="dash-label">⚙ 队列配置<span className="dash-label-sub">手动入口 · AI 参与开关 · 人设</span></p>
       <details className="fold-card review-form-fold">
         <summary><h2 style={{ display: "inline", margin: 0 }}>内置 AI 参与开关（aiPolicy）</h2></summary>
         <p className="muted">off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。</p>
@@ -429,7 +427,6 @@ export function Review() {
         )}
       </details>
 
-      <p className="dash-label">⚙ 队列配置<span className="dash-label-sub">手动入口 · AI 参与开关 · 人设</span></p>
       <details className="fold-card review-form-fold">
         <summary><h2 style={{ display: "inline", margin: 0 }}>人设配置（AI 个性化判断输入）</h2></summary>
         <p className="muted">

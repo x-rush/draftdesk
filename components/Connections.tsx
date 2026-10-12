@@ -235,8 +235,8 @@ export function Connections({
                   setNotice("已使用所选策略创建分析任务，可在运行记录查看。");
                 })
               }
-            >
               title="创建分析任务会调用工作台模型，产生 token 消耗"
+            >
               {selectedJob?.state==="completed"?"此策略已完成":selectedJob&&["queued","running"].includes(selectedJob.state)?"此策略处理中":selectedJob?"重试失败任务":"分析（计费）"}
             </button>
           </div>
