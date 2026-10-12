@@ -66,6 +66,8 @@ export function useWorkspaceData() {
   const [siteDiscoveries, setSiteDiscoveries] = useState<any[]>([]);
   // 机会引擎（第五轮 §1）：四信号源统一机会卡
   const [opportunities, setOpportunities] = useState<any[]>([]);
+  // 新站发现（第五轮 §2）：Show HN + PH 结构化新站
+  const [siteLaunches, setSiteLaunches] = useState<any[]>([]);
   // 热词词表（词表分页批）：服务端分页/筛选/搜索 + 三区与意图计数一次响应
   const [seenList, setSeenList] = useState<any>({ items: [], total: 0, counts: {}, zones: null });
   const [seenQ, setSeenQ] = useState(""), [seenStatus, setSeenStatus] = useState(""), [seenIntent, setSeenIntent] = useState(""), [seenPage, setSeenPage] = useState(1);
@@ -79,7 +81,7 @@ export function useWorkspaceData() {
   currentKey.current = requestKey;
   async function refresh() {
     const key = currentKey.current, version = ++requestVersion.current;
-    const [next, outlineList, clusterList, seoTermList, siteProjectList, siteDiscoveryList, opportunityList] = await Promise.all([
+    const [next, outlineList, clusterList, seoTermList, siteProjectList, siteDiscoveryList, opportunityList, siteLaunchList] = await Promise.all([
       api<Snapshot>("workspace?" + key),
       api<{ items: any[] }>("outlines"),
       api<{ items: any[] }>("clusters"),
@@ -87,6 +89,7 @@ export function useWorkspaceData() {
       api<{ items: any[] }>("site-projects"),
       api<{ items: any[] }>("site-discoveries?limit=200"),
       api<{ items: any[] }>("opportunities?limit=300"),
+      api<{ items: any[] }>("site-launches?limit=300"),
     ]);
     if (currentKey.current === key && requestVersion.current === version) {
       setData(next);
@@ -97,6 +100,7 @@ export function useWorkspaceData() {
       setSiteProjects(siteProjectList?.items ?? []);
       setSiteDiscoveries(siteDiscoveryList?.items ?? []);
       setOpportunities(opportunityList?.items ?? []);
+      setSiteLaunches(siteLaunchList?.items ?? []);
       const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
       if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
       next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
@@ -206,7 +210,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, siteDiscoveries, opportunities, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
+    outlines, clusters, seoTerms, siteProjects, siteDiscoveries, opportunities, siteLaunches, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,

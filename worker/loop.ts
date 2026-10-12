@@ -10,6 +10,7 @@ import { judgeBackfillTick } from "../core/seen-extract";
 import { seenDiggingTick } from "../core/seen-dig";
 import { seenJudgeTick } from "../core/seen-judge";
 import { opportunityTick, watchTtlTick } from "../core/opportunity";
+import { siteLaunchesTick } from "../core/site-launches";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -31,6 +32,8 @@ export function startWorkerLoop(db: Store) {
         judgeBackfillTick(db, requestModel);
         seenDiggingTick(db);
         seenJudgeTick(db);
+        // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定（初筛，不受 consumerMode 门控）
+        siteLaunchesTick(db, requestModel);
         // 机会引擎（第五轮）：watch 池 TTL 是初筛的一部分（不受 consumerMode 影响）；
         // 机会自动生成仅 builtin 模式（external 由外部 Agent 经 /opportunities/generate 触发）。
         watchTtlTick(db);

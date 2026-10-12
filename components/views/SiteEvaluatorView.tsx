@@ -4,6 +4,7 @@
 // [讨论][推进=立项建站（site-projects, pending）]；忽略为会话级隐藏。
 // 站点发现 tab（海外定位批 6）：site-discoveries 独立站卡片（host/命中词/首次发现/它做的是什么）。
 // 机会引擎 tab（第五轮 §1）：四信号源统一机会卡（opportunities），auto/agent 来源标注 + 生成按钮。
+// 新站发现 tab（第五轮 §2）：site-launches Show HN/PH 新站（六类判定/中文转译/核心词/撞词标记）。
 import { useMemo, useState, type ReactNode } from "react";
 import { Ban, CheckCircle2, Globe, Sparkles, Zap } from "lucide-react";
 import { Select } from "../Select";
@@ -13,6 +14,8 @@ import { Empty, api, date } from "../ui";
 const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newtech: "新技术", news: "新资讯", trend: "热词趋势" };
 const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
 const VERDICT_STYLE: Record<string, string> = { 推荐: "#1a7f4b", 可以试试: "#8a6d1a", 不值得做: "#8a3a3a", 待验证: "#5a6b7a" };
+const MOTIVE_LABELS: Record<string, string> = { keyword: "冲着关键词", pain: "解决自己痛点", others: "满足别人需求", hobby: "兴趣爱好", business: "商业机会", unclear: "没说清" };
+const MOTIVE_SOURCE_LABELS: Record<string, string> = { quote: "作者原话", guess: "推测" };
 
 function OpportunityBadge({ children, color }: { children: ReactNode; color?: string }) {
   return <span className="pill" style={color ? { color, borderColor: color } : undefined}>{children}</span>;
@@ -103,11 +106,79 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   );
 }
 
+// 新站发现 tab（第五轮 §2）：site-launches 站卡片（host/六类判定/中文转译/核心词/HN 数据/撞词标记）
+function SiteLaunchesTab({ siteLaunches }: { siteLaunches: any[] }) {
+  const [motive, setMotive] = useState("");
+  const [clashOnly, setClashOnly] = useState(false);
+  const filtered = siteLaunches.filter((l) =>
+    (!motive || (l.motive || "unclear") === motive) && (!clashOnly || (l.clashTerms || []).length > 0));
+  const judged = siteLaunches.filter((l) => l.titleZh).length;
+  const clashCount = siteLaunches.filter((l) => (l.clashTerms || []).length > 0).length;
+
+  return (
+    <>
+      <div className="filter-row">
+        <nav className="discovery-modes" aria-label="新站动机筛选">
+          <button className={motive === "" ? "active" : ""} onClick={() => setMotive("")}>全部 {siteLaunches.length}</button>
+          {Object.entries(MOTIVE_LABELS).map(([key, label]) => (
+            <button key={key} className={motive === key ? "active" : ""} onClick={() => setMotive(key)}>{label} {siteLaunches.filter((l) => (l.motive || "unclear") === key).length}</button>
+          ))}
+        </nav>
+        <button className={clashOnly ? "active" : "button-secondary"} aria-pressed={clashOnly} onClick={() => setClashOnly(!clashOnly)}>⚠️ 只看撞词 {clashCount}</button>
+      </div>
+      <p className="muted" style={{ fontSize: 12 }}>
+        Show HN + Product Hunt 每日新发布站（host 去重，PH 抽不到官网域名的条目跳过）；已判定 {judged}/{siteLaunches.length}。
+        「与我们撞词」= 新站核心词命中我们热词库高分词（竞品早期形态信号）；「已在站点发现」= 与判定层独立站池交叉。
+      </p>
+      {filtered.length === 0 ? (
+        <Empty title="还没有新站数据。">
+          worker 每日抓取 Show HN（按时间 50 条）与 Product Hunt feed，LLM 批量做中文转译、核心词与六类动机判定（cheap 档）。
+          首跑需要几分钟，明早再看就有完整首批。
+        </Empty>
+      ) : (
+        <div className="discovery-list">
+          {filtered.map((l) => (
+            <article className="discovery-row" key={l.host}>
+              <div className="row-content">
+                <div className="row-meta">
+                  {l.motive ? (
+                    <OpportunityBadge color={l.motive === "business" || l.motive === "pain" ? "#1a7f4b" : undefined}>
+                      {MOTIVE_LABELS[l.motive] || l.motive}（{MOTIVE_SOURCE_LABELS[l.motiveSource || "guess"]}）
+                    </OpportunityBadge>
+                  ) : <span className="pill">待判定</span>}
+                  <span className="pill">{l.source === "showhn" ? "Show HN" : "Product Hunt"}</span>
+                  {(l.clashTerms || []).length > 0 && <span className="pill" style={{ color: "#8a3a3a", borderColor: "#8a3a3a" }}>⚠️ 与我们撞词：{(l.clashTerms || []).join("、")}</span>}
+                  {l.crossLinked && <span className="pill"><CheckCircle2 size={11} /> 已在站点发现</span>}
+                  <span>首见 {l.firstFoundAt ? date(l.firstFoundAt) : ""}</span>
+                  {l.source === "showhn" && <span>⬆ {l.hnScore ?? 0} · 💬 {l.hnComments ?? 0}{l.hnBy ? ` · @${l.hnBy}` : ""}</span>}
+                </div>
+                <a className="article-title" style={{ fontSize: 17, padding: "4px 0 0" }} href={`https://${l.host}`} target="_blank" rel="noopener noreferrer">{l.host} ↗</a>
+                {l.titleZh && <p style={{ margin: "4px 0 0" }}>{l.titleZh}</p>}
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  原题：{l.title}
+                  {l.motiveReason ? ` · 判定：${l.motiveReason}` : ""}
+                </p>
+                {(l.keywords || []).length > 0 && (
+                  <div className="tags">{(l.keywords || []).map((k: string) => <span key={k}>核心词：{k}</span>)}</div>
+                )}
+              </div>
+              <div className="row-side">
+                <a className="button-secondary" href={l.sourceUrl} target="_blank" rel="noopener noreferrer">原帖 ↗</a>
+                <button onClick={() => { void navigator.clipboard.writeText(l.host); }}>复制域名</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot }) {
-  const { seoTerms, siteProjects, siteDiscoveries, opportunities, busy, act, setNotice, navigate, setDiscussionContext } = ws;
+  const { seoTerms, siteProjects, siteDiscoveries, opportunities, siteLaunches, busy, act, setNotice, navigate, setDiscussionContext } = ws;
   const [siteType, setSiteType] = useState("all");
   const [ignored, setIgnored] = useState<string[]>([]);
-  const [tab, setTab] = useState<"candidates" | "sites" | "opportunities">("candidates");
+  const [tab, setTab] = useState<"candidates" | "sites" | "launches" | "opportunities">("candidates");
   const candidates = useMemo(
     () => (seoTerms || []).filter((t) => t.siteCandidate === true && !ignored.includes(t.term)),
     [seoTerms, ignored],
@@ -116,14 +187,17 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const projects = siteProjects || [];
   const discoveries = siteDiscoveries || [];
   const opportunityList = opportunities || [];
+  const launchList = siteLaunches || [];
 
   return (
     <>
       <nav className="discovery-modes" aria-label="应用机会板块">
         <button className={tab === "candidates" ? "active" : ""} aria-current={tab === "candidates" ? "page" : undefined} onClick={() => setTab("candidates")}>站群候选 {candidates.length}</button>
         <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}><Globe size={13} /> 站点发现 {discoveries.length}</button>
+        <button className={tab === "launches" ? "active" : ""} aria-current={tab === "launches" ? "page" : undefined} onClick={() => setTab("launches")}>🚀 新站发现 {launchList.length}</button>
         <button className={tab === "opportunities" ? "active" : ""} aria-current={tab === "opportunities" ? "page" : undefined} onClick={() => setTab("opportunities")}><Sparkles size={13} /> 机会引擎 {opportunityList.length}</button>
       </nav>
+      {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} />}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
       {tab === "sites" && (
         discoveries.length === 0 ? (
