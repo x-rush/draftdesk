@@ -16,3 +16,4 @@ agent-compare.json
 .DS_Store
 Thumbs.db
 next-env.d.ts
+*.tmp.json
