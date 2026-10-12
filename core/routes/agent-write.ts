@@ -2,6 +2,7 @@
 // 注册序即旧 if 链顺序，严禁打乱——方法不符时 fallback 落到哪个定义、
 // 走「先鉴权后 405」还是「先 405 后鉴权」，都由它决定（见重构清单保序矩阵）。
 import { z } from "zod";
+import { normalizePlatform, normalizeCategory } from "../platforms";
 import { randomUUID } from "node:crypto";
 import type { RouteContext, RouteDef } from "../http/router";
 import { json } from "../http/middleware";
@@ -118,6 +119,7 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     id: z.string().min(1).max(100).optional(),
     clusterId: z.string().min(1),
     platform: z.string().min(1).max(30),
+    category: z.string().max(30).optional(),
     contentType: z.string().min(1).max(30),
     title: z.string().min(1).max(300),
     outline: z.array(z.string().max(300)).max(20).optional(),
@@ -126,10 +128,14 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     draftBody: z.string().max(100000).optional(),
   }).parse(input);
   if (!db.get<any>("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404, "NOT_FOUND");
+  // 平台/题材双标注归一（第六轮批 A）：旧值（公众号/小红书/Threads）与中文标签都映射到枚举键；
+  // category 六值键透传，未知题材值保留原样（不吞外部信息）
+  const platform = normalizePlatform(parsed.platform) ?? parsed.platform;
+  const category = parsed.category ? normalizeCategory(parsed.category) ?? parsed.category : undefined;
   const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
   const outline = existing
-    ? { ...existing, clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx) }
-    : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform: parsed.platform, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now() };
+    ? { ...existing, clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx) }
+    : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now() };
   db.put("outlines", outline.id, outline);
   return json(outline, existing ? 200 : 201);
 }

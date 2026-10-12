@@ -12,6 +12,7 @@ import { seenJudgeTick } from "../core/seen-judge";
 import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
+import { outlineCategoryTick } from "../core/outline-categorize";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -34,6 +35,8 @@ export function startWorkerLoop(db: Store) {
         seenDiggingTick(db);
         // 词根探针（第五轮批 2b）：34 工具词根+AI 词根轮转喂联想，≤48 词/日不冲判定重档
         rootProbeTick(db);
+        // 选题题材标注（第六轮批 A）：存量 outlines 六类一次性回填（cheap 档，初筛不受 consumerMode 门控）
+        outlineCategoryTick(db, requestModel);
         seenJudgeTick(db);
         // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定（初筛，不受 consumerMode 门控）
         siteLaunchesTick(db, requestModel);

@@ -3,6 +3,7 @@
 // outlines(decision=pending) 按综合分降序；卡片直接拍板，拍完移出。
 // 综合评分 = 证据数 + suggestions 评分均值（派生式，schema 预留 score 字段位待外部 Agent）。
 import { useState } from "react";
+import { platformLabel, categoryLabel } from "../../core/platforms";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Select } from "../Select";
 import { ArrowUpRight } from "lucide-react";
@@ -95,7 +96,7 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                         同题 ×{dupCount}
                       </button>
                     )}
-                    <span>{o.platform}</span>
+                    <span>{platformLabel(o.platform)}{o.category ? ` · ${categoryLabel(o.category)}` : ""}</span>
                     {cluster && cluster.id !== "clu-inbox" && <span>{cluster.topic}</span>}
                     {cluster && cluster.id === "clu-inbox" && <span>选题收集箱</span>}
                     <span>{date(o.createdAt)}</span>

@@ -3,6 +3,7 @@
 import { now } from "./helpers";
 import { AppError } from "../errors";
 import { urlKey } from "../hotspots";
+import { normalizePlatform } from "../platforms";
 import type { KV } from "./kv";
 
 export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeIdentities"], unconsumeIdentities: Consumption["unconsumeIdentities"]) {
@@ -56,7 +57,7 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
         decision: input.decision,
         decidedBy: input.decidedBy ?? "human",
         decidedAt: now(),
-        ...(input.platforms ? { platforms: input.platforms } : {}),
+        ...(input.platforms ? { platforms: input.platforms.map((p) => normalizePlatform(p) ?? p) } : {}),
         ...(input.rejectReason !== undefined ? { rejectReason: input.rejectReason } : {}),
         ...(input.publishedRef !== undefined ? { publishedRef: input.publishedRef } : {}),
       };

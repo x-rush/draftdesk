@@ -8,6 +8,7 @@ import { cleanSeedPollution } from "../seen-clean";
 import { backfillSeenTermRegions, mergeSpaceVariants } from "../seen-terms";
 import { retightenNewsOpportunities } from "../opportunity";
 import { reapplySiteRules } from "../seen-judge";
+import { normalizePlatform } from "../platforms";
 import type { KV } from "./kv";
 
 interface MigrationCtx {
@@ -308,6 +309,47 @@ export const migrations: Migration[] = [
         for (const sid of cfg.add) if (!sourceIds.includes(sid) && kv.get("sources", sid)) sourceIds.push(sid);
         kv.put("plans", planId, { ...plan, sourceIds, ...(plan.platformAffinity ? {} : { platformAffinity: cfg.affinity }) });
       }
+    },
+  },
+  {
+    id: "outline-platform-v1",
+    // 选题体系（第六轮批 A §1①）：platform 五平台枚举化——存量旧值（公众号/小红书/Threads）
+    // 映射到 gzh/xhs-note/threads，outlines + artifacts.platforms + manual-decisions +
+    // clusters.suggestedPlatforms 四处一并归一；已是新值的记录幂等跳过。
+    run: ({ kv }) => {
+      let outlines = 0, others = 0;
+      for (const o of kv.list<any>("outlines")) {
+        const next = normalizePlatform(o.platform);
+        if (next && next !== o.platform) {
+          kv.put("outlines", o.id, { ...o, platform: next });
+          outlines++;
+        }
+      }
+      for (const a of kv.list<any>("artifacts")) {
+        if (!Array.isArray(a.platforms) || !a.platforms.length) continue;
+        const mapped = a.platforms.map((p: string) => normalizePlatform(p) ?? p);
+        if (JSON.stringify(mapped) !== JSON.stringify(a.platforms)) {
+          kv.put("artifacts", a.id, { ...a, platforms: mapped });
+          others++;
+        }
+      }
+      for (const m of kv.list<any>("manual-decisions")) {
+        if (!Array.isArray(m.platforms) || !m.platforms.length) continue;
+        const mapped = m.platforms.map((p: string) => normalizePlatform(p) ?? p);
+        if (JSON.stringify(mapped) !== JSON.stringify(m.platforms)) {
+          kv.put("manual-decisions", m.id, { ...m, platforms: mapped });
+          others++;
+        }
+      }
+      for (const c of kv.list<any>("clusters")) {
+        if (!Array.isArray(c.suggestedPlatforms) || !c.suggestedPlatforms.length) continue;
+        const mapped = c.suggestedPlatforms.map((p: string) => normalizePlatform(p) ?? p);
+        if (JSON.stringify(mapped) !== JSON.stringify(c.suggestedPlatforms)) {
+          kv.put("clusters", c.id, { ...c, suggestedPlatforms: mapped });
+          others++;
+        }
+      }
+      if (outlines || others) console.log(`[migration] outline-platform-v1：outlines 迁移 ${outlines} 条，artifacts/manual/clusters ${others} 条`);
     },
   },
   {

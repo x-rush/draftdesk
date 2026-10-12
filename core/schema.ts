@@ -208,7 +208,8 @@ export type ContentCluster = {
 export type ContentOutline = {
   id: string;
   clusterId: string;
-  platform: string;
+  platform: string; // 五平台枚举键（gzh/tiebuhao/xhs-note/xhs-video/threads，见 core/platforms.ts；存量旧值已迁移）
+  category?: string; // 题材六值键（newtech/news/oss/selfproduct/thinking/hot，第六轮批 A LLM 标注）
   contentType: string;
   title: string;
   outline: string[];

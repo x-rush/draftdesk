@@ -260,3 +260,52 @@ test("news 卡收紧（批 1 收尾）：营销话术标题不出新卡 + 存量
     cleanup(dir);
   }
 });
+
+test("选题体系批 A：platform 五枚举迁移 + 题材六值标注（normalize + 迁移 + tick）", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-outlineplat-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const { normalizePlatform, normalizeCategory, platformLabel } = await import("../core/platforms");
+    assert.equal(normalizePlatform("公众号"), "gzh");
+    assert.equal(normalizePlatform("小红书"), "xhs-note");
+    assert.equal(normalizePlatform("Threads"), "threads");
+    assert.equal(normalizePlatform("xhs-video"), "xhs-video");
+    assert.equal(normalizePlatform("微信公众号"), undefined, "未知值不猜测");
+    assert.equal(platformLabel("tiebuhao"), "贴图号");
+    assert.equal(normalizeCategory("AI 新技术"), "newtech");
+    assert.equal(normalizeCategory("社会热点"), "hot");
+    // 存量旧值入库（模拟迁移前状态）→ 新 Store 构造时迁移已跑，这里手工构造后重验幂等
+    db.put("outlines", "out-old", { id: "out-old", clusterId: "clu-inbox", platform: "公众号", contentType: "长文", title: "旧平台选题", outline: [], keyPoints: [], evidenceRefs: [], decision: "pending" });
+    // 该迁移在 Store 构造时已跑过（此时插入的是旧值）——直接调用迁移体逻辑复验
+    const { migrations } = await import("../core/store/migrations");
+    const m = migrations.find((x) => x.id === "outline-platform-v1")!;
+    m.run({ kv: db.kv, directory: dir });
+    assert.equal(db.get<any>("outlines", "out-old").platform, "gzh", "旧值迁移");
+    db.put("outlines", "out-key", { id: "out-key", clusterId: "clu-inbox", platform: "xhs-note", contentType: "长文", title: "新值选题", outline: [], keyPoints: [], evidenceRefs: [], decision: "pending" });
+    m.run({ kv: db.kv, directory: dir });
+    assert.equal(db.get<any>("outlines", "out-key").platform, "xhs-note", "新值幂等不动");
+
+    // 题材标注 tick：mock cheap 模型
+    db.put("outlines", "out-c1", { id: "out-c1", clusterId: "clu-inbox", platform: "gzh", contentType: "长文", title: "GPT-5 发布：一周内可用的三个工作流改造", outline: [], keyPoints: ["模型能力变化"], evidenceRefs: [], decision: "pending" });
+    db.put("outlines", "out-c2", { id: "out-c2", clusterId: "clu-inbox", platform: "xhs-note", contentType: "笔记", title: "我的开源工具三个月使用复盘", outline: [], keyPoints: ["一手经历"], evidenceRefs: [], decision: "pending" });
+    const model = (async (_db: any, messages: any[]) => {
+      const lines = (messages[0].content as string).split("\n").filter((l) => /^\d+\. \[/.test(l));
+      return { text: JSON.stringify(lines.map((l, i) => ({
+        i: i + 1,
+        category: l.includes("GPT-5") ? "newtech" : l.includes("开源工具") ? "oss" : "thinking",
+      }))) };
+    }) as any;
+    const { outlineCategoryTick } = await import("../core/outline-categorize");
+    outlineCategoryTick(db, model);
+    await new Promise((r) => setTimeout(r, 250));
+    assert.equal(db.get<any>("outlines", "out-c1").category, "newtech");
+    assert.equal(db.get<any>("outlines", "out-c2").category, "oss");
+    assert.ok(db.get<any>("meta", "outline-category-done"), "全部标完置位");
+    outlineCategoryTick(db, model);
+    assert.ok(db.get<any>("meta", "outline-category-done"), "done 键幂等");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
