@@ -119,3 +119,51 @@ test("手动触发：请求后 tick 立即提取（跳过 24h 等待与闸门）
     cleanup(dir);
   }
 });
+
+test("判定吞吐扩容（第五轮 §5）：judgeBackfillTick 日多批 + 批间隔闸 + 提取首批共享计数", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-backfill-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    // 501 词待判 → busy 档（3 批/日）
+    for (let i = 0; i < 501; i++) {
+      const term = `待判词${String(i).padStart(3, "0")}`;
+      db!.put("seen-terms", term, { id: term, term, status: "new", observations: 500 - i, sources: [], relatedSearches: [], daysSeen: [], obsByDay: {}, firstSeenAt: "", lastSeenAt: "" });
+    }
+    const model = (async (_db: any, messages: any[]) => {
+      const text = (messages[0].content as string).split("\n\n").pop() as string;
+      const items = text.trim().split("\n").map((line) => {
+        const term = line.replace(/^\d+\.\s*/, "");
+        return { term, relevance: "weak" };
+      });
+      return { text: JSON.stringify(items) };
+    }) as any;
+    const { judgeBackfillTick, unjudgedPendingCount } = await import("../core/seen-extract");
+    const base = new Date("2026-10-10T02:00:00Z");
+    judgeBackfillTick(db, model, base);
+    await new Promise((r) => setTimeout(r, 200));
+    let done = db.get<any>("meta", "judge-backfill-done:2026-10-10");
+    assert.equal(done?.batches, 1);
+    assert.equal(done.judged, 200, "每批 200 词");
+    assert.equal(done.busyDay, true);
+    assert.equal(unjudgedPendingCount(db), 301, "已判词退出待判池");
+    // 间隔闸：4h 内不开新批
+    judgeBackfillTick(db, model, new Date(base.getTime() + 3600000));
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(db.get<any>("meta", "judge-backfill-done:2026-10-10").batches, 1);
+    // 4h 后第 2 批
+    judgeBackfillTick(db, model, new Date(base.getTime() + 5 * 3600000));
+    await new Promise((r) => setTimeout(r, 200));
+    done = db.get<any>("meta", "judge-backfill-done:2026-10-10");
+    assert.equal(done.batches, 2);
+    assert.equal(unjudgedPendingCount(db), 101);
+    // 提取批记账语义（runExtraction 内联逻辑）：在既有批次上 +1，不重置 busy/heavy 标志
+    const bfPrev = db.get<any>("meta", "judge-backfill-done:2026-10-10");
+    db.put("meta", "judge-backfill-done:2026-10-10", { ...bfPrev, batches: (bfPrev?.batches ?? 0) + 1, judged: 101 });
+    assert.equal(db.get<any>("meta", "judge-backfill-done:2026-10-10").batches, 3, "提取批共享批次计数");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});

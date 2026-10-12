@@ -344,7 +344,10 @@ export const planSchema = z
     includeDomains: z
       .array(z.string().regex(/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i))
       .max(12),
-    sourceIds: z.array(id).min(1).max(12),
+    // 源绑定矩阵（第五轮 §1⑦）：三策略绑定 16-22 源，上限从 12 放宽到 24
+    sourceIds: z.array(id).min(1).max(24),
+    // 平台适配（第五轮 §1⑥b）：机会引擎二次精筛 watch 池的平台权重标签
+    platformAffinity: z.array(z.enum(["gzh", "xhs-note", "xhs-video", "tiehao"])).max(4).optional(),
     lookbackDays: z.number().int().min(1).max(365),
     maxEvidence: z.number().int().min(3).max(60),
     maxQueries: z.number().int().min(0).max(8),

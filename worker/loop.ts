@@ -6,8 +6,10 @@ import type { Store } from "../core/store";
 import { now } from "../core/store";
 import { recoverOrphanJobs, runJob, scheduleTick } from "../core/pipeline";
 import { seenTermsTick } from "../core/seen-extract";
+import { judgeBackfillTick } from "../core/seen-extract";
 import { seenDiggingTick } from "../core/seen-dig";
 import { seenJudgeTick } from "../core/seen-judge";
+import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -25,8 +27,14 @@ export function startWorkerLoop(db: Store) {
         db.put("meta", "worker", { heartbeat: now(), pid: process.pid });
         scheduleTick(db);
         seenTermsTick(db, requestModel);
+        // 判定吞吐扩容（第五轮 §5）：relevance 回填判定日多批（积压 7112 → 48h <2000 的反推口径）
+        judgeBackfillTick(db, requestModel);
         seenDiggingTick(db);
         seenJudgeTick(db);
+        // 机会引擎（第五轮）：watch 池 TTL 是初筛的一部分（不受 consumerMode 影响）；
+        // 机会自动生成仅 builtin 模式（external 由外部 Agent 经 /opportunities/generate 触发）。
+        watchTtlTick(db);
+        opportunityTick(db);
         runJanitor(db);
         const job = db.claim();
         if (job) await runJob(db, job);

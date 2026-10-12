@@ -91,6 +91,12 @@ async function runExtraction(db: Store, runModel: ModelRunner, dateKey: string, 
     console.error("[seen-terms] 回填判定失败:", e instanceof Error ? e.message : e);
     return 0;
   });
+  // 判定首批记账（第五轮 §5）：与 judgeBackfillTick 共享批次计数，提取批 = 当日第 1 批
+  const bfPrev = db.get<any>("meta", judgeBackfillDoneKey(dateKey));
+  db.put("meta", judgeBackfillDoneKey(dateKey), {
+    at: new Date().toISOString(), batches: (bfPrev?.batches ?? 0) + 1, judged,
+    ...(bfPrev?.busyDay ? { busyDay: true } : {}), ...(bfPrev?.heavyDay ? { heavyDay: true } : {}),
+  });
   console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条，回填判定 ${judged} 条`);
   db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted, judged });
   db.del("meta", runningKey);
@@ -194,9 +200,19 @@ function normalizeRelevance(value: unknown): PersonaRelevance | undefined {
   return value === "strong" || value === "weak" || value === "off" ? value : undefined;
 }
 
-// 回填判定（清洗批 ②）：词库里 relevance 尚未判定的非 archived 词（联想展开词天然缺档），
-// 按观测数取前 200 一次 LLM 判定。判定只写 relevance，不虚增观测。空池直接跳过（零成本）。
+// 回填判定（清洗批 ②，第五轮 §5 吞吐扩容）：词库里 relevance 尚未判定的非 archived 词
+//（联想展开词天然缺档），按观测数取前 200 一次 LLM 判定。判定只写 relevance，不虚增观测。
+// 空池直接跳过（零成本）。7112 存量积压 ÷ 200/日 = 36 天——扩容为日多批 tick（judgeBackfillTick）：
+// 积压 >2000 → 16 批/日（间隔 ≥90 分钟，3200 词/日，48h 验收 <2000 的反推口径）；
+// 500<积压≤2000 → 3 批/日（早/午/晚，间隔 ≥4h）；≤500 → 1 批/日。
+// 完成键记「批次号 + 游标」而非当日一次；首日第一批仍随提取跑（新词当轮拿到 relevance）。
 const BACKFILL_LIMIT = 200;
+const BACKFILL_MID_BATCHES = 3;
+const BACKFILL_HEAVY_BATCHES = 16;
+const BACKFILL_MID_GAP_MS = 4 * 60 * 60000;
+const BACKFILL_HEAVY_GAP_MS = 90 * 60000;
+
+function judgeBackfillDoneKey(date: string) { return "judge-backfill-done:" + date; }
 
 export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Promise<number> {
   if (!db.config().apiKey) return 0;
@@ -221,4 +237,47 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     if (judgeSeenTerm(db, item.term, relevance)) judged++;
   }
   return judged;
+}
+
+// 待判池计数（批数闸原料）：与 judgeUnjudgedTerms 同一过滤口径
+export function unjudgedPendingCount(db: Store): number {
+  return db.list<any>("seen-terms")
+    .filter((t) => t.status !== "archived" && t.relevance !== "strong" && t.relevance !== "weak" && t.relevance !== "off")
+    .length;
+}
+
+// 日多批判定 tick（第五轮 §5）：提取日闸之外独立跑；fire-and-forget，串行防并发（running 键）。
+// consumerMode 不门控——relevance 判定是初筛（采集的一部分），external 模式照跑（§4）。
+export function judgeBackfillTick(db: Store, runModel: ModelRunner, nowDate: Date = new Date()): void {
+  const day = nowDate.toISOString().slice(0, 10);
+  const doneKey = judgeBackfillDoneKey(day);
+  const done = db.get<any>("meta", doneKey);
+  const pending = unjudgedPendingCount(db);
+  if (!pending) return;
+  const busy = pending > 500 || done?.busyDay === true;
+  const heavy = pending > 2000 || done?.heavyDay === true;
+  const maxBatches = heavy ? BACKFILL_HEAVY_BATCHES : busy ? BACKFILL_MID_BATCHES : 1;
+  const gapMs = heavy ? BACKFILL_HEAVY_GAP_MS : BACKFILL_MID_GAP_MS;
+  if (done) {
+    if ((done.batches ?? 1) >= maxBatches) return;
+    if (done.at && nowDate.getTime() - Date.parse(done.at) < gapMs) return;
+  }
+  const running = db.get<any>("meta", "judge-backfill-running");
+  if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
+  db.put("meta", "judge-backfill-running", { at: new Date().toISOString() });
+  const batchNo = (done?.batches ?? 0) + 1;
+  void (async () => {
+    console.log(`[judge-backfill] 判定第 ${batchNo}/${maxBatches} 批开始（待判 ${pending}）`);
+    try {
+      const judged = await judgeUnjudgedTerms(db, runModel);
+      const after = unjudgedPendingCount(db);
+      db.put("meta", doneKey, { at: nowDate.toISOString(), batches: batchNo, busyDay: busy, heavyDay: heavy, judged, pendingAfter: after, cursor: after });
+      console.log(`[judge-backfill] 第 ${batchNo} 批完成：判定 ${judged}，剩余待判 ${after}`);
+    } catch (e) {
+      console.error(`[judge-backfill] 第 ${batchNo} 批失败（批次照计，90 分钟后下一批重试，防挂死模型被打爆）:`, e instanceof Error ? e.message : e);
+      db.put("meta", doneKey, { at: nowDate.toISOString(), batches: batchNo, busyDay: busy, heavyDay: heavy, judged: 0, error: String((e as Error)?.message || e).slice(0, 200) });
+    } finally {
+      db.del("meta", "judge-backfill-running");
+    }
+  })();
 }

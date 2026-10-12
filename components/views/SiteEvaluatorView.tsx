@@ -3,17 +3,111 @@
 // 数据源 = seo-terms 中 siteCandidate:true 的词；域名/站型/需求大纲均来自外部 Agent 数据。
 // [讨论][推进=立项建站（site-projects, pending）]；忽略为会话级隐藏。
 // 站点发现 tab（海外定位批 6）：site-discoveries 独立站卡片（host/命中词/首次发现/它做的是什么）。
-import { useMemo, useState } from "react";
-import { Ban, CheckCircle2, Globe } from "lucide-react";
+// 机会引擎 tab（第五轮 §1）：四信号源统一机会卡（opportunities），auto/agent 来源标注 + 生成按钮。
+import { useMemo, useState, type ReactNode } from "react";
+import { Ban, CheckCircle2, Globe, Sparkles, Zap } from "lucide-react";
 import { Select } from "../Select";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Empty, api, date } from "../ui";
 
+const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newtech: "新技术", news: "新资讯", trend: "热词趋势" };
+const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
+const VERDICT_STYLE: Record<string, string> = { 推荐: "#1a7f4b", 可以试试: "#8a6d1a", 不值得做: "#8a3a3a", 待验证: "#5a6b7a" };
+
+function OpportunityBadge({ children, color }: { children: ReactNode; color?: string }) {
+  return <span className="pill" style={color ? { color, borderColor: color } : undefined}>{children}</span>;
+}
+
+function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities: any[] }) {
+  const { busy, setNotice } = ws;
+  const [signal, setSignal] = useState("");
+  const [source, setSource] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const filtered = opportunities.filter((o) =>
+    (!signal || (o.signals || []).includes(signal)) && (!source || o.source === source));
+  const counts = { app: opportunities.filter((o) => o.kind === "app").length, site: opportunities.filter((o) => o.kind === "site").length };
+  const auto = opportunities.filter((o) => o.source === "auto").length;
+
+  async function generate() {
+    setGenerating(true);
+    try {
+      const res = await api<{ ok: boolean; created: number; merged: number; note: string }>("opportunities/generate", {});
+      setNotice(res.note);
+      await ws.refresh();
+    } catch (e) {
+      setNotice("生成失败：" + (e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="filter-row">
+        <nav className="discovery-modes" aria-label="机会信号筛选">
+          <button className={signal === "" ? "active" : ""} onClick={() => setSignal("")}>全部 {opportunities.length}</button>
+          {Object.entries(SIGNAL_LABELS).map(([key, label]) => (
+            <button key={key} className={signal === key ? "active" : ""} onClick={() => setSignal(key)}>{label} {opportunities.filter((o) => (o.signals || []).includes(key)).length}</button>
+          ))}
+        </nav>
+        <Select aria-label="按来源筛选" placeholder="全部来源" value={source} onChange={(e) => setSource(e.target.value)}>
+          <option value="">全部来源</option>
+          <option value="agent">agent（外部 Agent 生成）</option>
+          <option value="auto">auto（内置 tick 生成）</option>
+        </Select>
+        <button className="button-secondary" disabled={busy || generating} onClick={() => void generate()}>
+          <Sparkles size={13} /> {generating ? "生成中…" : "按四信号源生成"}
+        </button>
+      </div>
+      <p className="muted" style={{ fontSize: 12 }}>
+        应用 {counts.app} · 站群/内容页 {counts.site} · auto 来源 {auto} 张——四信号源：用户抱怨 / 新技术 / 新资讯 / 热词趋势；去重规则：同词或同证据集只出一张卡。
+      </p>
+      {filtered.length === 0 ? (
+        <Empty title="还没有机会卡。">
+          点「按四信号源生成」跑一轮规则扫描（small-products 候选 / news 产物配套缺口推演 / 官方新品 / verdict=推荐 蓝海词）。
+          consumerMode=builtin 时 worker 每天也会自动生成一次。
+        </Empty>
+      ) : (
+        <div className="discovery-list">
+          {filtered.map((o) => (
+            <article className="discovery-row" key={o.id}>
+              <div className="row-content">
+                <div className="row-meta">
+                  <OpportunityBadge color={VERDICT_STYLE[o.verdict]}>{o.verdict}</OpportunityBadge>
+                  <span className="pill">{KIND_LABELS[o.kind] || o.kind}</span>
+                  {(o.signals || []).map((s: string) => <span key={s} className="pill">{SIGNAL_LABELS[s] || s}</span>)}
+                  <span className="pill"><Zap size={11} /> {o.source}</span>
+                  {o.platform && <span>{o.platform}</span>}
+                  {typeof o.watchRefs === "number" && o.watchRefs > 0 && <span>引用 {o.watchRefs} 次</span>}
+                  <span>{date(o.createdAt)}</span>
+                </div>
+                <button className="article-title" style={{ fontSize: 16, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(o.title); setNotice("已复制：" + o.title); }}>{o.title}</button>
+                <p style={{ margin: "4px 0 0" }}>{o.oneLiner}</p>
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  形态：{o.form} · 初判理由：{o.verdictReason}
+                  {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}
+                </p>
+                {o.verifyPlan?.length ? (
+                  <details className="fold-card">
+                    <summary>一周验证计划（{o.verifyPlan.length} 步）</summary>
+                    <ol>{o.verifyPlan.map((v: string, i: number) => <li key={i}>{v}</li>)}</ol>
+                    {o.url && <a href={o.url} target="_blank" rel="noopener noreferrer">原始线索 ↗</a>}
+                  </details>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot }) {
-  const { seoTerms, siteProjects, siteDiscoveries, busy, act, setNotice, navigate, setDiscussionContext } = ws;
+  const { seoTerms, siteProjects, siteDiscoveries, opportunities, busy, act, setNotice, navigate, setDiscussionContext } = ws;
   const [siteType, setSiteType] = useState("all");
   const [ignored, setIgnored] = useState<string[]>([]);
-  const [tab, setTab] = useState<"candidates" | "sites">("candidates");
+  const [tab, setTab] = useState<"candidates" | "sites" | "opportunities">("candidates");
   const candidates = useMemo(
     () => (seoTerms || []).filter((t) => t.siteCandidate === true && !ignored.includes(t.term)),
     [seoTerms, ignored],
@@ -21,13 +115,16 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const filtered = siteType === "all" ? candidates : candidates.filter((t) => t.siteType === siteType);
   const projects = siteProjects || [];
   const discoveries = siteDiscoveries || [];
+  const opportunityList = opportunities || [];
 
   return (
     <>
       <nav className="discovery-modes" aria-label="应用机会板块">
         <button className={tab === "candidates" ? "active" : ""} aria-current={tab === "candidates" ? "page" : undefined} onClick={() => setTab("candidates")}>站群候选 {candidates.length}</button>
         <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}><Globe size={13} /> 站点发现 {discoveries.length}</button>
+        <button className={tab === "opportunities" ? "active" : ""} aria-current={tab === "opportunities" ? "page" : undefined} onClick={() => setTab("opportunities")}><Sparkles size={13} /> 机会引擎 {opportunityList.length}</button>
       </nav>
+      {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
       {tab === "sites" && (
         discoveries.length === 0 ? (
           <Empty title="还没有站点发现。">

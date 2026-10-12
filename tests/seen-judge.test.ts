@@ -17,30 +17,39 @@ function dayKey(offset: number, base = new Date()): string {
   return new Date(base.getTime() - offset * 86400000).toISOString().slice(0, 10);
 }
 
-test("obsRatio：近2天日均 ÷ 前7天日均；无基线 undefined", () => {
+test("obsRatio：近2天日均 ÷ 前3天日均（第五轮放宽）；无基线 undefined", () => {
   const now = new Date();
   const byDay: Record<string, number> = {};
   for (let o = 0; o <= 1; o++) byDay[dayKey(o, now)] = 4;
-  for (let o = 2; o <= 8; o++) byDay[dayKey(o, now)] = 1;
-  assert.equal(computeObsRatio({ obsByDay: byDay }, now), 4, "(8/2)/(7/7)=4");
+  for (let o = 2; o <= 4; o++) byDay[dayKey(o, now)] = 1;
+  assert.equal(computeObsRatio({ obsByDay: byDay }, now), 4, "(8/2)/(3/3)=4");
   assert.equal(computeObsRatio({}, now), undefined, "无 obsByDay 无基线");
   assert.equal(computeObsRatio({ obsByDay: { [dayKey(0, now)]: 3 } }, now), undefined, "仅近2天有观测无基线");
 });
 
-test("值不值得做三档：推荐/可以试试/不值得做/竞争度待查 四分支", () => {
+test("值不值得做三档：推荐/可以试试/不值得做/竞争度待查 四分支（满基线）", () => {
   const now = new Date();
   const mk = (recent: number, prev: number, serp?: number) => {
     const byDay: Record<string, number> = {};
     for (let o = 0; o <= 1; o++) byDay[dayKey(o, now)] = recent;
-    for (let o = 2; o <= 8; o++) byDay[dayKey(o, now)] = prev;
+    for (let o = 2; o <= 4; o++) byDay[dayKey(o, now)] = prev;
     return { serpDedicated: serp, obsByDay: byDay };
   };
-  assert.deepEqual(judgeVerdict({}, now), { verdict: "竞争度待查", reason: "DDG 竞争度未查" });
+  assert.deepEqual(judgeVerdict({}, now), { verdict: "竞争度待查", reason: "SERP 竞争度未查" });
   assert.equal(judgeVerdict(mk(4, 1, 0), now).verdict, "推荐", "obs 4 且零竞争站");
   assert.equal(judgeVerdict(mk(1, 1, 2), now).verdict, "可以试试", "obs 1 竞争站 2");
   assert.equal(judgeVerdict(mk(0.2, 1, 1), now).verdict, "不值得做", "obs 0.2 退坡");
   assert.equal(judgeVerdict(mk(4, 1, 6), now).verdict, "不值得做", "竞争站 6 扎堆");
-  assert.equal(judgeVerdict({ serpDedicated: 0, obsByDay: {} }, now).verdict, "竞争度待查", "无 obs 基线待查");
+});
+
+test("保守兜底（第五轮 §6）：obsByDay 不足 3 天基线 → 只出 可以试试/不值得做，不再滞留待查", () => {
+  const now = new Date();
+  assert.equal(judgeVerdict({ serpDedicated: 0, obsByDay: { [dayKey(0, now)]: 3 }, observations: 2 }, now).verdict, "可以试试", "零竞争站 + 观测≥2");
+  assert.equal(judgeVerdict({ serpDedicated: 1, obsByDay: { [dayKey(0, now)]: 2 }, observations: 3, daysSeen: [dayKey(0, now), dayKey(1, now)] }, now).verdict, "可以试试", "2 天复现 + 低竞争");
+  assert.equal(judgeVerdict({ serpDedicated: 6, obsByDay: {} }, now).verdict, "不值得做", "竞争扎堆直接不值得");
+  assert.equal(judgeVerdict({ serpDedicated: 0, obsByDay: { [dayKey(0, now)]: 1 }, observations: 1 }, now).verdict, "不值得做", "单次观测无复现");
+  const reason = judgeVerdict({ serpDedicated: 0, obsByDay: { [dayKey(0, now)]: 3 }, observations: 2 }, now).reason;
+  assert.ok(reason.includes("未满基线"), "保守档理由注明未满基线");
 });
 
 test("DDG 解析：result__a + uddg 解码 + 平台识别", () => {
@@ -191,6 +200,89 @@ test("SERP 搜索层（第三轮 3）：SearXNG 主力命中、失败原因台�
     seenJudgeTick(db, failingThenOk, { backoffBaseMs: 1 });
     await new Promise((r) => setTimeout(r, 150));
     assert.equal(typeof db.get<any>("seen-terms", "fail 词2").serpDedicated, "number", "手动触发应重试失败词");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("判定吞吐扩容（第五轮 §5）：积压>500 每天 3 批×200 词 + 批间隔闸 + 批次游标", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-judgebusy-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const base = new Date("2026-10-10T02:00:00Z");
+    const SEARXNG_JSON = JSON.stringify({ results: [] });
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("searxng")) return new Response(SEARXNG_JSON, { status: 200 });
+      if (u.includes("suggestqueries.google.com")) return new Response('["q",[["x",0]]]', { status: 200 });
+      throw new Error("unexpected " + u);
+    }) as unknown as typeof fetch;
+    for (let i = 0; i < 501; i++) {
+      const term = `busy词${String(i).padStart(3, "0")}`;
+      db!.put("seen-terms", term, { id: term, term, status: "rising", observations: 100 - (i % 50), sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: base.toISOString(), lastSeenAt: base.toISOString(), relevance: "strong", region: "global" });
+    }
+    const doneKeyFor = (d: Date) => "seen-judge-done:" + d.toISOString().slice(0, 10);
+    const judged = () => db!.list<any>("seen-terms").filter((t) => typeof t.serpDedicated === "number").length;
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: base });
+    await new Promise((r) => setTimeout(r, 500));
+    let done = db.get<any>("meta", doneKeyFor(base));
+    assert.equal(done?.batches, 1, "第 1 批完成");
+    assert.equal(done.queried, 200, "忙时每批 200 词");
+    assert.ok(done.cursor, "完成键带本批游标");
+    assert.equal(judged(), 200);
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: new Date(base.getTime() + 3600000) });
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(db.get<any>("meta", doneKeyFor(base)).batches, 1, "间隔不足 4h 不开新批");
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: new Date(base.getTime() + 5 * 3600000) });
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(db.get<any>("meta", doneKeyFor(base)).batches, 2, "4h 后第 2 批");
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: new Date(base.getTime() + 10 * 3600000) });
+    await new Promise((r) => setTimeout(r, 500));
+    done = db.get<any>("meta", doneKeyFor(base));
+    assert.equal(done.batches, 3, "第 3 批");
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: new Date(base.getTime() + 15 * 3600000) });
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(db.get<any>("meta", doneKeyFor(base)).batches, 3, "每天最多 3 批");
+    assert.equal(judged(), 501, "三批吞完积压");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("判定重档（验收反推）：积压>2000 → 12 批×250 词、间隔 ≥100 分钟", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-judgeheavy-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const base = new Date("2026-10-10T02:00:00Z");
+    const fakeFetch = (async (url: any) => {
+      const u = String(url);
+      if (u.includes("searxng")) return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (u.includes("suggestqueries.google.com")) return new Response('["q",[["x",0]]]', { status: 200 });
+      throw new Error("unexpected " + u);
+    }) as unknown as typeof fetch;
+    for (let i = 0; i < 2001; i++) {
+      const term = `heavy词${String(i).padStart(4, "0")}`;
+      db!.put("seen-terms", term, { id: term, term, status: "rising", observations: 500 - (i % 40), sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: base.toISOString(), lastSeenAt: base.toISOString(), relevance: "strong", region: "global" });
+    }
+    const doneKeyFor = (d: Date) => "seen-judge-done:" + d.toISOString().slice(0, 10);
+    const judged = () => db!.list<any>("seen-terms").filter((t) => typeof t.serpDedicated === "number").length;
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: base });
+    await new Promise((r) => setTimeout(r, 600));
+    const done = db.get<any>("meta", doneKeyFor(base));
+    assert.equal(done?.batches, 1);
+    assert.equal(done.queried, 250, "重档每批 250 词");
+    assert.equal(done.heavyDay, true, "heavyDay 日级置位");
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: new Date(base.getTime() + 50 * 60000) });
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(db.get<any>("meta", doneKeyFor(base)).batches, 1, "间隔不足 100 分钟不开新批");
+    seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: new Date(base.getTime() + 101 * 60000) });
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(db.get<any>("meta", doneKeyFor(base)).batches, 2, "100 分钟后第 2 批");
+    assert.equal(judged(), 500);
   } finally {
     db?.close();
     cleanup(dir);

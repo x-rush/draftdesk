@@ -107,7 +107,9 @@ export const defaultPlans: Plan[] = [
     name: "每天值得写的 AI 变化",
     kind: "editorial",
     goal: "发现和个人工作有关的 AI 变化，提出有读者收益、有实测步骤的公众号与小红书选题；同一事件合并多个来源。",
-    sourceIds: ["openai-official", "google-ai-official", "aihot", "web"],
+    // 源绑定矩阵（第五轮 §1⑦）：新技术/资讯/思考题材的源（官方 RSS + 社区 + 产品发现）
+    sourceIds: ["openai-official", "google-ai-official", "aihot", "web", "huggingface-blog", "reddit-localllama", "reddit-agents", "simon-practice", "v2ex-problems", "producthunt-feed", "github"],
+    platformAffinity: ["gzh", "xhs-note"],
     keywords: ["Gemini 文档办公", "剪映 字幕 工作流"],
     focusTerms: ["ChatGPT","Gemini","NotebookLM","剪映","字幕","文档","会议","表格","创作","writing","document","spreadsheet","video","workflow"],
     maxQueries: 4,
@@ -120,7 +122,9 @@ export const defaultPlans: Plan[] = [
     name: "热词与内容机会",
     kind: "trends",
     goal: "采集层不设话题门禁：任何上榜热度（Google Trends、搜索联想、中文热榜）都进入观察，AI 话题之外的社会热度同样重要。分析层对每条热度评估三种转化：① AI 内容角度（用 AI 复刻、分析、避坑、教学的内容机会）；② web/app 工具机会（查询站、计算器、监控提醒、状态页等配套缺口）；③ SEO/站群价值（搜索意图明确且供给不足的词）。三种转化都不成立才放弃。没有历史值就不判断增速。",
-    sourceIds: ["suggest-cn", "suggest-global", "trends-us", "trends-gb", "baidu-hot", "weibo-hotsearch", "bilibili-popular", "dailyhot-juejin", "huggingface-blog", "reddit-localllama", "web"],
+    // 源绑定矩阵（第五轮 §1⑦）：trend 源补齐（GitHub Trending/HN 双口/Reddit×2/Simon）
+    sourceIds: ["suggest-cn", "suggest-global", "trends-us", "trends-gb", "baidu-hot", "weibo-hotsearch", "bilibili-popular", "dailyhot-juejin", "huggingface-blog", "reddit-localllama", "web", "github-trending", "hacker-news-top", "hn-algolia", "reddit-agents", "reddit-sd", "simon-practice"],
+    platformAffinity: ["gzh", "xhs-note"],
     keywords: [],
     focusTerms: [],
     dailyTime: "01:15",
@@ -131,7 +135,9 @@ export const defaultPlans: Plan[] = [
     name: "一人可验证的应用机会",
     kind: "opportunity",
     goal: "将产品变化、真实用户抱怨和替代方案连接起来，找出可用一周实验验证的微型应用；同时关注 SEO/站群与 web-app 配套机会：新平台发布后推演其限制查询、状态监控、额度计算等配套缺口。没有需求证据就列为假设。",
-    sourceIds: ["v2ex-problems", "aihot-products", "producthunt-feed", "github", "web"],
+    // 源绑定矩阵（第五轮 §1⑦）：用户抱怨/替代方案的社区源（HN 双口 + Reddit×2）
+    sourceIds: ["v2ex-problems", "aihot-products", "producthunt-feed", "github", "web", "hacker-news-top", "hn-algolia", "reddit-localllama", "reddit-agents"],
+    platformAffinity: ["gzh"],
     keywords: ["AI 字幕纠错", "会议纪要 负责人 核对", "替代", "太麻烦", "手动", "额度", "监控 提醒", "自动化"],
     focusTerms: ["字幕","会议","纪要","文档","剪辑","创作者","工作流","AI","ChatGPT","Claude","Gemini"],
     maxQueries: 4,

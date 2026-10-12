@@ -288,6 +288,26 @@ export const migrations: Migration[] = [
       if (backfilled) console.log(`[migration] seen-term-region-backfill-v1：回填 region ${backfilled} 条`);
     },
   },
+  {
+    id: "opportunity-engine-v1",
+    // 机会引擎（第五轮 §1）：三策略按「题材×数据源」搭配矩阵补源（只增不删，缺源才补），
+    // 并落 platformAffinity 平台适配标签（机会引擎二次精筛 watch 池的平台权重）。
+    // sourceIds 上限已在 planSchema 放宽到 24（trend-radar 补齐后 17 源）。
+    run: ({ kv }) => {
+      const matrix: Record<string, { add: string[]; affinity: string[] }> = {
+        "daily-editorial": { add: ["huggingface-blog", "reddit-localllama", "reddit-agents", "simon-practice", "v2ex-problems", "producthunt-feed", "github"], affinity: ["gzh", "xhs-note"] },
+        "small-products": { add: ["hacker-news-top", "hn-algolia", "reddit-localllama", "reddit-agents"], affinity: ["gzh"] },
+        "trend-radar": { add: ["github-trending", "hacker-news-top", "hn-algolia", "reddit-agents", "reddit-sd", "simon-practice"], affinity: ["gzh", "xhs-note"] },
+      };
+      for (const [planId, cfg] of Object.entries(matrix)) {
+        const plan = kv.get<any>("plans", planId);
+        if (!plan) continue;
+        const sourceIds = [...(plan.sourceIds || [])];
+        for (const sid of cfg.add) if (!sourceIds.includes(sid) && kv.get("sources", sid)) sourceIds.push(sid);
+        kv.put("plans", planId, { ...plan, sourceIds, ...(plan.platformAffinity ? {} : { platformAffinity: cfg.affinity }) });
+      }
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {
