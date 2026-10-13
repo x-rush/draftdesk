@@ -137,7 +137,7 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   let count = 0;
   for (let i = 0; i < latest.length; i += EXTRACT_CHUNK) {
     const chunk = latest.slice(i, i + EXTRACT_CHUNK);
-    const prompt = PERSONA_RUBRIC +
+    const prompt = buildRelevanceRubric(db) +
       `以下是最近采集的资讯条目（第 ${i / EXTRACT_CHUNK + 1} 批），每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），` +
       "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
       '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
@@ -172,10 +172,13 @@ function applyExtractedTerms(db: Store, text: string): number {
   let count = 0;
   for (const item of parsed)
     if (item && typeof item.term === "string" && item.term.trim()) {
-      const relevance = normalizeRelevance(item.relevance);
-      observeSeenTerm(db, item.term.trim().slice(0, 80), {
+      const term = item.term.trim().slice(0, 80);
+      // redLine 硬规则（§2.6②）：命中红线词强制 off，不依赖 LLM 判对
+      const redlined = redLineMatch(db, term);
+      const relevance = redlined ? "off" : normalizeRelevance(item.relevance);
+      observeSeenTerm(db, term, {
         sources: Array.isArray(item.sources) ? item.sources.map(String).slice(0, 5) : [],
-        offTopic: relevance === "off" || item.offTopic === true,
+        offTopic: relevance === "off" || item.offTopic === true || !!redlined,
         relevance,
       });
       count++;
@@ -195,6 +198,52 @@ const PERSONA_RUBRIC = [
   "- off：明确圈外。反例：自动驾驶/自動駕駛=汽车行业词；自动点击器/自动连点器/自动精灵=灰产工具；影视明星（如 Alexandra Daddario）=娱乐八卦非 AI 名人；「elon musk 自動駕駛」这类混合词按动态内容判定——主体是汽车词就判 off。",
   "",
 ].join("\n");
+
+// ---- 判定标尺统一读 persona.termPolicy（第六轮批 A §2.6，老大 10:28）----
+// config.persona.termPolicy（strongHint/weakHint/offHint/redLine）与《选题标准与画像》同源，
+// 是 termPolicy 三档标准的用户自定义版本：**给了就以 termPolicy 替换内置「三档标准」节**
+//（persona 头与输出格式保留），缺失/为空回退默认 RUBRIC（社区玩家无感）。
+// redLine 另作判定后的硬规则二次过滤（redLineMatch → 强制 off），不依赖 LLM 判对。
+export function buildRelevanceRubric(db: Store): string {
+  const persona = db.get<any>("config", "persona");
+  const tp = persona?.termPolicy;
+  if (!tp || typeof tp !== "object") return PERSONA_RUBRIC;
+  const hints = [tp.strongHint && `- strong：${tp.strongHint}`, tp.weakHint && `- weak：${tp.weakHint}`, tp.offHint && `- off：${tp.offHint}`].filter(Boolean);
+  if (!hints.length) return PERSONA_RUBRIC;
+  // 按行替换「## relevance 三档标准」节（到下一 ## 或结尾）——RUBRIC 尾部只有单换行，
+  // 正则前瞻 (?=\n\n) 不命中（实弹单测抓到）。
+  const lines = PERSONA_RUBRIC.split("\n");
+  const start = lines.findIndex((l) => l.startsWith("## relevance 三档标准"));
+  if (start < 0) return PERSONA_RUBRIC;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) if (lines[i].startsWith("## ")) { end = i; break; }
+  const replacement = [
+    "## relevance 三档标准（persona.termPolicy 自定义，覆盖内置默认）",
+    ...hints,
+    ...(tp.redLine ? [`- redLine（命中硬规则强制 off，不经模型）：${tp.redLine}`] : []),
+  ];
+  lines.splice(start, end - start, ...replacement);
+  return lines.join("\n");
+}
+
+// redLine 关键词抽取：按括号/斜杠/顿号切分，滤掉动作短语段（「直接 off/不进判定流水」等），
+// 剩余片段即硬规则关键词（当前 redLine → ["出镜直播","私域拉群","电商囤货","灰产"]）。
+const REDLINE_STOP = /^(?:四禁忌相关词|相关词|直接 off|直接|off|不进判定流水|不进|判定流水|redLine|判定)$/i;
+export function extractRedLineKeywords(redLine: string): string[] {
+  return String(redLine || "")
+    .split(/[（）()、，,；;\n]/)
+    .join("/")
+    .split("/")
+    .map((seg) => seg.trim())
+    .filter((seg) => seg.length >= 2 && seg.length <= 12 && !REDLINE_STOP.test(seg) && !/直接|不进|流水/.test(seg));
+}
+
+export function redLineMatch(db: Store, term: string): string | undefined {
+  const tp = db.get<any>("config", "persona")?.termPolicy;
+  if (!tp?.redLine) return undefined;
+  const kw = extractRedLineKeywords(String(tp.redLine)).find((k) => term.toLowerCase().includes(k.toLowerCase()));
+  return kw ? String(tp.redLine).slice(0, 80) : undefined;
+}
 
 function normalizeRelevance(value: unknown): PersonaRelevance | undefined {
   return value === "strong" || value === "weak" || value === "off" ? value : undefined;
@@ -221,7 +270,7 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, BACKFILL_LIMIT);
   if (!pending.length) return 0;
-  const prompt = PERSONA_RUBRIC +
+  const prompt = buildRelevanceRubric(db) +
     "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off。" +
     '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong"}]。不要输出其他文字。\n\n' +
     pending.map((t, i) => (i + 1) + ". " + t.term).join("\n");
@@ -232,8 +281,12 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
   const pendingIds = new Set(pending.map((t) => String(t.id)));
   let judged = 0;
   for (const item of parsed) {
-    const relevance = normalizeRelevance(item?.relevance);
-    if (!relevance || typeof item?.term !== "string" || !pendingIds.has(termId(item.term))) continue;
+    if (!item || typeof item?.term !== "string") continue;
+    if (!pendingIds.has(termId(item.term))) continue;
+    // redLine 硬规则（§2.6②）：命中红线词强制 off（LLM 判 strong/weak 也压掉）
+    const redlined = redLineMatch(db, item.term);
+    const relevance = redlined ? "off" as PersonaRelevance : normalizeRelevance(item?.relevance);
+    if (!relevance) continue;
     if (judgeSeenTerm(db, item.term, relevance)) judged++;
   }
   return judged;
