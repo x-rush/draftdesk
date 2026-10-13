@@ -59,7 +59,7 @@ Next.js App Router / React / TypeScript 提供同源网页与 API；研究任务
 
 在“外部接入”创建专用提交令牌，下载 Skills 包和 JSON Schema。令牌只用于 `POST /api/v1/intake`，可以单独撤销，服务端只保存散列。外部提交默认待审且私有；不会自行触发付费研究。
 
-外部 Agent 也可以**读取并消费**工作台已搜罗的数据：创建连接时勾选「只读访问」与「消费标记」，令牌即可访问只读 REST（`/api/v1/agent/hotspots|evidence|artifacts|stats`，热榜、证据摘要、带质量标签的选题产物）、消费标记（`POST /api/v1/agent/consume`，默认 dryRun、可撤销，已处理条目不再计入首页计数）与内置 MCP 端点（`POST /api/v1/mcp`，五个只读工具）；只支持本地 stdio MCP 的运行器可用 `scripts/mcp-bridge.mjs` 桥接。三类权限按令牌隔离、互不越界。分步操作（令牌、各运行器配置示例、排障）见[外部 Agent 接入指南](docs/agent-integration.md)，协议细节见[接入说明](docs/external-onboarding.md)。
+外部 Agent 也可以**读取并消费**工作台已搜罗的数据：创建连接时勾选「只读访问」与「消费标记」，令牌即可访问只读 REST（`/api/v1/agent/hotspots|evidence|artifacts|stats`，热榜、证据摘要、带质量标签的选题产物）、消费标记（`POST /api/v1/agent/consume`，默认 dryRun、可撤销，已处理条目不再计入首页计数）与内置 MCP 端点（`POST /api/v1/mcp`，五个只读工具）；只支持本地 stdio MCP 的运行器可用 `scripts/mcp-bridge.mjs` 桥接。三类权限按令牌隔离、互不越界。external 模式下，approved 选题的第一版大纲也由外部 Agent 按「平台 × 题材」双标注提交（见[外部 Agent 接入指南](docs/agent-integration.md)「大纲提交」节）。分步操作（令牌、各运行器配置示例、排障）见[外部 Agent 接入指南](docs/agent-integration.md)，协议细节见[接入说明](docs/external-onboarding.md)。
 
 ```sh
 export DRAFTDESK_URL=http://127.0.0.1:5173
@@ -75,15 +75,31 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 ## 热词掘金与站点发现
 
-「热词趋势」是独立的海外选题信号台：每日从全源标题流提取实体词（AI 判 💎强相关/○弱相关/🚫圈外三档），再用四路搜索联想展开（Google/YouTube/Amazon/百度/B站）补长尾，按 region 分层（🌐海外词双职责=英文内容选题+站群候选；🇨🇳中文词=纯内容创作线）。只有 💎强相关词回流挖掘种子（off 词绝不回流）。
+「热词趋势」是独立的海外选题信号台：每日从全源标题流提取实体词（AI 判 💎强相关/○弱相关/🚫圈外三档），再用四路搜索联想展开（Google/YouTube/Amazon/百度/B站）补长尾，另有 34 个工具词根 + 10 个 AI 词根的「词根探针」轮转喂联想（每天 ≤48 词，不打满判定队列），按 region 分层（🌐海外词双职责=英文内容选题+站群候选；🇨🇳中文词=纯内容创作线）。只有 💎强相关词回流挖掘种子（off 词绝不回流）。
 
-判定层每天对强相关海外词按热度取 TOP100 查询 SERP 竞争度（vercel/github.io/pages.dev/netlify 四类静态平台上有没有同题独立站），结合 obsRatio（近 2 天观测增速÷前 7 天基线）给出三档判定：✅推荐 / 🟦可以试试 / ⛔不值得做；竞争度查询顺便产出「站点发现」集合（对标独立站卡片，品牌词自动标不建议做）。成本纪律：判断/分类走 cheap 档、产出走 full，cheap 连续两次不过合同自动升 full 重试一次，全部调用按日记录在「设置→每日成本看板」。
+三档标尺可在 persona 配置里自定义：`config.persona.termPolicy`（strongHint/weakHint/offHint + redLine 红线词）给了就以它覆盖内置默认，redLine 命中的词由硬规则强制 off（不经模型）；不配则用内置标尺，行为与默认完全一致。
+
+判定分两层。相关性判定按积压分层扩容（>2000 时每天 16 批 × 200 词），确保数千词的词库能在 48 小时内清完。值不值得做判定对强相关海外词查 SERP 竞争度（vercel/github.io/pages.dev/netlify.app 四类静态平台上有没有同题独立站），结合 obsRatio（近 2 天观测增速 ÷ 前 3 天基线；不足基线的词用保守档，只出可以试试/不值得做）给出三档：✅推荐 / 🟦可以试试 / ⛔不值得做——单位换算/汇率/计算器类「谷歌自答」词上限「可以试试」；每词附派生信号（精确匹配域名数、首页占比、论坛/视频站占比）。双通道达标的词标「站群候选」徽章：观测通道（obs≥3 且来源≥2）或竞争通道（strong 且竞争 ≤1）任一命中即入池，等外部 Agent 复核标注为站群机会。竞争度查询顺便产出「站点发现」集合。成本纪律：判断/分类走 cheap 档、产出走 full，cheap 连续两次不过合同自动升 full 重试一次，全部调用按日记录在「设置→每日成本看板」。
 
 种子池污染有双层防线：LLM 提词按 persona 标尺给三档，历史污染可按 seed 血缘一键清洗（`core/seen-clean.ts`，白名单保护 AI 短剧等内容赛道）。热词历史、词表与统计口径见「热词趋势」页内说明。
 
+## 应用机会（机会引擎 · 站点发现 · 新站发现）
+
+「应用机会」页是三类机会的单入口。**机会引擎**把四类信号统一成机会卡（同词/同证据去重，信号可叠加）：用户抱怨（应用策略的候选与 idea 产物）、新技术/新资讯（产品级变化推演配套缺口——额度监控/状态页/迁移/格式转换）、热词趋势（「推荐」蓝海词 → 站群内容页卡；工具意图词 → 应用卡；alternative 探针词 → 替代缺口卡）与站群候选（siteCandidate 标注词）。每张卡带自动初判（推荐/可以试试/待验证）与一周验证计划，来源标注 auto（内置 tick）或 agent（外部 Agent 经 `POST /api/v1/opportunities/generate` 触发——external 模式下内置不自动生成）。机会引擎内按形态（应用/站群）与信号筛选。
+
+**新站发现**（对标新站监控服务）：每日抓 Show HN 与 Product Hunt 新发布站，LLM 批量做中文转译、核心关键词与六类动机判定（冲着关键词/解决自己痛点/满足别人需求/兴趣爱好/商业机会/没说清，标注判定来源=作者原话或推测）；新站核心词命中我们热词库高分词时标「⚠️ 与我们撞词」——竞品早期形态信号。
+
+**站点发现**（判定层顺手产出的独立站池）：按可参考度排序（命中我们高分词 > 非品牌 > 有明确功能），品牌站自动标「不建议做」（规则表：AI 大厂/大厂模式），个人作品集页降权折叠。
+
 ## 决策层（审查台）
 
-搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目；手动添加选题、多平台大纲、人设配置（AI 个性化判断输入，可编辑）与内置 AI 参与开关 aiPolicy（triage/outline/draft 三档 off|cheap|full；off 的环节产出留空，由外部 Agent 经 suggest scope 令牌经 /api/v1/agent/clusters|outlines 写回，不出现「关了没人做」）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
+搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目。
+
+选题按「平台 × 题材」双标注：五平台（`gzh` 公众号 / `tiebuhao` 贴图号 / `xhs-note` 小红书笔记 / `xhs-video` 小红书视频笔记 / `threads`）与六题材（AI 新技术/新资讯/开源工具/自研产品/个人思考/社会热点）；题材可点改（LLM 初标的人工纠偏口）。**拍板按平台分开**：每条选题五平台徽章各带独立状态，点徽章循环拍板（同一条选题可以「公众号通过、小红书暂缓」），`perPlatformDecision` 记录各平台决策、聚合 `decision` 取最前进正向状态；同题多条聚合不再一键连拍全组，各平台互不影响。
+
+草稿全程可见：pending 的选题只要有草稿就显示「有草稿」徽章与只读预览（Markdown 渲染），通过后开放编辑；大纲抽屉同时展示内容结构、写作要点与数据源。
+
+产出兜底链按消费执行方联动：external 模式由外部 Agent 对 approved 选题写第一版大纲（keyPoints/outline/draftBody，提示词矩阵见 `skills/prompts/outline-matrix.md`，接入指引见[外部 Agent 接入指南](docs/agent-integration.md)）；builtin 模式由内置 AI 每小时自动为 approved 选题按「平台模板 × 题材角度」生成第一版大纲并推进到「写作中」。手动添加选题、人设配置（AI 个性化判断输入，可编辑）与内置 AI 参与开关 aiPolicy（triage/outline/draft 三档 off|cheap|full，经 suggest scope 令牌经 /api/v1/agent/clusters|outlines 写回）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
 
 ## 数据与边界
 
