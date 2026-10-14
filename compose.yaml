@@ -3,6 +3,14 @@ services:
     build:
       context: .
       target: runtime
+      # 构建期代理（可选）：DOCKER_BUILD_PROXY=http://host.docker.internal:7890 docker compose build
+      # 走本地 clash 等代理（需开 Allow LAN 监听 0.0.0.0；build 容器不读宿主机系统代理）。
+      # proxy 类 build-arg 不参与层缓存 hash，默认空串=零行为变化。若 host.docker.internal
+      # 在 build 内解析失败，改用宿主机局域网 IP。
+      args:
+        HTTP_PROXY: ${DOCKER_BUILD_PROXY:-}
+        HTTPS_PROXY: ${DOCKER_BUILD_PROXY:-}
+        NO_PROXY: localhost,127.0.0.1,searxng,dailyhot
     ports:
       - "127.0.0.1:${DRAFTDESK_PORT:-5173}:3000"
     volumes:
