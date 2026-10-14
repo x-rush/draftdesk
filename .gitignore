@@ -19,3 +19,4 @@ next-env.d.ts
 *.tmp.json
 _patch_*.py
 runtime-bundle/
+skills/prompts/site-spec.md
