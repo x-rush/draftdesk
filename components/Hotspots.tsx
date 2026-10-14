@@ -1,4 +1,3 @@
-"use client";
 import { useState } from "react";
 import type {HotspotFeed} from "../core/hotspots";
 import type {Source} from "../core/schema";
@@ -7,14 +6,15 @@ import {Select} from "./Select";
 import {ArchiveButton} from "./ActionButtons";
 import {date,Skeleton} from "./ui";
 
-export function Hotspots({feed,sources,query,status,source,plan,busy,loading,consumed,onConsumed,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort}:{
+type HotspotsProps = {
   feed:HotspotFeed|null;sources:Source[];query:string;status:string;source:string;plan:string;busy:boolean;loading?:boolean;consumed?:boolean;onConsumed?:(value:boolean)=>void;
   onQuery:(value:string)=>void;onStatus:(value:string)=>void;onSource:(value:string)=>void;onPlan:(value:string)=>void;
   onPage:(page:number)=>void;onRefresh:()=>void;hotspotSort?:string;onSort:(value:string)=>void;
   onDiscuss:(row:any)=>void;onArchive:(row:any)=>void;
   onPromote:(row:any,payload:{clusterId:string;platform:string;angle:string})=>void;
-  clusters:any[];clusterId?:string;
-}){
+  clusters:any[];clusterId?:string;plans?:any[];
+};
+export function Hotspots({feed,sources,query,status,source,plan,busy,loading,consumed,onConsumed,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort}:HotspotsProps){
   const [promoting,setPromoting]=useState<string|null>(null);
   const [promotePlatform,setPromotePlatform]=useState("公众号");
   const [promoteCluster,setPromoteCluster]=useState(clusterId||"clu-inbox");
