@@ -200,16 +200,30 @@ export async function fetchKeywordMetrics(db: Store, terms: string[], doFetch: t
     if (e instanceof SeoQuotaError) console.warn(`[seo-source] 哥飞余额不足，本批 ${batch.length} 词跳过（充值后次日自动恢复）`);
     throw e;
   });
-  const byTerm = (raw: any): Map<string, KeywordMetrics> => {
+  // 响应归一（2026-10-14 实测真实合同）：data.keywords = { 词: 值 } map——
+  // volume 值={avg, competition, avgCpc, lowBid, highBid}；difficulty 值=纯数字；
+  // intent 值={intent}。数组形态保留兼容（旧测试/mock）。
+  const byTerm = (raw: any, pick: (v: any) => Partial<KeywordMetrics>): Map<string, KeywordMetrics> => {
     const m = new Map<string, KeywordMetrics>();
-    const list: any[] = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Array.isArray(raw.data) ? raw.data : Object.entries(raw).map(([keyword, v]) => ({ keyword, ...(typeof v === "object" ? v : { volume: v }) })) : [];
-    for (const item of list) {
-      const key = String(item?.keyword || item?.term || "").trim().toLowerCase();
-      if (key) m.set(key, normalizeKeywordMetrics(item));
+    let entries: [string, any][] = [];
+    if (Array.isArray(raw)) {
+      for (const item of raw) entries.push([String(item?.keyword ?? item?.term ?? ""), item]);
+    } else if (raw && typeof raw === "object") {
+      const kw = raw.data?.keywords ?? raw.keywords ?? raw.data;
+      if (kw && typeof kw === "object" && !Array.isArray(kw)) entries = Object.entries(kw);
+      else if (Array.isArray(raw.data)) entries = raw.data.map((item: any) => [String(item?.keyword ?? ""), item]);
+    }
+    for (const [key, value] of entries) {
+      const k = key.trim().toLowerCase();
+      if (k) m.set(k, pick(value));
     }
     return m;
   };
-  const v = byTerm(volumes), d = byTerm(difficulties);
+  const v = byTerm(volumes, (v) => {
+    const o = v && typeof v === "object" ? v : {};
+    return { monthlySearch: num(o.avg ?? o.volume ?? o.search_volume), cpc: num(o.avgCpc ?? o.cpc) };
+  });
+  const d = byTerm(difficulties, (v) => ({ kd: typeof v === "number" ? v : num(v?.difficulty ?? v?.kd) }));
   for (const term of batch) {
     const key = term.trim().toLowerCase();
     // 显式赋值合并（弃用三连 spread：tsx 下曾出现后段键值静默丢失的诡异行为）
