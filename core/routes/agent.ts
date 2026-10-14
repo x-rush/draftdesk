@@ -6,7 +6,7 @@ import { json } from "../http/middleware";
 import { paginatedSql } from "../http/pagination";
 import { AppError, now } from "../store";
 import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc } from "../agent-read";
-import { siteGateOf } from "../seen-judge";
+import { siteGateOf } from "../seo-gate";
 
 const listQuery = (query: URLSearchParams) => {
   const raw = Object.fromEntries(query.entries());

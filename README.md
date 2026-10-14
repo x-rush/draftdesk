@@ -81,7 +81,19 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 判定分两层。相关性判定按积压分层扩容（>2000 时每天 16 批 × 200 词），确保数千词的词库能在 48 小时内清完。值不值得做判定对强相关海外词查 SERP 竞争度（vercel/github.io/pages.dev/netlify.app 四类静态平台上有没有同题独立站），结合 obsRatio（近 2 天观测增速 ÷ 前 3 天基线；不足基线的词用保守档，只出可以试试/不值得做）给出三档：✅推荐 / 🟦可以试试 / ⛔不值得做——单位换算/汇率/计算器类「谷歌自答」词上限「可以试试」；每词附派生信号（精确匹配域名数、首页占比、论坛/视频站占比）与结构化竞争观测（`serpTop10Home`=SERP 前 10 首页数、`serpTop3Tier`=前 3 名整站量级档位，Similarweb 免费档 best-effort，存量词不回填）。站群候选按三通道入池：观测（obs≥3 且来源≥2）/ 竞争（strong 且 SERP 竞争≤siteGate 上限）/ 意图（strong 且 demandIntent=tool）；`config.siteGate`（requireStrong/serpDedicatedMax/monthlySearchMin/kdMax/cpcMin，哥飞判断参数内化）是站群标注的唯一规则源——判定 tick 批末自动给达标词标 `siteCandidate=true`（`siteCandidateBy=builtin-gate-v1`），外部 Agent 经 `GET /agent/siteGate` 读同一份规则（规则同源，无需任何人工标注）。
 
-**SEO 数据源（可选增值，默认关闭零调用）**：`config.seoDataSource`（settings 页开关区块：开关/令牌/连接测试/今日积分消耗，哥飞 SEO 工具箱 seo.web.cafe/api，会员积分制自行注册，仓库不内置令牌）。关闭/无令牌时全流程走免费降级路径（strong+低竞争即候选，候选卡打「价值未验证」徽章）；开启后两条采集链路自动跑——判定 sweep 对降级达标词补查三指标，**哥飞指标日更 tick**（W7-8，每日一道闸）按观测数挑 strong+低竞争词（≤200/日）批量落库（monthlySearch/kd/cpc + `gepheiFetchedAt`，90 天过期回退降级）并按全门槛重判出标、顺带补可注册域名清单；**哥飞挖需求采集组**（W7-9）每周日 trends_rising 按词根族轮转注入新词（source=gephei-trends，7/30 天零产出根词自动降频）、每日 keywords/batches 新词发现批次注入（source=gephei-newwords，0 积分免费）、每月 1 日 site_keywords 采标杆站页面（站点发现页「标杆站监控」区块可增删标杆站、高流量页需求词一键入词库候选）、每月 15 日 find_link_prospects 拉卖链站市场快照落外链来源站。**付费接口双重门控（W7-11）**：settings 两个授权勾选（「允许自动查关键词指标」「允许自动月更标杆站与外链反推」，默认关=纯手动模式零余额消耗）——日更按「月累计 metrics 池 30 + 单词观测≥5」自动查，不勾时准站群卡显示「待查指标」指导深链（/kd/ /ideas/ /serp/ ?kw= 词预填，点开即达哥飞站内）；**search_intent 永久内置 AI**（不自动查哥飞意图，省 5 分/词）。**手动回传**：站点发现页粘贴哥飞站内查询结果（JSON/文本双模式解析）→ POST /seo-terms/manual 落词库指标（✋manual-gephei 权重最高，已有手动数据不覆盖），已出标词的价值面板即时点亮，哥飞意图与内置标注冲突标 intentConflict。**预算三池独立互不抢占**：档位补位 tier（60/日）/指标补查 metrics（30/月累计）/新词采集 collect（100/日），超额自动停。判定方法论已 skill 化：skills/seo-methodology/SKILL.md（哥飞 SEO 方法论判定引擎，内置判定与外部复核共用同一份决策依据）。站群卡价值面板=三指标+综合价值分（月搜×CPC÷KD）+竞品档案（SERP 前 10 域名/类型/量级档，折叠）+域名清单（可注册 up to 5，点开即注册页）+估值参考；词库详情抽屉承载 SEO 指标区块（●哥飞权威/○自采层级标识）。适配器为泛化 HTTP 客户端（`core/seo-source.ts`，端点与鉴权集中一处），另备挖词/趋势/竞品站/外链/域名/估值/知识库全量方法面；DataForSEO 不接。机会卡 `form` 字段为四值枚举（web/app/miniprogram/tool，W7-5），应用机会页按形态 chips 筛选；建簇时自动做**选题去重记忆**（与已拍板选题核心词重合 ≥2/3 标「已覆盖变体」，审查台可见；embedding 相似度留作基建接入点）。竞争度查询顺便产出「站点发现」集合。全量 UI 回归：`node scripts/e2e-audit.mjs`（14 视图遍历截图+关键区块断言+交互冒烟+控制台错误捕获，发现错误 exit 1）。成本纪律：判断/分类走 cheap 档、产出走 full，cheap 连续两次不过合同自动升 full 重试一次，全部调用按日记录在「设置→每日成本看板」。
+**SEO 数据源（可选增值，默认关闭零调用）**
+
+数据源为哥飞 SEO 工具箱（seo.web.cafe/api，会员积分制，自行注册，仓库不内置令牌），settings 页「SEO 数据源」区块统一管理（开关/令牌/三池额度/授权勾选/连接测试/今日积分消耗）。DataForSEO 不接。适配器为泛化 HTTP 客户端（`core/seo-source.ts`，端点与鉴权集中一处），另备挖词/趋势/竞品站/外链/域名/估值/知识库全量方法面。
+
+- **免费降级路径（默认，零余额消耗）**：关闭/无令牌时全流程走免费字段——strong + 低竞争即站群候选，候选卡打「价值未验证」徽章并附「待查指标」指导深链（/kd/ /ideas/ /serp/ ?kw= 词预填，点开即达哥飞站内）。
+- **授权自动链路**（settings 两个授权勾选，默认关）：
+  - 指标日更 tick：月累计 metrics 池 30 + 单词观测≥5，批量落三指标 + `gepheiFetchedAt`（90 天过期回退降级），全门槛重判出标、顺带补可注册域名清单、出标后触发出卡。
+  - 挖需求采集组：每周日 trends_rising 按词根族轮转注入新词（source=gephei-trends，7/30 天零产出根词自动降频）；每日 keywords/batches 新词发现批次注入（source=gephei-newwords，0 积分免费）；每月 1 日 site_keywords 采标杆站页面（站点发现页「标杆站监控」区块可增删标杆站、高流量页需求词一键入词库候选）；每月 15 日 find_link_prospects 拉卖链站市场快照落外链来源站。
+- **手动回传**：站点发现页「✋ 手动回传」框粘贴哥飞站内查询结果（JSON/文本双模式解析）→ POST /seo-terms/manual 落词库指标（✋manual-gephei 权重最高，已有手动数据不覆盖），已出标词的价值面板即时点亮；哥飞意图与内置标注冲突标 intentConflict。
+- **预算三池独立互不抢占**：档位补位 tier（60/日）/指标补查 metrics（30/月累计）/新词采集 collect（100/日），超额自动停、下期恢复。
+- **search_intent 永久内置 AI**：不自动查哥飞意图（省 5 分/词），仅手动回传时顺带落库对照。
+
+站群卡价值面板=三指标+综合价值分（月搜×CPC÷KD）+竞品档案（SERP 前 10 域名/类型/量级档，折叠）+域名清单（可注册 up to 5，点开即注册页）+估值参考；词库详情抽屉承载 SEO 指标区块（●哥飞权威/○自采层级标识，✋手动回传单独标识）。机会卡 `form` 字段为四值枚举（web/app/miniprogram/tool，W7-5），应用机会页按形态 chips 筛选。建簇时自动做**选题去重记忆**（与已拍板选题核心词重合 ≥2/3 标「已覆盖变体」，审查台可见；embedding 相似度留作基建接入点）。判定方法论已 skill 化：skills/seo-methodology/SKILL.md（内置判定与外部复核共用同一份决策依据）。
 
 种子池污染有双层防线：LLM 提词按 persona 标尺给三档，历史污染可按 seed 血缘一键清洗（`core/seen-clean.ts`，白名单保护 AI 短剧等内容赛道）。热词历史、词表与统计口径见「热词趋势」页内说明。
 

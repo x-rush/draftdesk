@@ -10,7 +10,8 @@ import {
   seoSourceOf, seoSourceEnabled, seoBudgetLeft, seoBudgetUsed, SeoSourceOffError,
   fetchKeywordMetrics, fetchSerp, normalizeKeywordMetrics, normalizeSerpResults, GEPHEI_ENDPOINTS,
 } from "../core/seo-source";
-import { evalSiteGate, valueScoreOf, siteGateAutoMark, DEFAULT_SITE_GATE, gepheiTierOf } from "../core/seen-judge";
+import { gepheiTierOf } from "../core/seen-judge";
+import { evalSiteGate, valueScoreOf, siteGateAutoMark, DEFAULT_SITE_GATE } from "../core/seo-gate";
 import { generateOpportunities, normalizeForm } from "../core/opportunity";
 import { migrations } from "../core/store/migrations";
 import { termId } from "../core/seen-terms";

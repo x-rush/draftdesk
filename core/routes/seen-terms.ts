@@ -5,7 +5,8 @@ import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts, seenRelevanceCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
-import { computeObsRatio, judgeVerdict, deriveSerpFields, siteGateOf, siteCandidateEligibleOf, isSerpStale } from "../seen-judge";
+import { computeObsRatio, judgeVerdict, deriveSerpFields, isSerpStale } from "../seen-judge";
+import { siteGateOf, siteCandidateEligibleOf } from "../seo-gate";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const intentEnum = z.enum(["informational", "comparison", "commercial", "question"]);

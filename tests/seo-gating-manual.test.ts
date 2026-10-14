@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
 import { seoBudgetLeft, seoBudgetUsed, seoSpend, parseManualGephei, gepheiToolLinks } from "../core/seo-source";
-import { seoMetricsTick } from "../core/seen-judge";
+import { seoMetricsTick } from "../core/seo-gate";
 import { benchmarkSitesTick, linkProspectsTick, newWordsTick, applyManualGephei } from "../core/gephei-collect";
 import { nextRootBatch } from "../core/seen-dig";
 import { buildRelevanceRubric } from "../core/seen-extract";

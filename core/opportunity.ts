@@ -8,7 +8,8 @@
 import type { Store } from "./store";
 import { hash, now } from "./store";
 import { urlKey } from "./hotspots";
-import { judgeVerdict, valueScoreOf, platformOf } from "./seen-judge";
+import { judgeVerdict, platformOf } from "./seen-judge";
+import { valueScoreOf } from "./seo-gate";
 import { termId } from "./seen-terms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";

@@ -8,7 +8,7 @@ import { configSchema } from "../schema";
 import { requestModel } from "../model";
 import { recentModelMetrics } from "../model-metrics";
 import { searchProvider } from "../sources";
-import { siteGateOf } from "../seen-judge";
+import { siteGateOf } from "../seo-gate";
 import { seoSourceOf, seoBudgetUsed, seoConnectionTest } from "../seo-source";
 
 // persona 人设配置（决策个性化输入）；字段宽松校验，结构由 UI 与种子约定。

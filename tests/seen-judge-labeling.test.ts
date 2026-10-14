@@ -8,10 +8,10 @@ import path from "node:path";
 import { Store } from "../core/store";
 import { judgeSeenTerm, observeSeenTerm, termId } from "../core/seen-terms";
 import { buildRelevanceRubric, judgeUnjudgedTerms, intentPolicySection } from "../core/seen-extract";
+import { seenJudgeTick, trafficTierOf, top10HomeCount, maxTrafficTier } from "../core/seen-judge";
 import {
-  trafficTierOf, top10HomeCount, maxTrafficTier, siteGateOf, DEFAULT_SITE_GATE,
-  evalSiteGate, siteGateAutoMark, siteCandidateEligibleOf, seenJudgeTick,
-} from "../core/seen-judge";
+  siteGateOf, DEFAULT_SITE_GATE, evalSiteGate, siteGateAutoMark, siteCandidateEligibleOf,
+} from "../core/seo-gate";
 import { migrations } from "../core/store/migrations";
 
 const SW_PER_BATCH_BUDGET = 20;
