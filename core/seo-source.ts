@@ -283,8 +283,15 @@ export async function seoConnectionTest(db: Store, doFetch: typeof fetch): Promi
       return { ok: true, message: "token 有效，但开放 API 积分余额为 0（每日赠送额度仅限网站内使用）——到 seo.web.cafe/wallet/ 购买积分包后功能自动生效。", credits: 0 };
     }
     if (!res.ok) return { ok: false, message: `连接失败：HTTP ${res.status}` };
-    const credits = Number(body?.balance ?? body?.credits ?? body?.data?.balance ?? NaN);
-    return { ok: true, message: `连接成功，token 有效，API 积分余额 ${Number.isFinite(credits) ? credits : "（字段待确认）"}`, credits: Number.isFinite(credits) ? credits : undefined };
+    const credits = Number(body?.apiAvailable ?? body?.wallet?.balance ?? body?.balance ?? body?.credits ?? NaN);
+    const daySpent = Number(body?.wallet?.daySpent ?? NaN);
+    const gift = Number(body?.gift?.limit ?? NaN);
+    const giftUsed = Number(body?.gift?.used ?? NaN);
+    const extra = [
+      Number.isFinite(daySpent) ? `今日已扣 ${daySpent}` : null,
+      Number.isFinite(gift) && Number.isFinite(giftUsed) ? `网站赠送 ${giftUsed}/${gift}` : null,
+    ].filter(Boolean).join("，");
+    return { ok: true, message: `连接成功，token 有效，API 积分余额 ${Number.isFinite(credits) ? credits : "（字段待确认）"}${extra ? "（" + extra + "）" : ""}`, credits: Number.isFinite(credits) ? credits : undefined };
   } catch (e) {
     return { ok: false, message: "连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 160) };
   }
