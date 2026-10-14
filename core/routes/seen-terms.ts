@@ -5,10 +5,11 @@ import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts, seenRelevanceCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
-import { computeObsRatio, judgeVerdict, deriveSerpFields } from "../seen-judge";
+import { computeObsRatio, judgeVerdict, deriveSerpFields, siteGateOf, siteCandidateEligibleOf } from "../seen-judge";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const intentEnum = z.enum(["informational", "comparison", "commercial", "question"]);
+const demandIntentEnum = z.enum(["tool", "info", "nav"]);
 const relevanceEnum = z.enum(["strong", "weak", "off"]);
 const regionEnum = z.enum(["global", "cn"]);
 const upsertSchema = z.object({
@@ -20,6 +21,7 @@ const upsertSchema = z.object({
     offTopic: z.boolean().optional(),
     relevance: relevanceEnum.optional(),
     region: regionEnum.optional(),
+    demandIntent: demandIntentEnum.optional(),
     status: statusEnum.optional(),
     frequency: z.number().int().min(0).optional(),
     lastSeenAt: z.string().datetime().optional(),
@@ -83,17 +85,12 @@ function seenListPayload(db: any, query: URLSearchParams) {
   const q = (query.get("q") || "").replace(/\s+/g, "").toLowerCase().slice(0, 80);
   const list = querySeenTerms(db.kv, { limit, offset, status, intent, region, q });
   // 判定层（海外定位批 5）：每词附 obsRatio 与值不值得做三档（无外部调用，纯读时计算）
+  const gate = siteGateOf(db);
   const items = list.items.map((t) => {
     const { verdict, reason } = judgeVerdict(t);
-    // siteCandidate 双通道判定口（第六轮批 B §2.5②）：
-    // 观测通道 = global + obs≥3 + 来源≥2；竞争通道 = global + strong + SERP 已查且 serpDedicated≤1。
-    const globalWord = (t.region ?? "global") === "global";
-    const sourceCount = Array.isArray(t.sources) ? t.sources.length : 0;
-    const siteCandidateEligible = globalWord && (
-      ((t.observations ?? 0) >= 3 && sourceCount >= 2) ||
-      (t.relevance === "strong" && typeof t.serpDedicated === "number" && t.serpDedicated <= 1)
-    );
-    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason, serpDerived: deriveSerpFields(t), siteCandidateEligible };
+    // siteCandidate 候选池判定口（第六轮批 B §2.5② 双通道 + 第七轮 W7-1 意图通道，
+    // 读 siteGate 数值：改 siteGate 即生效）。
+    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason, serpDerived: deriveSerpFields(t), siteCandidateEligible: siteCandidateEligibleOf(t, gate) };
   });
   return {
     items,

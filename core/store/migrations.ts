@@ -384,6 +384,21 @@ export const migrations: Migration[] = [
       if (r.checked) console.log(`[migration] opportunity-news-tighten-v1：复检 ${r.checked} 张 news/newtech 卡，降档 ${r.demoted} 张`);
     },
   },
+  {
+    id: "seen-off-archive-v1",
+    // off 即归档存量清偿（第七轮批1 W7附）：判定层代码已改「判 off 即 archived
+    // （archivedReason=relevance-off-auto）」，存量 off 词（外部 vocab-hygiene 第九步
+    // 未覆盖到的残留）此处一次补齐。归档词不再进任何判定/SERP/种子队列。
+    run: ({ kv }) => {
+      let archived = 0;
+      for (const t of kv.list<any>("seen-terms")) {
+        if (t.relevance !== "off" || t.status === "archived") continue;
+        kv.put("seen-terms", String(t.id), { ...t, status: "archived", archivedReason: "relevance-off-auto", updatedAt: now() });
+        archived++;
+      }
+      if (archived) console.log(`[migration] seen-off-archive-v1：存量 off 词归档 ${archived} 条`);
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {

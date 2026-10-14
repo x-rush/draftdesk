@@ -5,7 +5,8 @@
 // 手动 = UI「立即整理/刷新雷达」写 seen-terms-manual 请求，tick 立即执行（跳过 24h 等待）。
 import type { Store } from "./store";
 import { judgeSeenTerm, observeSeenTerm, termId } from "./seen-terms";
-import type { PersonaRelevance } from "./seen-terms";
+import type { PersonaRelevance, DemandIntent } from "./seen-terms";
+import { normalizeDemandIntent } from "./seen-terms";
 
 const GATE_KEY = "seen-terms-gate";
 const DAY_MS = 86400000;
@@ -137,10 +138,10 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
   let count = 0;
   for (let i = 0; i < latest.length; i += EXTRACT_CHUNK) {
     const chunk = latest.slice(i, i + EXTRACT_CHUNK);
-    const prompt = buildRelevanceRubric(db) +
+      const prompt = buildRelevanceRubric(db) +
       `以下是最近采集的资讯条目（第 ${i / EXTRACT_CHUNK + 1} 批），每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），` +
-      "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档。" +
-      '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off。不要输出其他文字。\n\n' +
+      "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent。" +
+      '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong","demandIntent":"tool"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off；demandIntent 只能取 tool/info/nav（strong 必填，其余档位省略）。不要输出其他文字。\n\n' +
       chunk.map((x, j) => (j + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
     try {
       const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(EXTRACT_CHUNK_TIMEOUT_MS), plan: "cheap" });
@@ -176,10 +177,13 @@ function applyExtractedTerms(db: Store, text: string): number {
       // redLine 硬规则（§2.6②）：命中红线词强制 off，不依赖 LLM 判对
       const redlined = redLineMatch(db, term);
       const relevance = redlined ? "off" : normalizeRelevance(item.relevance);
+      // demandIntent（第七轮 W7-1）：只在 strong 落库（tool 型词直通站群候选池）
+      const demandIntent = relevance === "strong" ? normalizeDemandIntent(item.demandIntent) : undefined;
       observeSeenTerm(db, term, {
         sources: Array.isArray(item.sources) ? item.sources.map(String).slice(0, 5) : [],
         offTopic: relevance === "off" || item.offTopic === true || !!redlined,
         relevance,
+        ...(demandIntent ? { demandIntent } : {}),
       });
       count++;
     }
@@ -205,6 +209,10 @@ const PERSONA_RUBRIC = [
 //（persona 头与输出格式保留），缺失/为空回退默认 RUBRIC（社区玩家无感）。
 // redLine 另作判定后的硬规则二次过滤（redLineMatch → 强制 off），不依赖 LLM 判对。
 export function buildRelevanceRubric(db: Store): string {
+  return appendIntentPolicy(db, buildRelevanceRubricInner(db));
+}
+
+function buildRelevanceRubricInner(db: Store): string {
   const persona = db.get<any>("config", "persona");
   const tp = persona?.termPolicy;
   if (!tp || typeof tp !== "object") return PERSONA_RUBRIC;
@@ -224,6 +232,33 @@ export function buildRelevanceRubric(db: Store): string {
   ];
   lines.splice(start, end - start, ...replacement);
   return lines.join("\n");
+}
+
+// ---- demandIntent 意图三分类标尺（第七轮 W7-1，与 termPolicy 同一处拼接）----
+// persona.intentPolicy（tool/info/nav 三节 hint）给了就整节替换内置默认，
+// 缺失回退内置定义；外部 Agent 复核读同一 persona.intentPolicy（规则同源）。
+// 判 strong 时顺带产出 demandIntent 落词库，tool 型词直通站群候选池。
+const INTENT_POLICY_DEFAULT: Record<string, string> = {
+  tool: "有工具/产品需求语义——用户想用工具完成任务。词根族：generator/converter/calculator/checker/tracker/maker/builder/formatter/scanner/finder/monitor 等。",
+  info: "资讯/教程/学习需求——用户想了解或学习。特征词：how to/what is/tutorial/guide/best/教程/怎么/如何/是什么。",
+  nav: "导航/品牌需求——用户想去某个具体网站或找某品牌。特征：品牌名/官网/login/download/官网词。",
+};
+
+export function intentPolicySection(db: Store): string {
+  const ip = db.get<any>("config", "persona")?.intentPolicy;
+  const custom = ip && typeof ip === "object"
+    ? [ip.tool && `- tool：${ip.tool}`, ip.info && `- info：${ip.info}`, ip.nav && `- nav：${ip.nav}`].filter(Boolean)
+    : [];
+  const defs = custom.length ? custom : Object.entries(INTENT_POLICY_DEFAULT).map(([k, v]) => `- ${k}：${v}`);
+  return [
+    "## demandIntent 意图三分类（relevance=strong 的词必填 demandIntent）",
+    ...defs,
+    "输出规则：relevance=strong 的词 demandIntent 必填（tool/info/nav 三选一）；weak/off 一律省略该字段。",
+  ].join("\n");
+}
+
+function appendIntentPolicy(db: Store, rubric: string): string {
+  return `${rubric}\n${intentPolicySection(db)}`;
 }
 
 // redLine 关键词抽取：按括号/斜杠/顿号切分，滤掉动作短语段（「直接 off/不进判定流水」等），
@@ -271,8 +306,8 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     .slice(0, BACKFILL_LIMIT);
   if (!pending.length) return 0;
   const prompt = buildRelevanceRubric(db) +
-    "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off。" +
-    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong"}]。不要输出其他文字。\n\n' +
+    "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent。" +
+    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong","demandIntent":"tool"}]。不要输出其他文字。\n\n' +
     pending.map((t, i) => (i + 1) + ". " + t.term).join("\n");
   const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
   const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
@@ -287,7 +322,9 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     const redlined = redLineMatch(db, item.term);
     const relevance = redlined ? "off" as PersonaRelevance : normalizeRelevance(item?.relevance);
     if (!relevance) continue;
-    if (judgeSeenTerm(db, item.term, relevance)) judged++;
+    // demandIntent（第七轮 W7-1）：只在 strong 落库（tool 型词直通站群候选池）
+    const demandIntent = relevance === "strong" ? normalizeDemandIntent(item?.demandIntent) : undefined;
+    if (judgeSeenTerm(db, item.term, relevance, { demandIntent })) judged++;
   }
   return judged;
 }

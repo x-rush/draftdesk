@@ -8,6 +8,7 @@ import { configSchema } from "../schema";
 import { requestModel } from "../model";
 import { recentModelMetrics } from "../model-metrics";
 import { searchProvider } from "../sources";
+import { siteGateOf } from "../seen-judge";
 
 // persona 人设配置（决策个性化输入）；字段宽松校验，结构由 UI 与种子约定。
 const personaInput = z.object({
@@ -18,6 +19,19 @@ const personaInput = z.object({
   scoring: z.object({ threshold: z.number().min(0).max(5), dimensions: z.array(z.object({ name: z.string().max(60), weight: z.number().min(0).max(1) })).max(12) }),
   redLines: z.array(z.string().max(200)).max(30),
   style: z.object({ principles: z.array(z.string().max(120)).max(10), tone: z.string().max(200), forbidden: z.array(z.string().max(60)).max(20), notes: z.string().max(600) }),
+  // termPolicy（§2.6）/ intentPolicy（第七轮 W7-1）：Agent 管理的判定标尺块。
+  // 不放行则带块保存直接 422；保存时未传字段保留旧值（UI 表单不冲掉 Agent 策略块）。
+  termPolicy: z.object({
+    strongHint: z.string().max(2000).optional(),
+    weakHint: z.string().max(2000).optional(),
+    offHint: z.string().max(2000).optional(),
+    redLine: z.string().max(600).optional(),
+  }).optional(),
+  intentPolicy: z.object({
+    tool: z.string().max(400).optional(),
+    info: z.string().max(400).optional(),
+    nav: z.string().max(400).optional(),
+  }).optional(),
 }).strict();
 
 export const routes: RouteDef[] = [
@@ -67,8 +81,15 @@ export const routes: RouteDef[] = [
     pattern: "persona",
     handler: async ({ db, readBody }) => {
       const parsed = personaInput.parse(await readBody());
-      db.put("config", "persona", parsed);
-      return json(parsed);
+      // termPolicy/intentPolicy 未传时保留旧值：UI 表单全量保存不冲掉 Agent 管理的策略块
+      const old = db.get<any>("config", "persona") || {};
+      const merged = {
+        ...parsed,
+        ...(parsed.termPolicy === undefined && old.termPolicy !== undefined ? { termPolicy: old.termPolicy } : {}),
+        ...(parsed.intentPolicy === undefined && old.intentPolicy !== undefined ? { intentPolicy: old.intentPolicy } : {}),
+      };
+      db.put("config", "persona", merged);
+      return json(merged);
     },
   },
   {
@@ -101,6 +122,29 @@ export const routes: RouteDef[] = [
       const parsed = z.object({ planMode: z.enum(["collect", "collect-and-analyze"]) }).strict().parse(await readBody());
       db.put("config", "planMode", parsed.planMode);
       return json(parsed);
+    },
+  },
+  {
+    // siteGate 站群门槛（第七轮 W7-4）：GET 返回合并默认值后的生效规则；
+    // POST 部分更新（未传字段保留现值），判定 sweep 与候选池判定口读时生效。
+    methods: ["GET"],
+    pattern: "siteGate",
+    handler: ({ db }) => json(siteGateOf(db)),
+  },
+  {
+    methods: ["POST"],
+    pattern: "siteGate",
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({
+        requireStrong: z.boolean().optional(),
+        serpDedicatedMax: z.number().int().min(0).max(10).optional(),
+        monthlySearchMin: z.number().int().min(0).max(1000000).optional(),
+        kdMax: z.number().min(0).max(100).optional(),
+        cpcMin: z.number().min(0).max(100).optional(),
+      }).strict().parse(await readBody());
+      const next = { ...siteGateOf(db), ...parsed };
+      db.put("config", "siteGate", next);
+      return json(next);
     },
   },
   {

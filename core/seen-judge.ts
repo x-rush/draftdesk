@@ -146,6 +146,142 @@ export function deriveSerpFields(t: { term?: string; serpWeb?: { host: string; u
   return { exact, homeShare: home, forumShare: Math.round((forum / all.length) * 100), total: all.length, source };
 }
 
+// ---- SERP 竞争观测升级（第七轮 W7-2）----
+// serpTop10Home：SERP 前 10 中首页数（路径深度 ≤1，与 homeShare 同一启发式）；
+// serpTop3Tier：前 3 名 host 的整站量级档位（Similarweb 免费档 best-effort：
+// >10万 large / 1–10万 mid / <1万 small / 探测到但无流量 none；探测失败不落字段）。
+// 存量词不回填，新观测自然累积；SW 结果与失败都入 web-traffic 缓存（成功 90 天 /
+// 失败 3 天后才重试），每批探测预算硬顶，不拖慢判定主流程。
+export type TrafficTier = "large" | "mid" | "small" | "none";
+const TIER_RANK: Record<TrafficTier, number> = { large: 3, mid: 2, small: 1, none: 0 };
+const SW_TTL_MS = 90 * DAY_MS;
+const SW_FAIL_RETRY_MS = 3 * DAY_MS;
+const SW_TIMEOUT_MS = 4000;
+const SW_PER_BATCH = 20;
+
+function isHomepage(url: string): boolean {
+  try { const p = new URL(url).pathname.replace(/\/+$/, ""); return p === "" || p.split("/").length <= 1; } catch { return true; }
+}
+
+export function top10HomeCount(hits: SerpHit[]): number {
+  return hits.slice(0, 10).filter((h) => isHomepage(h.url)).length;
+}
+
+export function maxTrafficTier(tiers: (TrafficTier | undefined)[]): TrafficTier | undefined {
+  return tiers.filter((t): t is TrafficTier => !!t).sort((a, b) => TIER_RANK[b] - TIER_RANK[a])[0];
+}
+
+export async function trafficTierOf(host: string, db: Store, doFetch: typeof fetch, budget: { left: number }): Promise<TrafficTier | undefined> {
+  const id = host.toLowerCase();
+  const cached = db.get<any>("web-traffic", id);
+  if (cached) {
+    const age = Date.now() - Date.parse(cached.at || 0);
+    if (cached.tier && age < SW_TTL_MS) return cached.tier as TrafficTier;
+    if (!cached.tier && age < SW_FAIL_RETRY_MS) return undefined;
+  }
+  if (budget.left <= 0) return cached?.tier as TrafficTier | undefined;
+  budget.left--;
+  try {
+    const response = await doFetch(`https://data.similarweb.com/api/v1/data?domain=${encodeURIComponent(id)}`, {
+      signal: AbortSignal.timeout(SW_TIMEOUT_MS),
+      headers: { "User-Agent": UA["User-Agent"], Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`similarweb HTTP ${response.status}`);
+    const data = await response.json() as { EstimatedMonthlyVisits?: Record<string, number> };
+    const visits = Object.values(data.EstimatedMonthlyVisits || {});
+    if (!visits.length) throw new Error("similarweb 无流量数据");
+    const monthly = Math.max(...visits);
+    const tier: TrafficTier = monthly > 100000 ? "large" : monthly >= 10000 ? "mid" : monthly > 0 ? "small" : "none";
+    db.put("web-traffic", id, { tier, visits: monthly, at: new Date().toISOString() });
+    return tier;
+  } catch {
+    db.put("web-traffic", id, { at: new Date().toISOString() });
+    return undefined;
+  }
+}
+
+// ---- siteGate 站群门槛（第七轮 W7-4，哥飞判断参数内化）----
+// 判定 tick 达标即自动标 siteCandidate=true（siteCandidateBy=builtin-gate-v1），替代人工标注；
+// 外部 Agent 经 GET /agent/siteGate 读同一份规则（规则同源，v1 硬编码白名单废弃）。
+// 三指标（monthlySearch/kd/cpc）齐全走全门槛；缺失走降级判定（strong + SERP 竞争≤上限 + global），
+// 理由注明「价值未验证」；改 config.siteGate 数值双端行为跟随（内置 sweep 只增不撤，撤标走人工）。
+export type SiteGate = { requireStrong: boolean; serpDedicatedMax: number; monthlySearchMin: number; kdMax: number; cpcMin: number };
+export const DEFAULT_SITE_GATE: SiteGate = { requireStrong: true, serpDedicatedMax: 1, monthlySearchMin: 300, kdMax: 29, cpcMin: 0.1 };
+
+export function siteGateOf(db: Store): SiteGate {
+  const cfg = db.get<any>("config", "siteGate");
+  return { ...DEFAULT_SITE_GATE, ...(cfg && typeof cfg === "object" ? cfg : {}) };
+}
+
+export function evalSiteGate(
+  term: { relevance?: string; region?: string; serpDedicated?: number; monthlySearch?: number; kd?: number; cpc?: number },
+  gate: SiteGate,
+): { pass: boolean; reason: string } {
+  if ((term.region ?? "global") !== "global") return { pass: false, reason: "非 global 词不进站群池" };
+  if (gate.requireStrong && term.relevance !== "strong") return { pass: false, reason: "relevance 未达 strong" };
+  if (typeof term.serpDedicated !== "number" || term.serpDedicated > gate.serpDedicatedMax)
+    return { pass: false, reason: `SERP 竞争站 ${typeof term.serpDedicated === "number" ? term.serpDedicated : "未查"} 超过上限 ${gate.serpDedicatedMax}` };
+  const full = typeof term.monthlySearch === "number" && typeof term.kd === "number" && typeof term.cpc === "number";
+  if (!full) return { pass: true, reason: `降级门槛达标：strong + SERP 竞争 ${term.serpDedicated}≤${gate.serpDedicatedMax}（三指标未配，价值未验证）` };
+  const misses: string[] = [];
+  if (term.monthlySearch! < gate.monthlySearchMin) misses.push(`月搜 ${term.monthlySearch}<${gate.monthlySearchMin}`);
+  if (term.kd! > gate.kdMax) misses.push(`KD ${term.kd}>${gate.kdMax}`);
+  if (term.cpc! < gate.cpcMin) misses.push(`CPC ${term.cpc}<${gate.cpcMin}`);
+  if (misses.length) return { pass: false, reason: `全门槛未达：${misses.join("，")}` };
+  return { pass: true, reason: `全门槛达标：月搜 ${term.monthlySearch}/KD ${term.kd}/CPC ${term.cpc}，SERP 竞争 ${term.serpDedicated}≤${gate.serpDedicatedMax}` };
+}
+
+// 自动标注 sweep：判定 tick 批末跑——达标词 upsert 进 seo-terms（站群卡消费集合，
+// generateFromSiteCandidates 读 siteCandidate:true 出卡）。已标词（含外部 Agent 标注）
+// 一律跳过不覆写；单次上限 200 防写爆，余量随下一批判定自然接续。
+export function siteGateAutoMark(db: Store, limit = 200): { marked: number; scanned: number } {
+  const gate = siteGateOf(db);
+  const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
+  let marked = 0;
+  const all = db.list<any>("seen-terms");
+  for (const t of all) {
+    if (marked >= limit) break;
+    const word = String(t.term || t.id || "").trim();
+    if (!word || t.status === "archived") continue;
+    if (markedIds.has(termId(word))) continue;
+    const verdict = evalSiteGate(t, gate);
+    if (!verdict.pass) continue;
+    // seo-terms id 口径 = term 小写（保空格），与 PUT agent/seo-terms 一致
+    const seoId = word.toLowerCase();
+    const prev = db.get<any>("seo-terms", seoId);
+    if (prev?.siteCandidate === true) { markedIds.add(termId(word)); continue; }
+    const stamp = new Date().toISOString();
+    db.put("seo-terms", seoId, {
+      ...(prev ?? {}),
+      id: seoId,
+      term: word,
+      siteCandidate: true,
+      siteCandidateBy: "builtin-gate-v1",
+      siteRationale: verdict.reason,
+      updatedAt: stamp,
+      ...(prev?.createdAt ? {} : { createdAt: stamp }),
+    });
+    markedIds.add(termId(word));
+    marked++;
+  }
+  return { marked, scanned: all.length };
+}
+
+// 站群候选池判定口（第六轮批 B §2.5② 双通道 + 第七轮 W7-1 意图通道）：
+// 观测 = global + obs≥3 + 来源≥2；竞争 = strong + SERP 已查 + 竞争≤siteGate 上限；
+// 意图 = strong + demandIntent=tool（工具语义词直通候选池）。读时计算，改 siteGate 即生效。
+export function siteCandidateEligibleOf(
+  t: { region?: string; observations?: number; sources?: unknown; relevance?: string; serpDedicated?: number; demandIntent?: string },
+  gate: SiteGate = DEFAULT_SITE_GATE,
+): boolean {
+  if ((t.region ?? "global") !== "global") return false;
+  const sourceCount = Array.isArray(t.sources) ? t.sources.length : 0;
+  if ((t.observations ?? 0) >= 3 && sourceCount >= 2) return true;
+  if (t.relevance === "strong" && typeof t.serpDedicated === "number" && t.serpDedicated <= gate.serpDedicatedMax) return true;
+  if (t.relevance === "strong" && t.demandIntent === "tool") return true;
+  return false;
+}
+
 // ---- DDG SERP ----
 const SITE_FILTERS = "site:vercel.app OR site:github.io OR site:pages.dev OR site:netlify.app";
 
@@ -296,6 +432,7 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
     const reasons: Record<string, number> = {};
     let consecutiveFailures = 0;
     const backoffBase = opts.backoffBaseMs ?? 1000;
+    const swBudget = { left: SW_PER_BATCH };
     try {
       const outer = AbortSignal.timeout(40 * 60000);
       await new Limiter(opts.intervalMs ?? DDG_INTERVAL_MS, 1).run(batch.map((t) => async () => {
@@ -308,6 +445,15 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
           //（带过滤查询的结果里结构性没有论坛站）。失败静默，不阻塞判定主流程。
           let webResults: SerpHit[] = [];
           try { webResults = await searchSearxngRaw(db, `"${t.term}"`, doFetch, outer); } catch { /* 静默 */ }
+          // 竞争观测结构化（第七轮 W7-2）：前 10 首页数 + 前 3 名流量档位
+          //（Similarweb 免费档 best-effort，缓存 + 批次预算，失败静默不落字段）。
+          const serpSource = webResults.length ? webResults : results;
+          const serpTop10Home = top10HomeCount(serpSource);
+          let serpTop3Tier: TrafficTier | undefined;
+          try {
+            const hosts = [...new Set(serpSource.slice(0, 3).map((r) => r.host))];
+            serpTop3Tier = maxTrafficTier(await Promise.all(hosts.map((h) => trafficTierOf(h, db, doFetch, swBudget))));
+          } catch { /* 静默 */ }
           // suggest 需求判定：失败不阻塞（按有需求处理，不误标品牌词）
           let demand = true;
           try { demand = hasSuggestDemand(t.term, await fetchSuggest(t.term, "en", doFetch, outer)); } catch { /* 静默 */ }
@@ -331,6 +477,9 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
               // 全量结果摘要（批 2b §4.8③）：三派生字段的原料（存量词只有 serpHosts）
               serpAll: results.slice(0, 24).map((r) => ({ host: r.host, url: r.url.slice(0, 120), title: r.title.slice(0, 80) })),
               serpWeb: webResults.slice(0, 15).map((r) => ({ host: r.host, url: r.url.slice(0, 120) })),
+              // 结构化竞争观测（第七轮 W7-2）：新观测词带字段，存量不回填
+              serpTop10Home,
+              ...(serpTop3Tier ? { serpTop3Tier } : {}),
               serpEngine: engine,
               serpCheckedAt: new Date().toISOString(),
               serpFailDays: 0,
@@ -363,6 +512,13 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
       db.del("meta", "seen-judge-running");
       const topReasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([r, n]) => `${n}×${r.slice(0, 50)}`).join("；");
       console.log(`[seen-judge] 第 ${batchNo} 批完成：查询 ${queried}（失败 ${failed}${topReasons ? "：" + topReasons : ""}）/ 发现站点 ${sites} / 游标 ${summary.cursor.slice(0, 24)}`);
+      // siteGate 自动标注（第七轮 W7-4）：批末 sweep，新达标词即日出标（替代人工标注）
+      try {
+        const gateRun = siteGateAutoMark(db);
+        if (gateRun.marked) console.log(`[seen-judge] siteGate 自动标注 ${gateRun.marked} 词（builtin-gate-v1，扫描 ${gateRun.scanned}）`);
+      } catch (e) {
+        console.error("[seen-judge] siteGate 自动标注失败（不影响判定主流程）:", e instanceof Error ? e.message : e);
+      }
     }
   })();
 }

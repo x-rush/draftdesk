@@ -165,6 +165,11 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 判定由工作台内置 AI 兜底：未判定词会在每日整理时按 persona 标尺回填三档（只写档位，不虚增观测）。词表与统计在「热词趋势」页；同题重复回传按 termId 归一（trim+小写+去内部空格）。
 
+**意图三分类与站群门槛（第七轮批 1，规则同源）**：
+
+- `demandIntent`：`tool | info | nav` 三分类（tool=工具/产品需求语义，如 generator/converter/calculator 词根族）。内置 AI 判 strong 时自动产出；外部 Agent 复核 PUT `/agent/seen-terms` 时也可带同名字段。标尺读 `persona.intentPolicy`（`GET /agent/persona` 即含），与内置判定同源。
+- `GET /agent/siteGate`：站群门槛规则（`requireStrong/serpDedicatedMax/monthlySearchMin/kdMax/cpcMin`）。外部 Agent 的站群标注逻辑必须读它而不是硬编码白名单——改 `config.siteGate` 数值双端行为跟随。内置判定 tick 会自动给达标词标 `siteCandidate=true`（`siteCandidateBy=builtin-gate-v1`），Agent 复核只需处理价值分与域名清单；已标注词内置 sweep 不覆写。
+
 ## ⑧ 大纲提交（选题体系 · 第六轮批 B）
 
 外部 Agent（external 模式）是「approved → 第一版大纲」的主执行者。builtin 兜底仅在没有外部 Agent 时启用（aiPolicy.draft 联动），两者不双跑。

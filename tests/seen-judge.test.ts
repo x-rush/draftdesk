@@ -168,6 +168,7 @@ test("SERP 搜索层（第三轮 3）：SearXNG 主力命中、失败原因台�
       const u = String(url);
       if (u.includes("searxng")) { searxngCalls++; return new Response(SEARXNG_JSON, { status: 200 }); }
       if (u.includes("suggestqueries.google.com")) return new Response('["q",[["searxng 词 free",0]]]', { status: 200 });
+      if (u.includes("similarweb")) return new Response("{}", { status: 200 });
       ddgCalls++;
       return new Response("anomaly detected", { status: 202 });
     }) as unknown as typeof fetch;

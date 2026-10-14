@@ -6,6 +6,7 @@ import { json } from "../http/middleware";
 import { paginatedSql } from "../http/pagination";
 import { AppError, now } from "../store";
 import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc } from "../agent-read";
+import { siteGateOf } from "../seen-judge";
 
 const listQuery = (query: URLSearchParams) => {
   const raw = Object.fromEntries(query.entries());
@@ -62,6 +63,8 @@ export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "agent/persona", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "persona") || null) },
   { methods: ["GET"], pattern: "agent/aiPolicy", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "aiPolicy") || null) },
   { methods: ["GET"], pattern: "agent/consumerMode", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "consumerMode") || null) },
+  // siteGate 站群门槛（第七轮 W7-4）：外部 Agent 标注逻辑读同一份规则（规则同源，v1 硬编码白名单废弃）
+  { methods: ["GET"], pattern: "agent/siteGate", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(siteGateOf(db)) },
   { methods: ["GET"], pattern: "agent/clusters", scope: "read", methodGuardFirst: true, handler: ({ db, query }) => json(paginatedSql(db.kv, "clusters", query)) },
   { methods: ["GET"], pattern: "agent/outlines", scope: "read", methodGuardFirst: true, handler: ({ db, query }) => json(paginatedSql(db.kv, "outlines", query)) },
   {

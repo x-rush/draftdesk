@@ -77,9 +77,9 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 「热词趋势」是独立的海外选题信号台：每日从全源标题流提取实体词（AI 判 💎强相关/○弱相关/🚫圈外三档），再用四路搜索联想展开（Google/YouTube/Amazon/百度/B站）补长尾，另有 34 个工具词根 + 10 个 AI 词根的「词根探针」轮转喂联想（每天 ≤48 词，不打满判定队列），按 region 分层（🌐海外词双职责=英文内容选题+站群候选；🇨🇳中文词=纯内容创作线）。只有 💎强相关词回流挖掘种子（off 词绝不回流）。
 
-三档标尺可在 persona 配置里自定义：`config.persona.termPolicy`（strongHint/weakHint/offHint + redLine 红线词）给了就以它覆盖内置默认，redLine 命中的词由硬规则强制 off（不经模型）；不配则用内置标尺，行为与默认完全一致。
+三档标尺可在 persona 配置里自定义：`config.persona.termPolicy`（strongHint/weakHint/offHint + redLine 红线词）给了就以它覆盖内置默认，redLine 命中的词由硬规则强制 off（不经模型）；不配则用内置标尺，行为与默认完全一致。判 strong 时顺带产出需求语义三分类 `demandIntent`（tool=工具/产品需求、info=资讯/教程、nav=导航/品牌，标尺同样可经 `persona.intentPolicy` 自定义），tool 型词直通站群候选池；判 off 的词同步归档（`archivedReason=relevance-off-auto`），不再进任何判定/挖掘队列。
 
-判定分两层。相关性判定按积压分层扩容（>2000 时每天 16 批 × 200 词），确保数千词的词库能在 48 小时内清完。值不值得做判定对强相关海外词查 SERP 竞争度（vercel/github.io/pages.dev/netlify.app 四类静态平台上有没有同题独立站），结合 obsRatio（近 2 天观测增速 ÷ 前 3 天基线；不足基线的词用保守档，只出可以试试/不值得做）给出三档：✅推荐 / 🟦可以试试 / ⛔不值得做——单位换算/汇率/计算器类「谷歌自答」词上限「可以试试」；每词附派生信号（精确匹配域名数、首页占比、论坛/视频站占比）。双通道达标的词标「站群候选」徽章：观测通道（obs≥3 且来源≥2）或竞争通道（strong 且竞争 ≤1）任一命中即入池，等外部 Agent 复核标注为站群机会。竞争度查询顺便产出「站点发现」集合。成本纪律：判断/分类走 cheap 档、产出走 full，cheap 连续两次不过合同自动升 full 重试一次，全部调用按日记录在「设置→每日成本看板」。
+判定分两层。相关性判定按积压分层扩容（>2000 时每天 16 批 × 200 词），确保数千词的词库能在 48 小时内清完。值不值得做判定对强相关海外词查 SERP 竞争度（vercel/github.io/pages.dev/netlify.app 四类静态平台上有没有同题独立站），结合 obsRatio（近 2 天观测增速 ÷ 前 3 天基线；不足基线的词用保守档，只出可以试试/不值得做）给出三档：✅推荐 / 🟦可以试试 / ⛔不值得做——单位换算/汇率/计算器类「谷歌自答」词上限「可以试试」；每词附派生信号（精确匹配域名数、首页占比、论坛/视频站占比）与结构化竞争观测（`serpTop10Home`=SERP 前 10 首页数、`serpTop3Tier`=前 3 名整站量级档位，Similarweb 免费档 best-effort，存量词不回填）。站群候选按三通道入池：观测（obs≥3 且来源≥2）/ 竞争（strong 且 SERP 竞争≤siteGate 上限）/ 意图（strong 且 demandIntent=tool）；`config.siteGate`（requireStrong/serpDedicatedMax/monthlySearchMin/kdMax/cpcMin，哥飞判断参数内化）是站群标注的唯一规则源——判定 tick 批末自动给达标词标 `siteCandidate=true`（`siteCandidateBy=builtin-gate-v1`），外部 Agent 经 `GET /agent/siteGate` 读同一份规则（规则同源，无需任何人工标注），三指标未配时自动降级为「strong+低竞争」并在理由注明价值未验证。竞争度查询顺便产出「站点发现」集合。成本纪律：判断/分类走 cheap 档、产出走 full，cheap 连续两次不过合同自动升 full 重试一次，全部调用按日记录在「设置→每日成本看板」。
 
 种子池污染有双层防线：LLM 提词按 persona 标尺给三档，历史污染可按 seed 血缘一键清洗（`core/seen-clean.ts`，白名单保护 AI 短剧等内容赛道）。热词历史、词表与统计口径见「热词趋势」页内说明。
 

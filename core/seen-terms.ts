@@ -10,8 +10,17 @@ const RANK: Record<SeenTermStatus, number> = { new: 0, rising: 1, sustained: 2, 
 
 // persona 相关性三档（种子池污染清洗批）：LLM 对每个词给一档，
 // strong = AI 全谱系 top 级需求；weak = 沾边非主航道；off = 圈外。
-// 种子回流闸只放 strong（seen-dig.collectSeeds）；off 同时置 offTopic=true。
+// 种子回流闸只放 strong（seen-dig.collectSeeds）；off 同时置 offTopic=true 并归档（W7附）。
 export type PersonaRelevance = "strong" | "weak" | "off";
+
+// 需求语义三分类（第七轮 W7-1）：tool=有工具/产品需求语义（generator/converter/calculator/
+// checker/tracker 词根族），info=资讯/教程需求，nav=导航/品牌。
+// 与 intent（informational/comparison/commercial/question 搜索意图四分）是两条轴：
+// demandIntent 由 LLM 判 strong 时顺带产出落库，tool 型词直通站群候选池（意图通道）。
+export type DemandIntent = "tool" | "info" | "nav";
+export function normalizeDemandIntent(value: unknown): DemandIntent | undefined {
+  return value === "tool" || value === "info" || value === "nav" ? value : undefined;
+}
 
 // region 分层（海外定位批）：global=海外词（英文内容选题 + 站群候选 siteCandidate 只标 global），
 // cn=中文词（纯内容创作线：公众号/小红书选题）。两条内容线数据不混。
@@ -69,7 +78,8 @@ function trimObsByDay(byDay: Record<string, number>): Record<string, number> {
   return Object.fromEntries(keys.slice(-30).map((k) => [k, byDay[k]]));
 }
 
-// status 只升不降（archived 除外——archived 只能人工设置，机器永不降级/升级它）
+// status 只升不降。archived 机器侧只有一个合法来源：判定 off 即归档（judgeSeenTerm，
+// 第七轮 W7附）；upsert/观测路径永不设 archived，人工归档走词库管理。
 function upgradeStatus(current: SeenTermStatus | undefined, next: SeenTermStatus): SeenTermStatus {
   if (current === "archived") return "archived";
   return RANK[next] > RANK[current ?? "new"] ? next : (current ?? "new");
@@ -82,7 +92,7 @@ export function getSeenTerm(kv: TermStore, term: string): any | undefined {
 // 外部 Agent upsert（批复 D 合并语义）
 export function mergeSeenTerm(kv: TermStore, input: {
   term: string; sources?: string[]; relatedSearches?: string[]; offTopic?: boolean;
-  relevance?: PersonaRelevance; region?: TermRegion;
+  relevance?: PersonaRelevance; region?: TermRegion; demandIntent?: DemandIntent;
   status?: SeenTermStatus; frequency?: number; observations?: number; lastSeenAt?: string;
   seed?: string; intent?: SeenTermIntent;
 }, by: string) {
@@ -105,6 +115,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
     // 血缘（seed）只记首见种子；intent 显式传入优先，否则保留旧值
     seed: prev?.seed ?? input.seed,
     intent: input.intent ?? prev?.intent,
+    demandIntent: input.demandIntent ?? prev?.demandIntent,
     daysSeen: prev?.daysSeen ?? [],
     obsByDay: prev?.obsByDay ?? {},
     producedBy: by,
@@ -117,7 +128,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
 }
 
 // 内置提取/晋级（每日一次）：observations+1、daysSeen 记日期、按阈值晋级
-export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; region?: TermRegion; day?: string } = {}) {
+export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; region?: TermRegion; demandIntent?: DemandIntent; day?: string } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   const day = opts.day ?? today();
@@ -149,6 +160,7 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     region: opts.region ?? inferRegion(mergedSources) ?? prev?.region,
     seed: prev?.seed,
     intent: prev?.intent ?? classifyIntent(term),
+    demandIntent: opts.demandIntent ?? prev?.demandIntent,
     producedBy: prev?.producedBy ?? "builtin-extract/1.0.0",
     updatedAt: now0(),
     ...(prev?.createdAt ? {} : { createdAt: now0() }),
@@ -212,19 +224,25 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
 }
 
 // LLM 判定写入（种子池污染清洗批）：只改 relevance 与 offTopic 联动，
-// 不动 observations/lastSeenAt/status——判定是分类不是观测，不得虚增热度。
+// 不动 observations/lastSeenAt——判定是分类不是观测，不得虚增热度。
 // 优先级 off > strong > weak：off 可随时覆盖（安全优先），strong 只升不降（不被 weak 打回）。
+// off 即归档（第七轮 W7附）：外部第九步 vocab-hygiene.mjs 已兜底，此为代码层双保险；
+// 归档词被本函数头部守卫拦住不可再判（误判回捞走人工，与「archived 只能人工设置」例外同级）。
+// strong 判定顺带写 demandIntent（W7-1，extras 传入才写，保留旧值）。
 const RELEVANCE_RANK: Record<PersonaRelevance, number> = { weak: 0, strong: 1, off: 2 };
-export function judgeSeenTerm(kv: TermStore, term: string, relevance: PersonaRelevance) {
+export function judgeSeenTerm(kv: TermStore, term: string, relevance: PersonaRelevance, extras: { demandIntent?: DemandIntent } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   if (!prev || prev.status === "archived") return undefined;
   const old = prev.relevance as PersonaRelevance | undefined;
   if (old && RELEVANCE_RANK[relevance] <= RELEVANCE_RANK[old]) return prev;
+  const off = relevance === "off";
   const doc = {
     ...prev,
     relevance,
-    offTopic: relevance === "off" ? true : prev.offTopic,
+    offTopic: off ? true : prev.offTopic,
+    ...(off ? { status: "archived" as SeenTermStatus, archivedReason: "relevance-off-auto" } : {}),
+    ...(relevance === "strong" && extras.demandIntent ? { demandIntent: extras.demandIntent } : {}),
     updatedAt: now0(),
   };
   kv.put("seen-terms", id, doc);
@@ -292,6 +310,8 @@ export function mergeSpaceVariants(kv: MergeStore): { merged: number; removed: n
       relevance,
       seed: docs.map((d) => d.seed).find(Boolean),
       intent: docs.map((d) => d.intent).find(Boolean),
+      demandIntent: docs.map((d) => d.demandIntent).find(Boolean),
+      archivedReason: docs.map((d) => d.archivedReason).find(Boolean),
       updatedAt: now0(),
     };
     kv.put("seen-terms", id, doc);
