@@ -171,6 +171,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - `GET /agent/siteGate`：站群门槛规则（`requireStrong/serpDedicatedMax/monthlySearchMin/kdMax/cpcMin`）。外部 Agent 的站群标注逻辑必须读它而不是硬编码白名单——改 `config.siteGate` 数值双端行为跟随。内置判定 tick 会自动给达标词标 `siteCandidate=true`（`siteCandidateBy=builtin-gate-v1`），Agent 复核只需处理价值分与域名清单；已标注词内置 sweep 不覆写。
 - 哥飞三指标（第七轮批2）：`PUT /agent/seo-terms` 已放行 `monthlySearch/kd/cpc/gepheiFetchedAt` 四字段；`gepheiFetchedAt` 超 90 天视为过期，读方（siteGate 全门槛判定、价值分 月搜×CPC÷KD）自动回退降级。
 - **哥飞分工（第七轮批4 v3.1 手动优先，覆盖旧口径）**：外部 Agent **直连哥飞永久移除**——哥飞 API 调用唯一出口=工作台内置 tick（token 在 settings，用户自填）。外部 Agent 为**只读消费方**：读词库指标/机会卡/标杆站页面（GET /agent/benchmark-pages）/外链来源站（GET /agent/link-prospects）做分析与意图交叉验证（哥飞权威 vs 内置标注，冲突标 intent-conflict 留人工）。付费接口自动调用由用户在 settings 授权勾选（autoMetrics/autoCollect，默认关=纯手动模式）；手动数据经「站点发现页手动回传框」或 POST /api/v1/seo-terms/manual 落库（✋manual-gephei 权重最高）。判定方法论共用 skills/seo-methodology/SKILL.md（工作台内置，与内置判定同源）。
+- **哥飞余额语义（实测）**：`GET /api/v1/me` 返回 `apiAvailable`（开放 API 可用，工作台自动调用只扣这部分）/`wallet.daySpent/dayCap`（日上限）/`gift`（每日赠送 500，仅限网站内使用，API 不扣）。响应归一已按真实合同校准（2026-10-14 实测：data.keywords 为 map；volume 值含 avg/avgCpc；difficulty 值为纯数字）。
 
 ## ⑧ 大纲提交（选题体系 · 第六轮批 B）
 
