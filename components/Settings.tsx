@@ -21,6 +21,7 @@ export function Settings({
   const [seoSrc, setSeoSrc] = useState<any>(null);
   const [seoToken, setSeoToken] = useState("");
   const [seoSaving, setSeoSaving] = useState(false);
+  const [seoMsg, setSeoMsg] = useState<{ text: string; ok: boolean } | null>(null);
   useEffect(() => {
     void api<{ items: any[] }>("model-metrics?days=7").then((r) => setMetrics(r.items || [])).catch(() => {});
     void api<{ today: any; yesterday: any }>("collections-report").then(setCollections).catch(() => {});
@@ -286,13 +287,17 @@ export function Settings({
                 disabled={seoSaving}
                 onClick={() => {
                   setSeoSaving(true);
+                  setSeoMsg(null);
                   void api<any>("seoDataSource", {
                     enabled: seoSrc.enabled,
                     builtinTierBudget: Number(seoSrc.builtinTierBudget) || 60,
                     builtinMetricsBudget: Number(seoSrc.builtinMetricsBudget) || 30,
                     builtinCollectBudget: Number(seoSrc.builtinCollectBudget) || 100,
                     ...(seoToken.trim() ? { token: seoToken.trim() } : {}),
-                  }).then((r) => { setSeoSrc(r); setSeoToken(""); }).catch(() => {}).finally(() => setSeoSaving(false));
+                  })
+                    .then((r) => { setSeoSrc(r); setSeoToken(""); setSeoMsg({ text: r.hasToken ? "已保存，令牌已配置。" : "已保存（未填令牌，功能保持解锁前状态）。", ok: true }); })
+                    .catch((e) => setSeoMsg({ text: "保存失败：" + (e as Error).message, ok: false }))
+                    .finally(() => setSeoSaving(false));
                 }}
               >
                 {seoSaving ? "保存中…" : "保存 SEO 数据源配置"}
@@ -302,14 +307,20 @@ export function Settings({
                 disabled={seoSaving}
                 onClick={() => {
                   setSeoSaving(true);
-                  void api<any>("seoDataSource/test", {}).then((r) => setNotice(r.message)).catch((e) => setNotice("测试失败：" + (e as Error).message)).finally(() => setSeoSaving(false));
+                  setSeoMsg(null);
+                  void api<any>("seoDataSource/test", {})
+                    .then((r) => setSeoMsg({ text: r.message, ok: r.ok }))
+                    .catch((e) => setSeoMsg({ text: "测试失败：" + (e as Error).message, ok: false }))
+                    .finally(() => setSeoSaving(false));
                 }}
               >
                 {seoSaving ? "测试中…" : "连接测试"}
               </button>
             </div>
+            {seoMsg && <p role="status" style={{ margin: "8px 0 0", fontSize: 13, color: seoMsg.ok ? "#1a7f4b" : "#8a3a3a" }}>{seoMsg.ok ? "✓ " : "✕ "}{seoMsg.text}</p>}
             <p className="helper-text" style={{ marginBottom: 0 }}>
               数据源可选，自行注册：哥飞 SEO 工具箱（seo.web.cafe）会员积分制，仓库不内置任何令牌。
+              配置存储于 config 集合的 seoDataSource 独立文档（与 persona/aiPolicy 同模式，不在 config.main 内）；令牌只写不读，接口与直查均脱敏为 hasToken。
               今日积分消耗（剩余/已用）：tier {(seoSrc?.pools?.find((x: any) => x.pool === "tier")?.budget ?? 60) - (seoSrc?.pools?.find((x: any) => x.pool === "tier")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "tier")?.used ?? 0} ·
               metrics {(seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.budget ?? 30) - (seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0} ·
               collect {(seoSrc?.pools?.find((x: any) => x.pool === "collect")?.budget ?? 100) - (seoSrc?.pools?.find((x: any) => x.pool === "collect")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "collect")?.used ?? 0}
