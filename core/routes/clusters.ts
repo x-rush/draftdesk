@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
+import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
 
 export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "clusters", handler: ({ db }) => json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) }) },
@@ -20,7 +21,10 @@ export const routes: RouteDef[] = [
         suggestedPlatforms: z.array(z.string().max(30)).max(8).optional(),
         target: z.enum(["hotspots", "evidence"]).optional(),
       }).strict().parse(await readBody());
-      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: "human", createdAt: now() };
+      const cluster = { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: "human", createdAt: now() } as any;
+      // 选题去重记忆（第七轮批3 W7-9.5）
+      const { covered } = markCoveredVariants(db as any, cluster);
+      if (covered) cluster.coveredVariant = coveredVariantDoc(covered);
       db.put("clusters", cluster.id, cluster);
       return json(cluster, 201);
     },

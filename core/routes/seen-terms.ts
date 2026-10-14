@@ -5,7 +5,7 @@ import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { mergeSeenTerm, observeSeenTerm, querySeenTerms, seenTermZones, seenIntentCounts, seenRegionCounts, seenRelevanceCounts } from "../seen-terms";
 import { requestSeenTermsExtraction, markSeenTermsWrite } from "../seen-extract";
-import { computeObsRatio, judgeVerdict, deriveSerpFields, siteGateOf, siteCandidateEligibleOf } from "../seen-judge";
+import { computeObsRatio, judgeVerdict, deriveSerpFields, siteGateOf, siteCandidateEligibleOf, isSerpStale } from "../seen-judge";
 
 const statusEnum = z.enum(["new", "rising", "sustained", "archived"]);
 const intentEnum = z.enum(["informational", "comparison", "commercial", "question"]);
@@ -81,16 +81,17 @@ function seenListPayload(db: any, query: URLSearchParams) {
   const status = query.get("status") || "";
   const intent = query.get("intent") || "";
   const region = query.get("region") || "";
+  const origin = query.get("origin") || "";
   // q 与 termId 同口径去内部空格：id 归一化后无空格，带空格查询（"codex ai"）否则永远 miss
   const q = (query.get("q") || "").replace(/\s+/g, "").toLowerCase().slice(0, 80);
-  const list = querySeenTerms(db.kv, { limit, offset, status, intent, region, q });
+  const list = querySeenTerms(db.kv, { limit, offset, status, intent, region, q, origin });
   // 判定层（海外定位批 5）：每词附 obsRatio 与值不值得做三档（无外部调用，纯读时计算）
   const gate = siteGateOf(db);
   const items = list.items.map((t) => {
     const { verdict, reason } = judgeVerdict(t);
     // siteCandidate 候选池判定口（第六轮批 B §2.5② 双通道 + 第七轮 W7-1 意图通道，
     // 读 siteGate 数值：改 siteGate 即生效）。
-    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason, serpDerived: deriveSerpFields(t), siteCandidateEligible: siteCandidateEligibleOf(t, gate) };
+    return { ...t, obsRatio: computeObsRatio(t), verdict, verdictReason: reason, serpDerived: deriveSerpFields(t), serpStale: isSerpStale(t), siteCandidateEligible: siteCandidateEligibleOf(t, gate) };
   });
   return {
     items,
@@ -101,5 +102,11 @@ function seenListPayload(db: any, query: URLSearchParams) {
     regions: seenRegionCounts(db.kv),
     relevances: seenRelevanceCounts(db.kv),
     zones: seenTermZones(db.kv),
+    // 来源层计数（W7-10① chips）：哥飞趋势/哥飞拓词/常规采集
+    originCounts: {
+      "gephei-trends": (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') LIKE '%gephei-trends%'")[0] as { c: number }).c,
+      "gephei-ideas": (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') LIKE '%gephei-ideas%'")[0] as { c: number }).c,
+      normal: (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') NOT LIKE '%gephei-%'")[0] as { c: number }).c,
+    },
   };
 }

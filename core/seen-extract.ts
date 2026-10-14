@@ -140,8 +140,8 @@ async function extractTerms(db: Store, runModel: ModelRunner): Promise<number> {
     const chunk = latest.slice(i, i + EXTRACT_CHUNK);
       const prompt = buildRelevanceRubric(db) +
       `以下是最近采集的资讯条目（第 ${i / EXTRACT_CHUNK + 1} 批），每行方括号内是它的来源平台。请提取其中的实体词/新词（工具名、模型名、框架名、现象级玩法名等），` +
-      "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent。" +
-      '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong","demandIntent":"tool"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off；demandIntent 只能取 tool/info/nav（strong 必填，其余档位省略）。不要输出其他文字。\n\n' +
+      "过滤纯娱乐八卦（影视明星、综艺、体育赛事），并按上方标准给每个词 relevance 三档；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent，并用不超过 40 字说明判据（命中哪条标准/来自哪条标题的关键信号）。" +
+      '只输出 JSON 数组，格式：[{"term":"词","sources":["来源平台名"],"relevance":"strong","demandIntent":"tool","rationale":"命中 strong 的工具发布正例"}]——sources 填条目方括号内的真实来源平台名（可多条），绝不要把标题文字填进 sources；relevance 只能取 strong/weak/off；demandIntent 只能取 tool/info/nav（strong 必填，其余档位省略）；rationale 为判据短句（可选，倾向都给）。不要输出其他文字。\n\n' +
       chunk.map((x, j) => (j + 1) + ". [" + (x.source || "未知来源") + "] " + x.title).join("\n");
     try {
       const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(EXTRACT_CHUNK_TIMEOUT_MS), plan: "cheap" });
@@ -179,11 +179,13 @@ function applyExtractedTerms(db: Store, text: string): number {
       const relevance = redlined ? "off" : normalizeRelevance(item.relevance);
       // demandIntent（第七轮 W7-1）：只在 strong 落库（tool 型词直通站群候选池）
       const demandIntent = relevance === "strong" ? normalizeDemandIntent(item.demandIntent) : undefined;
+      const rationale = normalizeRationale(item?.rationale);
       observeSeenTerm(db, term, {
         sources: Array.isArray(item.sources) ? item.sources.map(String).slice(0, 5) : [],
         offTopic: relevance === "off" || item.offTopic === true || !!redlined,
         relevance,
         ...(demandIntent ? { demandIntent } : {}),
+        ...(rationale ? { rationale } : {}),
       });
       count++;
     }
@@ -284,6 +286,13 @@ function normalizeRelevance(value: unknown): PersonaRelevance | undefined {
   return value === "strong" || value === "weak" || value === "off" ? value : undefined;
 }
 
+// 判定判据短句（W7-1 可解释性）：截断 160 字防灌水
+export function normalizeRationale(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const t = value.trim().slice(0, 160);
+  return t || undefined;
+}
+
 // 回填判定（清洗批 ②，第五轮 §5 吞吐扩容）：词库里 relevance 尚未判定的非 archived 词
 //（联想展开词天然缺档），按观测数取前 200 一次 LLM 判定。判定只写 relevance，不虚增观测。
 // 空池直接跳过（零成本）。7112 存量积压 ÷ 200/日 = 36 天——扩容为日多批 tick（judgeBackfillTick）：
@@ -306,8 +315,8 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     .slice(0, BACKFILL_LIMIT);
   if (!pending.length) return 0;
   const prompt = buildRelevanceRubric(db) +
-    "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent。" +
-    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong","demandIntent":"tool"}]。不要输出其他文字。\n\n' +
+    "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent，并用不超过 40 字说明判据（命中哪条标准）。" +
+    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong","demandIntent":"tool","rationale":"命中 strong 的模型发布正例"}]。不要输出其他文字。\n\n' +
     pending.map((t, i) => (i + 1) + ". " + t.term).join("\n");
   const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
   const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
@@ -324,7 +333,8 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     if (!relevance) continue;
     // demandIntent（第七轮 W7-1）：只在 strong 落库（tool 型词直通站群候选池）
     const demandIntent = relevance === "strong" ? normalizeDemandIntent(item?.demandIntent) : undefined;
-    if (judgeSeenTerm(db, item.term, relevance, { demandIntent })) judged++;
+    const rationale = normalizeRationale(item?.rationale);
+    if (judgeSeenTerm(db, item.term, relevance, { demandIntent, rationale })) judged++;
   }
   return judged;
 }

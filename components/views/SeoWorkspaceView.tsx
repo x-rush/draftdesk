@@ -7,7 +7,7 @@
 // 旧 seo-terms 板块已在前轮移除；本页唯一数据源 = seen-terms。
 import { useMemo, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
-import { Empty, api, Skeleton } from "../ui";
+import { Drawer, Empty, api, Skeleton } from "../ui";
 import { Ban, CheckCircle2, Circle, ClipboardList, Crosshair, Flame, Gem, Globe, Sparkles, Star, TrendingUp, XCircle } from "lucide-react";
 import { Pagination } from "../Pagination";
 import { isLongTail } from "../../core/seen-terms";
@@ -50,6 +50,8 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
   const [quality, setQuality] = useState<"all" | "strong">("all");
   const [fullMode, setFullMode] = useState(false);
   const [radarBusy, setRadarBusy] = useState(false);
+  // 词详情抽屉（第七轮批3 W7-10②）：点击词名打开，SEO 指标区块承载哥飞数据
+  const [drawerTerm, setDrawerTerm] = useState<any | null>(null);
 
   const zones = ws.seenList?.zones;
   const regions = ws.seenList?.regions ?? {};
@@ -233,6 +235,8 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
               区域与意图筛选：<button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>🌐 海外 {(ws.seenList?.regions?.global) ?? 0}</button>
               <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>中文 {(ws.seenList?.regions?.cn) ?? 0}</button>
               <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部 {(ws.seenList?.regions?.all) ?? 0}</button>
+              <button className={ws.seenOrigin === "gephei" ? "active" : ""} onClick={() => { ws.setSeenOrigin(ws.seenOrigin === "gephei" ? "" : "gephei"); ws.setSeenPage(1); }}>⬆ 哥飞注入 {((ws.seenList?.originCounts?.["gephei-trends"]) ?? 0) + ((ws.seenList?.originCounts?.["gephei-ideas"]) ?? 0)}</button>
+              <button className={ws.seenOrigin === "normal" ? "active" : ""} onClick={() => { ws.setSeenOrigin(ws.seenOrigin === "normal" ? "" : "normal"); ws.setSeenPage(1); }}>常规采集 {(ws.seenList?.originCounts?.normal) ?? 0}</button>
               {DIG_INTENTS.map(([key, label]) => (
                 <button key={key} className={ws.seenIntent === key ? "active" : ""} onClick={() => { ws.setSeenIntent(key); ws.setSeenPage(1); }}>{label} {intentCounts[key] ?? 0}</button>
               ))}
@@ -265,7 +269,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                             </span>
                           )}
                         </div>
-                        <button className="article-title" style={{ fontSize: 16, padding: "3px 0 0" }} onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
+                        <button className="article-title" style={{ fontSize: 16, padding: "3px 0 0" }} onClick={() => setDrawerTerm(t)} title="点击打开词详情（SEO 指标/判据）">{t.term}</button>
                       </div>
                       <div className="row-side">
                         <div className="term-actions">
@@ -282,6 +286,91 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
           </section>
         </>
       )}
+      {drawerTerm && <SeenTermDrawer ws={ws} term={drawerTerm} onClose={() => setDrawerTerm(null)} onSearch={() => searchTerm(drawerTerm.term)} />}
     </>
+  );
+}
+
+const DEMAND_LABELS: Record<string, string> = { tool: "工具/产品需求", info: "资讯/教程", nav: "导航/品牌" };
+const GEPHEI_INTENT_LABELS: Record<string, string> = { informational: "informational（教程）", commercial: "commercial（商业）", transactional: "transactional（交易）", navigational: "navigational（导航）" };
+
+// 词详情抽屉（第七轮批3 W7-10②）：SEO 指标核心承载块——月搜/KD/CPC/意图/时间戳，
+// 哥飞权威源「●」、自采「○」；无 token 时区块保留并显示「配置后解锁」+settings 深链。
+function SeenTermDrawer({ ws, term, onClose, onSearch }: { ws: Workspace; term: any; onClose: () => void; onSearch: () => void }) {
+  const hasMetrics = typeof term.monthlySearch === "number" || typeof term.kd === "number" || typeof term.cpc === "number";
+  const metricsFresh = typeof term.gepheiFetchedAt === "string" && Date.now() - Date.parse(term.gepheiFetchedAt) < 90 * 86400000;
+  const seoCfg = ws.data?.config?.seoDataSource;
+  const seoEnabled = !!seoCfg?.enabled && !!seoCfg?.hasToken;
+  const stale = term.serpStale === true;
+  return (
+    <Drawer
+      title={term.term}
+      subtitle={[term.status, `观测 ${term.observations} 次`, term.seed ? `血缘 ${term.seed}` : "", (term.sources || []).some((x: string) => String(x).startsWith("gephei-")) ? "⬆ 哥飞注入" : "", stale ? "⏳ 数据待更新（超 60 天，回探针队列重测中）" : ""].filter(Boolean).join(" · ")}
+      onClose={onClose}
+    >
+        <div className="row-meta" style={{ alignItems: "center" }}>
+          <RelevanceBadge relevance={term.relevance} />
+          <RegionBadge region={term.region} />
+          <VerdictBadge verdict={term.verdict} reason={term.verdictReason} />
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+          状态 {term.status} · 观测 {term.observations} 次{term.seed ? ` · 血缘 ${term.seed}` : ""}
+          {(term.sources || []).some((x: string) => String(x).startsWith("gephei-")) && " · ⬆ 哥飞注入"}
+          {stale && " · ⏳ 数据待更新（超 60 天，回探针队列重测中）"}
+        </p>
+
+        {/* SEO 指标区块（哥飞权威 ● / 自采 ○） */}
+        <section className="form-section" style={{ marginTop: 12 }}>
+          <p className="dash-label" style={{ marginTop: 0 }}>SEO 指标<span className="dash-label-sub">● 哥飞权威源（90 天新鲜度） · ○ 自采探针（60 天保质期）</span></p>
+          {hasMetrics ? (
+            <div className="stat-strip" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+              <div className="stat-card"><strong>{metricsFresh ? "●" : "○"} {(term.monthlySearch ?? 0).toLocaleString()}</strong><span>月搜索量</span><small>{metricsFresh ? "哥飞权威" : "过期数据"}</small></div>
+              <div className="stat-card"><strong>{metricsFresh ? "●" : "○"} {term.kd ?? "—"}</strong><span>KD 关键词难度</span><small>≤29 视为低竞争</small></div>
+              <div className="stat-card"><strong>{metricsFresh ? "●" : "○"} ${term.cpc ?? "—"}</strong><span>CPC 单次点击价值</span><small>≥$0.1 有商业价值</small></div>
+              <div className="stat-card"><strong>{metricsFresh ? "●" : "○"} {term.demandIntent ? (DEMAND_LABELS[term.demandIntent] || term.demandIntent) : "—"}</strong><span>需求语义（内置三分类）</span><small>{term.intent ? `哥飞对照：${GEPHEI_INTENT_LABELS[term.intent] || term.intent}` : "哥飞意图待补"}</small></div>
+            </div>
+          ) : seoEnabled ? (
+            <p className="muted" style={{ margin: 0 }}>已配置数据源，该词尚未进入日更补查窗（按观测数排序每日 ≤200 词），稍后自动出现。</p>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              配置 SEO 数据源后解锁：月搜/KD/CPC/意图四指标与综合价值分。
+              <button className="text-button" onClick={() => ws.navigate("settings")}>前往设置 →</button>
+            </p>
+          )}
+          {typeof term.gepheiFetchedAt === "string" && (
+            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              数据时间戳 {new Date(term.gepheiFetchedAt).toLocaleString("zh-CN")} · {metricsFresh ? "90 天新鲜度内" : "已过期（待日更重查）"}
+            </p>
+          )}
+        </section>
+
+        {/* 自采 SERP 观测（○） */}
+        <section className="form-section">
+          <p className="dash-label" style={{ marginTop: 0 }}>SERP 竞争观测<span className="dash-label-sub">○ 自采探针 · 数据待更新时判定层自动重测</span></p>
+          {typeof term.serpDedicated === "number" ? (
+            <p style={{ margin: 0, fontSize: 13 }}>
+              竞争站 {term.serpDedicated}（独立 host {term.serpInternal ?? "—"}）{typeof term.serpTop10Home === "number" && ` · 前 10 首页 ${term.serpTop10Home}`}· {term.serpTop3Tier ? `前 3 名量级 ${term.serpTop3Tier}` : "前 3 名量级待哥飞权威补位"}
+              {term.serpCheckedAt && ` · 观测于 ${new Date(term.serpCheckedAt).toLocaleDateString("zh-CN")}`}
+            </p>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>尚未查 SERP 竞争度（strong 词按观测排序进入判定队列）。</p>
+          )}
+          {term.serpDerived && (
+            <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>派生：精确匹配域名 {term.serpDerived.exact} · 首页占比 {term.serpDerived.homeShare === null ? "—" : term.serpDerived.homeShare + "%"} · 论坛/视频站 {term.serpDerived.forumShare}%</p>
+          )}
+        </section>
+
+        {/* 判定判据（W7-1 可解释性） */}
+        {term.rationale && (
+          <section className="form-section">
+            <p className="dash-label" style={{ marginTop: 0 }}>判定判据<span className="dash-label-sub">LLM 判定依据，复核与拍板有据可依</span></p>
+            <p style={{ margin: 0, fontSize: 13 }}>{term.rationale}</p>
+          </section>
+        )}
+        <div className="term-actions" style={{ marginTop: 10 }}>
+          <button onClick={onSearch}>Google 搜索验证 ↗</button>
+          <button onClick={() => { void navigator.clipboard.writeText(term.term); }}>复制</button>
+        </div>
+    </Drawer>
   );
 }

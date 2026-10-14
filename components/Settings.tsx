@@ -263,31 +263,56 @@ export function Settings({
                 onChange={(e) => setSeoToken(e.target.value)}
               />
             </Field>
-            <Field label="每日积分预算（词/次探测）" hint="内置侧断路器：指标补查与 SERP 量级探测每日不超过此数，额度尽自动停、次日恢复。哥飞侧另有自己的积分规则。">
-              <input
-                type="number"
-                min={1}
-                max={10000}
-                value={seoSrc?.builtinDailyBudget ?? 200}
-                onChange={(e) => setSeoSrc({ ...seoSrc, builtinDailyBudget: Number(e.target.value) })}
-              />
+            <Field label="每日积分预算（三池独立，互不抢占）" hint="内置侧断路器：档位补位链（tier）/指标补查（metrics）/新词采集（collect）各配独立日额度，额度尽自动停、次日恢复。">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {([["builtinTierBudget", "档位补位 tier"], ["builtinMetricsBudget", "指标补查 metrics"], ["builtinCollectBudget", "新词采集 collect"]] as const).map(([key, label]) => (
+                  <label key={key} style={{ fontSize: 12 }}>
+                    <span className="muted">{label}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      value={seoSrc?.[key] ?? { builtinTierBudget: 60, builtinMetricsBudget: 200, builtinCollectBudget: 100 }[key]}
+                      onChange={(e) => setSeoSrc({ ...seoSrc, [key]: Number(e.target.value) })}
+                      style={{ width: "100%" }}
+                    />
+                  </label>
+                ))}
+              </div>
             </Field>
-            <button
-              type="button"
-              disabled={seoSaving}
-              onClick={() => {
-                setSeoSaving(true);
-                void api<any>("seoDataSource", {
-                  enabled: seoSrc.enabled,
-                  builtinDailyBudget: Number(seoSrc.builtinDailyBudget) || 200,
-                  ...(seoToken.trim() ? { token: seoToken.trim() } : {}),
-                }).then((r) => { setSeoSrc(r); setSeoToken(""); }).catch(() => {}).finally(() => setSeoSaving(false));
-              }}
-            >
-              {seoSaving ? "保存中…" : "保存 SEO 数据源配置"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                disabled={seoSaving}
+                onClick={() => {
+                  setSeoSaving(true);
+                  void api<any>("seoDataSource", {
+                    enabled: seoSrc.enabled,
+                    builtinTierBudget: Number(seoSrc.builtinTierBudget) || 60,
+                    builtinMetricsBudget: Number(seoSrc.builtinMetricsBudget) || 200,
+                    builtinCollectBudget: Number(seoSrc.builtinCollectBudget) || 100,
+                    ...(seoToken.trim() ? { token: seoToken.trim() } : {}),
+                  }).then((r) => { setSeoSrc(r); setSeoToken(""); }).catch(() => {}).finally(() => setSeoSaving(false));
+                }}
+              >
+                {seoSaving ? "保存中…" : "保存 SEO 数据源配置"}
+              </button>
+              <button
+                type="button"
+                disabled={seoSaving}
+                onClick={() => {
+                  setSeoSaving(true);
+                  void api<any>("seoDataSource/test", {}).then((r) => setNotice(r.message)).catch((e) => setNotice("测试失败：" + (e as Error).message)).finally(() => setSeoSaving(false));
+                }}
+              >
+                {seoSaving ? "测试中…" : "连接测试"}
+              </button>
+            </div>
             <p className="helper-text" style={{ marginBottom: 0 }}>
-              数据源可选，自行注册：哥飞 SEO 工具箱（seo.web.cafe）会员积分制，仓库不内置任何令牌。今日已用 {seoSrc?.budgetUsedToday ?? 0} / {seoSrc?.builtinDailyBudget ?? 200}。
+              数据源可选，自行注册：哥飞 SEO 工具箱（seo.web.cafe）会员积分制，仓库不内置任何令牌。
+              今日积分消耗（剩余/已用）：tier {(seoSrc?.pools?.find((x: any) => x.pool === "tier")?.budget ?? 60) - (seoSrc?.pools?.find((x: any) => x.pool === "tier")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "tier")?.used ?? 0} ·
+              metrics {(seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.budget ?? 200) - (seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0} ·
+              collect {(seoSrc?.pools?.find((x: any) => x.pool === "collect")?.budget ?? 100) - (seoSrc?.pools?.find((x: any) => x.pool === "collect")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "collect")?.used ?? 0}
             </p>
           </>
         )}

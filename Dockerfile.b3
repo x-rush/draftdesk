@@ -1,0 +1,8 @@
+# 批3 应急构建路径：宿主机 npm run build 出 standalone 产物，容器层只 COPY（绕开 build 容器内 npm 网络故障）。
+# 与 Dockerfile 的 runtime 阶段产物等价；网络恢复后回退常规 docker compose build。
+FROM node:24-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+COPY ./runtime-bundle ./
+EXPOSE 3000
+CMD ["node", "server.js"]

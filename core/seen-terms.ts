@@ -128,7 +128,7 @@ export function mergeSeenTerm(kv: TermStore, input: {
 }
 
 // 内置提取/晋级（每日一次）：observations+1、daysSeen 记日期、按阈值晋级
-export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; region?: TermRegion; demandIntent?: DemandIntent; day?: string } = {}) {
+export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: string[]; offTopic?: boolean; relevance?: PersonaRelevance; region?: TermRegion; demandIntent?: DemandIntent; rationale?: string; day?: string } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   const day = opts.day ?? today();
@@ -161,6 +161,7 @@ export function observeSeenTerm(kv: TermStore, term: string, opts: { sources?: s
     seed: prev?.seed,
     intent: prev?.intent ?? classifyIntent(term),
     demandIntent: opts.demandIntent ?? prev?.demandIntent,
+    rationale: opts.rationale ?? prev?.rationale,
     producedBy: prev?.producedBy ?? "builtin-extract/1.0.0",
     updatedAt: now0(),
     ...(prev?.createdAt ? {} : { createdAt: now0() }),
@@ -230,7 +231,7 @@ export function observeSuggestion(kv: TermStore, term: string, seed: string, opt
 // 归档词被本函数头部守卫拦住不可再判（误判回捞走人工，与「archived 只能人工设置」例外同级）。
 // strong 判定顺带写 demandIntent（W7-1，extras 传入才写，保留旧值）。
 const RELEVANCE_RANK: Record<PersonaRelevance, number> = { weak: 0, strong: 1, off: 2 };
-export function judgeSeenTerm(kv: TermStore, term: string, relevance: PersonaRelevance, extras: { demandIntent?: DemandIntent } = {}) {
+export function judgeSeenTerm(kv: TermStore, term: string, relevance: PersonaRelevance, extras: { demandIntent?: DemandIntent; rationale?: string } = {}) {
   const id = termId(term);
   const prev = kv.get<any>("seen-terms", id);
   if (!prev || prev.status === "archived") return undefined;
@@ -243,6 +244,8 @@ export function judgeSeenTerm(kv: TermStore, term: string, relevance: PersonaRel
     offTopic: off ? true : prev.offTopic,
     ...(off ? { status: "archived" as SeenTermStatus, archivedReason: "relevance-off-auto" } : {}),
     ...(relevance === "strong" && extras.demandIntent ? { demandIntent: extras.demandIntent } : {}),
+    // 判定可解释性（第七轮批3 W7-1 增补）：命中哪条标准/证据，复核与拍板有据可依
+    ...(extras.rationale ? { rationale: extras.rationale } : {}),
     updatedAt: now0(),
   };
   kv.put("seen-terms", id, doc);
@@ -311,6 +314,7 @@ export function mergeSpaceVariants(kv: MergeStore): { merged: number; removed: n
       seed: docs.map((d) => d.seed).find(Boolean),
       intent: docs.map((d) => d.intent).find(Boolean),
       demandIntent: docs.map((d) => d.demandIntent).find(Boolean),
+      rationale: docs.map((d) => d.rationale).find(Boolean),
       archivedReason: docs.map((d) => d.archivedReason).find(Boolean),
       updatedAt: now0(),
     };
@@ -338,7 +342,7 @@ export function bumpSeenTermsVersion(kv: TermStore) {
   kv.put("meta", "seen-terms-version", { n: (prev?.n ?? 0) + 1 });
 }
 
-export type SeenListQuery = { limit: number; offset: number; status?: string; intent?: string; region?: string; q?: string };
+export type SeenListQuery = { limit: number; offset: number; status?: string; intent?: string; region?: string; q?: string; origin?: string };
 const STATUS_ORDER = `CASE json_extract(body,'$.status') WHEN 'sustained' THEN 0 WHEN 'rising' THEN 1 WHEN 'new' THEN 2 ELSE 3 END`;
 
 export function querySeenTerms(kv: SqlStore, query: SeenListQuery): { items: any[]; total: number } {
@@ -346,14 +350,17 @@ export function querySeenTerms(kv: SqlStore, query: SeenListQuery): { items: any
   const intent = query.intent || "";
   const region = query.region || "";
   const q = (query.q || "").trim().toLowerCase().slice(0, 80);
+  const origin = query.origin || "";
   const where = [
     "collection='seen-terms'",
     "(?='' OR json_extract(body,'$.status')=?)",
     "(?='' OR json_extract(body,'$.intent')=?)",
     "(?='' OR json_extract(body,'$.region')=?)",
     "(?='' OR json_extract(body,'$.id') LIKE '%'||?||'%')",
+    // 来源层（第七轮批3 W7-10①）：gephei=哥飞注入（sources 含 gephei- 前缀）/ normal=常规采集
+    "(?='' OR (?='gephei' AND json_extract(body,'$.sources') LIKE '%gephei-%') OR (?='normal' AND json_extract(body,'$.sources') NOT LIKE '%gephei-%'))",
   ].join(" AND ");
-  const params = [status, status, intent, intent, region, region, q, q];
+  const params = [status, status, intent, intent, region, region, q, q, origin, origin, origin];
   const total = (kv.sqlRows(`SELECT COUNT(*) c FROM documents WHERE ${where}`, ...params)[0] as { c: number }).c;
   const rows = kv.sqlRows(
     `SELECT body FROM documents WHERE ${where} ORDER BY ${STATUS_ORDER}, json_extract(body,'$.lastSeenAt') DESC LIMIT ? OFFSET ?`,

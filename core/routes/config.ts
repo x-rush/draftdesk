@@ -9,7 +9,7 @@ import { requestModel } from "../model";
 import { recentModelMetrics } from "../model-metrics";
 import { searchProvider } from "../sources";
 import { siteGateOf } from "../seen-judge";
-import { seoSourceOf, seoBudgetUsed } from "../seo-source";
+import { seoSourceOf, seoBudgetUsed, seoConnectionTest } from "../seo-source";
 
 // persona 人设配置（决策个性化输入）；字段宽松校验，结构由 UI 与种子约定。
 const personaInput = z.object({
@@ -155,7 +155,9 @@ export const routes: RouteDef[] = [
     pattern: "seoDataSource",
     handler: ({ db }) => {
       const src = seoSourceOf(db);
-      return json({ enabled: src.enabled, provider: src.provider, baseUrl: src.baseUrl, builtinDailyBudget: src.builtinDailyBudget, hasToken: !!src.token, budgetUsedToday: seoBudgetUsed(db) });
+      const budgetKeys = { tier: "builtinTierBudget", metrics: "builtinMetricsBudget", collect: "builtinCollectBudget" } as Record<string, "builtinTierBudget" | "builtinMetricsBudget" | "builtinCollectBudget">;
+      const pools = (["tier", "metrics", "collect"] as const).map((p) => ({ pool: p, used: seoBudgetUsed(db, p), budget: src[budgetKeys[p]] }));
+      return json({ enabled: src.enabled, provider: src.provider, baseUrl: src.baseUrl, pools, hasToken: !!src.token });
     },
   },
   {
@@ -166,14 +168,24 @@ export const routes: RouteDef[] = [
         enabled: z.boolean().optional(),
         token: z.string().max(200).optional(),
         baseUrl: z.string().url().max(300).optional(),
-        builtinDailyBudget: z.number().int().min(1).max(10000).optional(),
+        builtinTierBudget: z.number().int().min(1).max(10000).optional(),
+        builtinMetricsBudget: z.number().int().min(1).max(100000).optional(),
+        builtinCollectBudget: z.number().int().min(1).max(10000).optional(),
       }).strict().parse(await readBody());
       const prev = seoSourceOf(db);
       const token = parsed.token !== undefined ? parsed.token.trim() : prev.token;
       const next = { ...prev, ...parsed, token, provider: "gephei" as const };
       db.put("config", "seoDataSource", next);
-      return json({ enabled: next.enabled, provider: next.provider, baseUrl: next.baseUrl, builtinDailyBudget: next.builtinDailyBudget, hasToken: !!next.token });
+      const budgetKeys = { tier: "builtinTierBudget", metrics: "builtinMetricsBudget", collect: "builtinCollectBudget" } as const;
+      const pools = (["tier", "metrics", "collect"] as const).map((p) => ({ pool: p, used: seoBudgetUsed(db, p), budget: next[budgetKeys[p]] }));
+      return json({ enabled: next.enabled, provider: next.provider, baseUrl: next.baseUrl, pools, hasToken: !!next.token });
     },
+  },
+  {
+    // 连接测试（W7-10④）：轻接口验证 token + 积分余额
+    methods: ["POST"],
+    pattern: "seoDataSource/test",
+    handler: async ({ db }) => json(await seoConnectionTest(db, fetch)),
   },
   {
     methods: ["POST"],

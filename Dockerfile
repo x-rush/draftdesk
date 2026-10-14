@@ -3,7 +3,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund --fetch-retries=5
-COPY . .
+COPY . /app
 RUN npm run build
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app

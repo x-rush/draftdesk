@@ -19,8 +19,8 @@ function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
 }
 
-const enableSeo = (db: Store, budget = 200) =>
-  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinDailyBudget: budget });
+const enableSeo = (db: Store, budgets: { tier?: number; metrics?: number; collect?: number } = {}) =>
+  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100 });
 
 // mock 哥飞端点：三指标 / serp（带流量）/ domain_traffic
 function mockGephei(overrides: { volume?: number; kd?: number; cpc?: number } = {}) {
@@ -66,7 +66,7 @@ test("适配器门控：关闭时零外部调用（fetch 计数 0）；开启后
     assert.equal(metrics?.cpc, 0.5);
     assert.equal(metrics?.intent, "commercial");
     assert.equal(calls.length, 3, "三接口各一次");
-    assert.equal(seoBudgetUsed(db), 1, "按词计预算");
+    assert.equal(seoBudgetUsed(db, "metrics"), 1, "按词计预算（metrics 池）");
     // 全门槛判定路径：带 gepheiFetchedAt 的新鲜指标 → full 达标
     const term = { relevance: "strong", region: "global", serpDedicated: 0, ...metrics, gepheiFetchedAt: new Date().toISOString() };
     const verdict = evalSiteGate(term, DEFAULT_SITE_GATE);
@@ -84,12 +84,12 @@ test("积分断路器：预算 1 → 批量截断到 1 词；额度尽后续调�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    enableSeo(db, 1);
+    enableSeo(db, { metrics: 1 });
     const { fakeFetch, calls } = mockGephei();
     const m = await fetchKeywordMetrics(db, ["词一", "词二"], fakeFetch);
     assert.deepEqual([...m.keys()], ["词一"], "预算 1 只查首词");
-    assert.equal(seoBudgetUsed(db), 1);
-    assert.equal(seoBudgetLeft(db), 0);
+    assert.equal(seoBudgetUsed(db, "metrics"), 1);
+    assert.equal(seoBudgetLeft(db, "metrics"), 0);
     const before = calls.length;
     const m2 = await fetchKeywordMetrics(db, ["词三"], fakeFetch);
     assert.equal(m2.size, 0, "额度尽返回空");
@@ -122,7 +122,7 @@ test("gepheiTierOf：serp 结果带流量直接派生档位并缓存（source=ge
     const tier = await gepheiTierOf("tool word", ["en.wikipedia.org", "github.com", "tinyblog.example.com"], db, fakeFetch);
     assert.equal(tier, "large", "前 3 名最强档位");
     assert.equal(calls.filter((u) => u.includes(GEPHEI_ENDPOINTS.serp)).length, 1, "serp 一次调用");
-    assert.equal(seoBudgetUsed(db), 1, "按调用计预算");
+    assert.equal(seoBudgetUsed(db, "tier"), 1, "按调用计预算（tier 池）");
     const cached = db.get<any>("web-traffic", "en.wikipedia.org");
     assert.equal(cached?.tier, "large");
     assert.equal(cached?.source, "gephei", "权威源标记");

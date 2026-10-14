@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { RouteContext, RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
+import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
 
 const by = (ctx: RouteContext) => `agent:${ctx.connection!.name}`;
 
@@ -109,6 +110,9 @@ async function upsertCluster(ctx: RouteContext, input: unknown) {
       ? { ...dup, memberIds: parsed.replaceMembers ? parsed.memberIds : [...new Set([...(dup.memberIds || []), ...parsed.memberIds])], memberCount: 0, window: [dup.window, parsed.window].filter(Boolean).join(" ~ "), suggestedPlatforms: parsed.suggestedPlatforms || dup.suggestedPlatforms, producedBy: by(ctx) }
       : { id: "clu-" + randomUUID(), topic: parsed.topic, memberIds: parsed.memberIds, memberCount: parsed.memberIds.length, kind: parsed.kind, window: parsed.window || "", suggestedPlatforms: parsed.suggestedPlatforms || [], target: parsed.target || "hotspots", status: "active", producedBy: by(ctx), createdAt: now() };
   if (dup) { cluster.memberCount = cluster.memberIds.length; }
+  // 选题去重记忆（第七轮批3 W7-9.5）：与已拍板选题核心词重合 ≥2/3 标「已覆盖变体」
+  const { covered } = markCoveredVariants(db as any, cluster as any);
+  if (covered && !(cluster as any).coveredVariant) (cluster as any).coveredVariant = coveredVariantDoc(covered);
   db.put("clusters", cluster.id, cluster);
   return json({ ...cluster, merged: !!dup, replaced: !!existing }, existing ? 200 : 201);
 }

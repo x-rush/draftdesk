@@ -423,10 +423,10 @@ export function Review() {
       <details className="fold-card review-form-fold">
         <summary><h2 style={{ display: "inline", margin: 0 }}>内容簇与多平台大纲</h2></summary>
         <p className="muted">多条同类资讯合并为一个簇；一个簇可产出多份不同平台的大纲，各自独立拍板。AI 自动聚合即将上线，当前支持手动登记。</p>
-        <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）").join("、") : ""}</p>
+        <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）" + (c.coveredVariant ? ` ⚠️已覆盖变体（原选题：${c.coveredVariant.originTitle}，核心词重合 ${Math.round((c.coveredVariant.ratio || 0) * 100)}%）` : "")).join("、") : ""}</p>
         <Field label="簇 ID">
           <Select placeholder="选择内容簇…" value={outlineForm.clusterId || undefined} onChange={(e) => setOutlineForm({ ...outlineForm, clusterId: e.target.value })}>
-            {clusters.map((c) => <option key={c.id} value={c.id}>{c.topic}（{c.memberCount} 条）</option>)}
+            {clusters.map((c) => <option key={c.id} value={c.id}>{c.topic}（{c.memberCount} 条）{c.coveredVariant ? " ⚠️已覆盖变体" : ""}</option>)}
           </Select>
         </Field>
         <Field label="平台">

@@ -145,7 +145,10 @@ export class Store {
   }
   publicConfig() {
     const { apiKey, tavilyKey, ...c } = this.config();
-    return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey, consumerMode: this.get("config", "consumerMode") || "external", planMode: this.get("config", "planMode") || "collect" };
+    const seo = this.get<any>("config", "seoDataSource");
+    return { ...c, hasApiKey: !!apiKey, hasTavilyKey: !!tavilyKey, consumerMode: this.get("config", "consumerMode") || "external", planMode: this.get("config", "planMode") || "collect",
+      // SEO 数据源摘要（W7-10②）：UI 区块的「配置后解锁」判断依据；token 不回传
+      seoDataSource: { enabled: !!seo?.enabled, hasToken: !!seo?.token, provider: "gephei" } };
   }
   snapshot(params?: URLSearchParams) {
     const metrics = this.list<MetricSnapshot>("metrics");

@@ -8,7 +8,7 @@
 import type { Store } from "./store";
 import { hash, now } from "./store";
 import { urlKey } from "./hotspots";
-import { judgeVerdict, valueScoreOf } from "./seen-judge";
+import { judgeVerdict, valueScoreOf, platformOf } from "./seen-judge";
 import { termId } from "./seen-terms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
@@ -54,6 +54,10 @@ export type Opportunity = {
   // 哥飞三指标 + 综合价值分（月搜×CPC÷KD，W7-3）；valueUnverified=无新鲜指标（降级候选）
   seoMetrics?: { monthlySearch: number; kd: number; cpc: number; valueScore: number };
   valueUnverified?: boolean;
+  // 竞品档案（W7-10 新增3）：SERP 前 10 域名+平台+量级档（DR 待哥飞 token 联调补全）
+  competitors?: { host: string; platform?: string; tier?: string; dr?: number }[];
+  domainSuggestions?: string[];
+  valuation?: string;
   verdict: OpportunityVerdict;
   verdictReason: string;
   verifyPlan: string[];
@@ -350,11 +354,24 @@ export function retightenNewsOpportunities(db: Store): { checked: number; demote
 // e. siteCandidate（应用机会页单入口 §2.5②）：站群门槛达标词（内置 sweep 自动标注或外部 Agent 标注）
 // → 站群机会卡（form=tool）。哥飞三指标新鲜（W7-3）带 seoMetrics+综合价值分；
 // 无新鲜指标打 valueUnverified（「价值未验证」徽章，配 token 后自动升级）。
+// 竞品档案组装（读时派生，无外呼）：词的 SERP 前 10（seen-terms serpAll 优先，降级 serpHosts）
+// + 静态平台识别 + 量级档位（web-traffic 缓存：哥飞 source 优先）。DR 留待哥飞联调补全。
+function competitorsOf(db: Store, term: string): { host: string; platform?: string; tier?: string; dr?: number }[] {
+  const seen = db.get<any>("seen-terms", termId(term));
+  const rows: { host: string; url?: string }[] = seen?.serpAll?.length ? seen.serpAll : (seen?.serpHosts || []).map((h: string) => ({ host: h }));
+  return rows.slice(0, 10).map((r) => ({
+    host: String(r.host),
+    platform: platformOf(String(r.host)),
+    tier: db.get<any>("web-traffic", String(r.host).toLowerCase())?.tier,
+  }));
+}
+
 function generateFromSiteCandidates(db: Store, source: "auto" | "agent", counters: Counters) {
   for (const t of db.list<any>("seo-terms")) {
     if (t.siteCandidate !== true || !t.term) continue;
     const score = valueScoreOf(t);
     const fresh = score !== undefined && typeof t.monthlySearch === "number" && typeof t.kd === "number" && typeof t.cpc === "number";
+    const competitors = competitorsOf(db, String(t.term));
     upsert(db, {
       dedupeKey: `site:cand:${termId(String(t.term))}`, kind: "site", signals: ["trend"], term: String(t.term),
       evidenceIds: [], title: String(t.term),
@@ -363,6 +380,9 @@ function generateFromSiteCandidates(db: Store, source: "auto" | "agent", counter
       verdictReason: String(t.siteRationale || "siteCandidate 标注（站群门槛达标）").slice(0, 110),
       verifyPlan: VERIFY.site(String(t.term)), source,
       ...(fresh ? { seoMetrics: { monthlySearch: t.monthlySearch, kd: t.kd, cpc: t.cpc, valueScore: score! }, valueUnverified: undefined } : { valueUnverified: true, seoMetrics: undefined }),
+      competitors,
+      ...(Array.isArray(t.domainSuggestions) && t.domainSuggestions.length ? { domainSuggestions: t.domainSuggestions.slice(0, 5) } : { domainSuggestions: undefined }),
+      ...(t.valuation ? { valuation: String(t.valuation).slice(0, 120) } : { valuation: undefined }),
     }, counters);
   }
 }

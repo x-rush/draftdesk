@@ -18,3 +18,4 @@ Thumbs.db
 next-env.d.ts
 *.tmp.json
 _patch_*.py
+runtime-bundle/

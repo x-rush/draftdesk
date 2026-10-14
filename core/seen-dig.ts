@@ -482,12 +482,28 @@ export function rootProbeCursorRoots(cursor: { roots?: string[] } | undefined): 
 }
 
 // 轮转计划：取 cursor 之后未拉过的下一批词根；全部拉过则重置从头再来（二轮=再次观测）。
-export function nextRootBatch(cursor: { roots?: string[] } | undefined, perDay = ROOTS_PER_DAY): { batch: string[]; wrap: boolean } {
+// slowRoots（第七轮批3 第十四步根词降频）：7/30 天零产出的根词从轮转中剔除（配额让给快根），
+// 名单由周日复验刷新，全表慢则自然回退全量轮转。
+export function nextRootBatch(cursor: { roots?: string[] } | undefined, perDay = ROOTS_PER_DAY, slowRoots?: Set<string>): { batch: string[]; wrap: boolean } {
   const done = new Set(rootProbeCursorRoots(cursor));
   const all = [...TOOL_ROOTS, ...AI_ROOTS];
-  const pending = all.filter((r) => !done.has(r));
+  const active = slowRoots && slowRoots.size && slowRoots.size < all.length ? all.filter((r) => !slowRoots.has(r)) : all;
+  const pending = active.filter((r) => !done.has(r));
   if (pending.length) return { batch: pending.slice(0, perDay), wrap: false };
-  return { batch: all.slice(0, perDay), wrap: true };
+  return { batch: active.slice(0, perDay), wrap: true };
+}
+
+// 根词产出统计（第十四步复验原料）：各词根近 N 天新词数（seen-terms seed=词根 且 createdAt 窗口内）。
+export function rootYieldStats(db: { list<T>(c: string): T[] }, days: number, now = new Date()): Map<string, number> {
+  const cutoff = new Date(now.getTime() - days * 86400000).toISOString();
+  const out = new Map<string, number>();
+  for (const t of db.list<any>("seen-terms")) {
+    if (!t.seed) continue;
+    if (String(t.createdAt || t.firstSeenAt || "") < cutoff) continue;
+    const root = String(t.seed);
+    out.set(root, (out.get(root) || 0) + 1);
+  }
+  return out;
 }
 
 export async function runRootProbe(db: Store, doFetch: DoFetch = fetch, opts: { perDay?: number; top?: number; intervalMs?: number } = {}): Promise<{

@@ -12,7 +12,10 @@ export type SeoSourceConfig = {
   provider: "gephei";
   token: string;
   baseUrl: string;
-  builtinDailyBudget: number;
+  // 预算分池（老大批3 拍板）：档位补位链/指标补查/新词采集 各配独立日额度，互不抢占
+  builtinTierBudget: number;
+  builtinMetricsBudget: number;
+  builtinCollectBudget: number;
 };
 
 export const DEFAULT_SEO_SOURCE: SeoSourceConfig = {
@@ -20,7 +23,9 @@ export const DEFAULT_SEO_SOURCE: SeoSourceConfig = {
   provider: "gephei",
   token: "",
   baseUrl: "https://seo.web.cafe/api",
-  builtinDailyBudget: 200,
+  builtinTierBudget: 60,
+  builtinMetricsBudget: 200,
+  builtinCollectBudget: 100,
 };
 
 const DAY_MS = 86400000;
@@ -37,22 +42,30 @@ export function seoSourceEnabled(db: Store): boolean {
   return !!s.enabled && !!s.token;
 }
 
-// ---- 积分断路器（内置侧）：按「词/次探测」计数的日预算，超限静默停（免费路径兜底）----
-function budgetKey(day: string) { return "seo-api-used:" + day; }
+// ---- 积分断路器（内置侧）：三池独立记账（tier=SERP 量级档位补位 / metrics=三指标补查 / collect=新词采集），
+// 超限静默停（免费路径兜底）。老大批3 拍板：各池独立额度互不抢占。
+export type SeoPool = "tier" | "metrics" | "collect";
+const POOL_META: Record<SeoPool, { prefix: string; budget: (s: SeoSourceConfig) => number }> = {
+  tier: { prefix: "seo-api-used:tier:", budget: (s) => s.builtinTierBudget },
+  metrics: { prefix: "seo-api-used:metrics:", budget: (s) => s.builtinMetricsBudget },
+  collect: { prefix: "seo-api-used:collect:", budget: (s) => s.builtinCollectBudget },
+};
 
-export function seoBudgetUsed(db: Store): number {
+function poolKey(pool: SeoPool, day: string) { return POOL_META[pool].prefix + day; }
+
+export function seoBudgetUsed(db: Store, pool: SeoPool): number {
   const day = new Date().toISOString().slice(0, 10);
-  return db.get<any>("meta", budgetKey(day))?.calls ?? 0;
+  return db.get<any>("meta", poolKey(pool, day))?.calls ?? 0;
 }
 
-export function seoBudgetLeft(db: Store): number {
-  return Math.max(0, seoSourceOf(db).builtinDailyBudget - seoBudgetUsed(db));
+export function seoBudgetLeft(db: Store, pool: SeoPool): number {
+  return Math.max(0, POOL_META[pool].budget(seoSourceOf(db)) - seoBudgetUsed(db, pool));
 }
 
-export function seoSpend(db: Store, words: number): void {
+export function seoSpend(db: Store, pool: SeoPool, words: number): void {
   if (words <= 0) return;
   const day = new Date().toISOString().slice(0, 10);
-  const key = budgetKey(day);
+  const key = poolKey(pool, day);
   const prev = db.get<any>("meta", key)?.calls ?? 0;
   db.put("meta", key, { calls: prev + words, at: new Date().toISOString() });
 }
@@ -132,9 +145,9 @@ export function normalizeKeywordMetrics(raw: unknown): KeywordMetrics {
 export async function fetchKeywordMetrics(db: Store, terms: string[], doFetch: typeof fetch, outer?: AbortSignal): Promise<Map<string, KeywordMetrics>> {
   const out = new Map<string, KeywordMetrics>();
   if (!terms.length || !seoSourceEnabled(db)) return out;
-  if (seoBudgetLeft(db) <= 0) return out;
-  const spend = Math.min(terms.length, seoBudgetLeft(db));
-  seoSpend(db, spend);
+  if (seoBudgetLeft(db, "metrics") <= 0) return out;
+  const spend = Math.min(terms.length, seoBudgetLeft(db, "metrics"));
+  seoSpend(db, "metrics", spend);
   const batch = terms.slice(0, spend);
   const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch(() => fallback);
   const [volumes, difficulties, intents] = await Promise.all([
@@ -216,3 +229,25 @@ export const seoApi = {
   knowledgeRead: (db: Store, id: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.knowledgeRead, { id }, doFetch, outer),
   knowledgeAsk: (db: Store, question: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.knowledgeAsk, { question }, doFetch, outer),
 };
+
+// ---- 连接测试（W7-10④ settings 按钮）：轻接口验证 token + 积分余额（/credits 端点预置，联调校准）----
+// 不占预算池（单次轻探测，非业务调用）。
+export async function seoConnectionTest(db: Store, doFetch: typeof fetch): Promise<{ ok: boolean; message: string; credits?: number }> {
+  if (!seoSourceEnabled(db)) return { ok: false, message: "SEO 数据源未开启或令牌未填写——先打开开关并保存令牌。" };
+  try {
+    await gepheiCall(db, GEPHEI_ENDPOINTS.domainRating, { domain: "example.com" }, doFetch, AbortSignal.timeout(8000));
+    let credits: number | undefined;
+    try {
+      const src = seoSourceOf(db);
+      const res = await doFetch(`${src.baseUrl.replace(/\/+$/, "")}/credits`, { headers: { Authorization: `Bearer ${src.token}`, Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const j = await res.json() as any;
+        credits = typeof j === "number" ? j : j?.credits ?? j?.balance ?? j?.data?.credits;
+        if (typeof credits !== "number" || !Number.isFinite(credits)) credits = undefined;
+      }
+    } catch { /* 余额端点可选 */ }
+    return { ok: true, message: `连接成功，token 有效${credits !== undefined ? `，积分余额 ${credits}` : "（余额接口待联调校准）"}`, credits };
+  } catch (e) {
+    return { ok: false, message: "连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 160) };
+  }
+}

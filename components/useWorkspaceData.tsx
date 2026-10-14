@@ -71,6 +71,7 @@ export function useWorkspaceData() {
   // 热词词表（词表分页批）：服务端分页/筛选/搜索 + 三区与意图计数一次响应
   const [seenList, setSeenList] = useState<any>({ items: [], total: 0, counts: {}, zones: null });
   const [seenQ, setSeenQ] = useState(""), [seenStatus, setSeenStatus] = useState(""), [seenIntent, setSeenIntent] = useState(""), [seenPage, setSeenPage] = useState(1);
+  const [seenOrigin, setSeenOrigin] = useState<"" | "gephei" | "normal">("");
   // region 分层（海外定位批）：默认海外（global），cn 词独立内容创作线
   const [seenRegion, setSeenRegion] = useState<"global" | "cn" | "">("global");
   const [seenLoading, setSeenLoading] = useState(false);
@@ -135,10 +136,11 @@ export function useWorkspaceData() {
       if (seenStatus) params.set("status", seenStatus);
       if (seenIntent) params.set("intent", seenIntent);
       if (seenRegion) params.set("region", seenRegion);
+      if (seenOrigin) params.set("origin", seenOrigin);
       void api<any>("seen-terms?" + params).then((payload) => { if (alive) setSeenList(payload); }).catch(() => { }).finally(() => { if (alive) setSeenLoading(false); });
     }, 300);
     return () => { alive = false; clearTimeout(timer); };
-  }, [seenQ, seenStatus, seenIntent, seenRegion, seenPage, locationReady]);
+  }, [seenQ, seenStatus, seenIntent, seenRegion, seenOrigin, seenPage, locationReady]);
   useEffect(() => {
     setToday(new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long", timeZone: "Asia/Shanghai" }));
     void api<any[]>("skills")
@@ -210,7 +212,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, siteDiscoveries, opportunities, siteLaunches, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
+    outlines, clusters, seoTerms, siteProjects, siteDiscoveries, opportunities, siteLaunches, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenOrigin, setSeenOrigin, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,

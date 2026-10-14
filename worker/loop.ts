@@ -8,10 +8,11 @@ import { recoverOrphanJobs, runJob, scheduleTick } from "../core/pipeline";
 import { seenTermsTick } from "../core/seen-extract";
 import { judgeBackfillTick } from "../core/seen-extract";
 import { seenDiggingTick } from "../core/seen-dig";
-import { seenJudgeTick } from "../core/seen-judge";
+import { seenJudgeTick, seoMetricsTick } from "../core/seen-judge";
 import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
+import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick } from "../core/gephei-collect";
 import { outlineCategoryTick } from "../core/outline-categorize";
 import { outlineDraftTick } from "../core/outline-draft";
 import { requestModel } from "../core/model";
@@ -42,6 +43,14 @@ export function startWorkerLoop(db: Store) {
         // external 模式此 tick 零动作（大纲由外部 Agent 写）。
         outlineDraftTick(db, requestModel);
         seenJudgeTick(db);
+        // 哥飞指标日更（第七轮批3 W7-8，采集=内置 tick，token 唯一出口）：
+        // 每日批量补查三指标落词库，全门槛达标自动出标；出标>0 时内部触发出卡（W7-8 链路末端）
+        seoMetricsTick(db);
+        // 哥飞挖需求采集组（第七轮批3 W7-9）：趋势周更（周日）/标杆站月更（1 日）/外链反推（15 日），
+        // collect 池记账；开关关闭=零调用（初筛采集，不受 consumerMode 门控）
+        trendsRisingTick(db);
+        benchmarkSitesTick(db);
+        linkProspectsTick(db);
         // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定（初筛，不受 consumerMode 门控）
         siteLaunchesTick(db, requestModel);
         // 机会引擎（第五轮）：watch 池 TTL 是初筛的一部分（不受 consumerMode 影响）；

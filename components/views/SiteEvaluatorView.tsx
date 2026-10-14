@@ -5,11 +5,11 @@
 // 站点发现 tab（海外定位批 6）：site-discoveries 独立站卡片（host/命中词/首次发现/它做的是什么）。
 // 机会引擎 tab（第五轮 §1）：四信号源统一机会卡（opportunities），auto/agent 来源标注 + 生成按钮。
 // 新站发现 tab（第五轮 §2）：site-launches Show HN/PH 新站（六类判定/中文转译/核心词/撞词标记）。
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Ban, CheckCircle2, Globe, Sparkles, Zap } from "lucide-react";
 import { Select } from "../Select";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
-import { Empty, api, date } from "../ui";
+import { Empty, api, date, Skeleton } from "../ui";
 
 const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newtech: "新技术", news: "新资讯", trend: "热词趋势" };
 const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
@@ -105,11 +105,36 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                 </div>
                 <button className="article-title" style={{ fontSize: 16, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(o.title); setNotice("已复制：" + o.title); }}>{o.title}</button>
                 <p style={{ margin: "4px 0 0" }}>{o.oneLiner}</p>
-                {o.seoMetrics && (
-                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }} title="哥飞三指标（90 天新鲜度）与综合价值分 = 月搜×CPC÷KD">
-                    月搜 {o.seoMetrics.monthlySearch.toLocaleString()} · KD {o.seoMetrics.kd} · CPC ${o.seoMetrics.cpc} · 价值分 {o.seoMetrics.valueScore}
-                  </p>
-                )}
+                {(o.seoMetrics || o.competitors?.length || o.domainSuggestions?.length) ? (
+                  <div style={{ margin: "6px 0 0", fontSize: 12 }}>
+                    {o.seoMetrics && (
+                      <p style={{ margin: "0 0 4px" }} title="哥飞三指标（90 天新鲜度）与综合价值分 = 月搜×CPC÷KD">
+                        💰 价值面板：月搜 <strong>{o.seoMetrics.monthlySearch.toLocaleString()}</strong> · KD <strong>{o.seoMetrics.kd}</strong> · CPC <strong>${o.seoMetrics.cpc}</strong> · 综合价值分 <strong style={{ color: "#1a7f4b" }}>{o.seoMetrics.valueScore}</strong>
+                      </p>
+                    )}
+                    {o.seoMetrics && <p style={{ margin: "0 0 4px" }}>估值参考：待哥飞 website_worth 联调补全（竞品估值区间）。</p>}
+                    {o.domainSuggestions?.length ? (
+                      <p style={{ margin: "0 0 4px" }} title="词根+常见后缀的可注册性查询结果（哥飞 domain_availability）">
+                        🌐 域名清单：{o.domainSuggestions.map((d: string) => <button key={d} className="text-button" style={{ padding: "0 4px" }} onClick={() => window.open(`https://registrar.domain.com/search?q=${encodeURIComponent(d)}`, "_blank")}>{d} ↗</button>)}
+                      </p>
+                    ) : (
+                      o.seoMetrics && <p className="muted" style={{ margin: "0 0 4px" }}>🌐 域名清单：配置 SEO 数据源后由日更自动补全（可注册域名 up to 5）。</p>
+                    )}
+                    {o.competitors?.length ? (
+                      <details className="fold-card">
+                        <summary>竞品档案：SERP 前 {o.competitors.length} 域名（类型/量级档）</summary>
+                        <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                          {o.competitors.map((c: any, i: number) => (
+                            <li key={c.host + i}>
+                              <a href={`https://${c.host}`} target="_blank" rel="noopener noreferrer">{c.host} ↗</a>
+                              {" "}{c.platform || "—"} · 量级 {c.tier || "—"}{typeof c.dr === "number" ? ` · DR ${c.dr}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
+                  </div>
+                ) : null}
                 <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
                   初判理由：{o.verdictReason}
                   {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}
@@ -232,6 +257,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
       </nav>
       {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} onJumpSites={(host) => { setTab("sites"); setNotice("新站发现交叉站：" + host + "（已在站点发现列表中，可按排序查看）。"); }} />}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
+      {tab === "sites" && <BenchmarkPanel ws={ws} />}
       {tab === "sites" && (
         discoveries.length === 0 ? (
           <Empty title="还没有站点发现。">
@@ -277,5 +303,65 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
         )
       )}
     </>
+  );
+}
+
+// 标杆站监控（第七轮批3 W7-10 新增5）：哥飞挖需求四源之「高流量站页面分析」的常驻 UI。
+// 标杆站列表（可增删）/最近分析时间/页面数；点开=关键词排名页面列表，需求词一键加入词库候选。
+function BenchmarkPanel({ ws }: { ws: Workspace }) {
+  const [sites, setSites] = useState<any[] | null>(null);
+  const [openHost, setOpenHost] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [newHost, setNewHost] = useState("");
+  const seoEnabled = !!ws.data?.config?.seoDataSource?.enabled && !!ws.data?.config?.seoDataSource?.hasToken;
+  const load = () => void api<any>("benchmark-sites").then((r) => setSites(r.items || [])).catch(() => setSites([]));
+  useEffect(() => { load(); }, []);
+  async function act(fn: () => Promise<void>) { setBusy(true); try { await fn(); load(); await ws.refresh(); } catch (e) { ws.setNotice("操作失败：" + (e as Error).message); } finally { setBusy(false); } }
+  return (
+    <section className="surface" style={{ padding: "16px 18px", marginBottom: 14 }}>
+      <p className="dash-label" style={{ marginTop: 0 }}>📊 标杆站监控<span className="dash-label-sub">哥飞挖需求法之「高流量站页面分析」——每月 1 日 site_keywords 自动采集（SEO 数据源开启时）</span></p>
+      {!seoEnabled && <p className="muted" style={{ margin: "0 0 8px" }}>配置 SEO 数据源后解锁：每月自动分析标杆站的关键词排名页面，高流量页需求词一键加入词库候选。<button className="text-button" onClick={() => ws.navigate("settings")}>前往设置 →</button></p>}
+      {sites === null ? <Skeleton rows={2} label="标杆站加载中" /> : (
+        <>
+          <div className="discovery-list">
+            {sites.map((s) => (
+              <article className="discovery-row" key={s.host} style={{ padding: "10px 4px" }}>
+                <div className="row-content">
+                  <div className="row-meta">
+                    <strong>{s.name || s.host}</strong>
+                    <span>最近分析 {s.lastAnalyzedAt ? date(s.lastAnalyzedAt) : "未分析"}</span>
+                    <span>页面数据 {s.pageCount || 0} 条</span>
+                    <span>高流量页 {s.trafficPages || 0}</span>
+                  </div>
+                </div>
+                <div className="row-side">
+                  <button className="button-secondary" onClick={() => { const h = openHost === s.host ? "" : s.host; setOpenHost(h); if (h) void api<any>(`benchmark-pages?host=${encodeURIComponent(h)}`).then((r) => { setSites((prev) => (prev || []).map((x) => x.host === h ? { ...x, samplePages: r.items || [] } : x)); }).catch(() => {}); }}>{openHost === s.host ? "收起" : "页面列表"}</button>
+                  <button disabled={busy} onClick={() => void act(async () => { await api("benchmark-sites", { action: "remove", host: s.host }); })}>删除</button>
+                </div>
+              </article>
+            ))}
+            {openHost && (
+              <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px" }}>
+                {(sites.find((x) => x.host === openHost)?.samplePages || []).length === 0 ? (
+                  <p className="muted" style={{ margin: 0 }}>暂无页面数据（SEO 数据源开启后每月 1 日自动采集）。</p>
+                ) : sites.find((x) => x.host === openHost)?.samplePages.map((pg: any) => (
+                  <div key={pg.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", borderBottom: "1px solid var(--line)" }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>
+                      {pg.url ? <a href={pg.url} target="_blank" rel="noopener noreferrer">{pg.keyword || pg.url} ↗</a> : pg.keyword}
+                      {typeof pg.traffic === "number" && ` · 流量 ${pg.traffic.toLocaleString()}`}{typeof pg.volume === "number" && ` · 月搜 ${pg.volume.toLocaleString()}`}
+                    </span>
+                    {pg.keyword && <button disabled={busy} onClick={() => void act(async () => { const r = await api<any>("benchmark-words", { items: [{ keyword: pg.keyword, host: openHost }] }); ws.setNotice(r.note || "已加入词库候选。"); })}>+ 词库候选</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <input style={{ flex: 1, maxWidth: 320 }} placeholder="添加标杆站域名（如 octavebase.com）" value={newHost} onChange={(e) => setNewHost(e.target.value)} />
+            <button disabled={busy || !newHost.trim()} onClick={() => void act(async () => { await api("benchmark-sites", { action: "add", host: newHost.trim() }); setNewHost(""); })}>添加</button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

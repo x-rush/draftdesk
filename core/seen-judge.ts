@@ -74,6 +74,17 @@ export function computeObsRatio(term: { obsByDay?: Record<string, number> }, now
 
 export type TermVerdict = "推荐" | "可以试试" | "不值得做" | "竞争度待查";
 
+// ---- 自采数据保质期（第七轮批3 W7-2 增补）----
+// serpDedicated/serpTop10Home 等 SERP 观测字段带 serpCheckedAt（采集时刻），超 60 天
+// 标 stale（数据待更新）并自动回探针队列重测；哥飞权威数据另有 90 天过期（seoMetricsFresh）
+// ——两套保质期并存，自采先行。
+export const SERP_STALE_DAYS = 60;
+
+export function isSerpStale(t: { serpCheckedAt?: string }, now: Date = new Date()): boolean {
+  if (typeof t.serpCheckedAt !== "string" || !Number.isFinite(Date.parse(t.serpCheckedAt))) return false;
+  return Date.now() - Date.parse(t.serpCheckedAt) > SERP_STALE_DAYS * DAY_MS;
+}
+
 // 「谷歌自答」守门（第五轮批 2b §4.8②）：单位换算/汇率/翻译/计算类词的流量被
 // Google 自答框直接吃掉，做站上限「可以试试」、不判「推荐」（保守分支本就 ≤可以试试）。
 // 命中是词级正则；存量已出档词读时复算即生效，无需迁移。
@@ -223,9 +234,9 @@ export async function trafficTierOf(host: string, db: Store, doFetch: typeof fet
 export async function gepheiTierOf(term: string, hosts: string[], db: Store, doFetch: typeof fetch, outer?: AbortSignal): Promise<TrafficTier | undefined> {
   if (!seoSourceEnabled(db)) return undefined;
   try {
-    if (seoBudgetLeft(db) > 0) {
+    if (seoBudgetLeft(db, "tier") > 0) {
       const results = await fetchSerp(db, term, doFetch, outer);
-      seoSpend(db, 1);
+      seoSpend(db, "tier", 1);
       const withTraffic = results.slice(0, 3).filter((r) => typeof r.traffic === "number");
       if (withTraffic.length) {
         const tiers = withTraffic.map((r) => {
@@ -239,10 +250,10 @@ export async function gepheiTierOf(term: string, hosts: string[], db: Store, doF
   } catch { /* serp 通道失败落逐 host */ }
   let best: TrafficTier | undefined;
   for (const h of hosts) {
-    if (seoBudgetLeft(db) <= 0) break;
+    if (seoBudgetLeft(db, "tier") <= 0) break;
     try {
       const raw = await seoApi.domainTraffic(db, h, doFetch, outer) as any;
-      seoSpend(db, 1);
+      seoSpend(db, "tier", 1);
       const visits = typeof raw === "number" ? raw : Number(raw?.visits ?? raw?.traffic ?? raw?.monthly_traffic ?? raw?.data?.visits ?? NaN);
       if (Number.isFinite(visits)) {
         const tier = visitsToTier(visits);
@@ -319,7 +330,7 @@ export async function siteGateAutoMark(db: Store, doFetch: typeof fetch = fetch,
     let verdict = evalSiteGate(t, gate);
     let metrics: { monthlySearch?: number; kd?: number; cpc?: number; gepheiFetchedAt?: string } = {};
     // 哥飞补查：降级达标但无新鲜指标 → 拉三指标落库并按全门槛重判（每日预算闸内）
-    if (verdict.pass && !seoMetricsFresh(t) && seoOn && seoBudgetLeft(db) > 0) {
+    if (verdict.pass && !seoMetricsFresh(t) && seoOn && seoBudgetLeft(db, "metrics") > 0) {
       try {
         const [m] = [...(await fetchKeywordMetrics(db, [word], doFetch)).values()];
         if (m && (m.monthlySearch !== undefined || m.kd !== undefined || m.cpc !== undefined || m.intent !== undefined)) {
@@ -503,7 +514,7 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
   const manual = db.get<any>("meta", "seen-dig-manual");
   const byManual = !!manual?.date && manual.date === today && (!done || manual.at > done.at);
   const queue = db.list<any>("seen-terms")
-    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global" && typeof t.serpDedicated !== "number")
+    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global" && (typeof t.serpDedicated !== "number" || isSerpStale(t)))
     .sort((a, b) => wordScore(b) - wordScore(a));
   if (!queue.length) {
     if (byManual && !done) db.put("meta", doneKey, { at: nowDate.toISOString(), date: today, batches: 0, queue: 0, queried: 0, failed: 0, sites: 0 });
@@ -619,6 +630,95 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
       // SEO 数据源开启时先经哥飞补查三指标（W7-3，异步不阻塞收尾）
       void siteGateAutoMark(db, doFetch).catch((e) =>
         console.error("[seen-judge] siteGate 自动标注失败（不影响判定主流程）:", e instanceof Error ? e.message : e));
+    }
+  })();
+}
+
+
+// ---- 哥飞指标日更（第七轮批3 W7-8，采集=内置 tick，token 唯一出口）----
+// 每日一道闸：挑当日待补指标词（strong+低竞争+global+无新鲜指标，按观测数降序 ≤200 与
+// metrics 池余量取小）批量查三指标落词库（W7-8 外部 Agent 同一落点），全门槛达标词
+// 自动出标（与 siteGateAutoMark 同语义：builtin-gate-v1、不覆写已有标注）。
+// 意图交叉验证/冲突标记属消费侧（外部 Agent 只读库）；开关关闭/token 缺失时零调用。
+const METRICS_DAILY_MAX = 200;
+
+export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
+  const day = nowDate.toISOString().slice(0, 10);
+  if (db.get("meta", "seo-metrics-done:" + day)) return;
+  if (!seoSourceEnabled(db)) return;
+  const gate = siteGateOf(db);
+  const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
+  const candidates = db.list<any>("seen-terms")
+    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global"
+      && typeof t.serpDedicated === "number" && t.serpDedicated <= gate.serpDedicatedMax
+      && !seoMetricsFresh(t) && !markedIds.has(termId(String(t.term || t.id))))
+    .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
+    .slice(0, Math.min(METRICS_DAILY_MAX, seoBudgetLeft(db, "metrics")));
+  if (!candidates.length) { db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: 0, marked: 0 }); return; }
+  const running = db.get<any>("meta", "seo-metrics-running");
+  if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
+  db.put("meta", "seo-metrics-running", { at: new Date().toISOString() });
+  void (async () => {
+    try {
+      const terms = candidates.map((t) => String(t.term || t.id));
+      const metrics = await fetchKeywordMetrics(db, terms, doFetch);
+      let marked = 0, stamped = 0;
+      for (const t of candidates) {
+        const word = String(t.term || t.id).trim();
+        const m = metrics.get(word);
+        if (!m) continue;
+        const patch = { ...(m.monthlySearch !== undefined ? { monthlySearch: m.monthlySearch } : {}), ...(m.kd !== undefined ? { kd: m.kd } : {}), ...(m.cpc !== undefined ? { cpc: m.cpc } : {}), gepheiFetchedAt: new Date().toISOString() };
+        stamped++;
+        const prev = db.get<any>("seen-terms", termId(word));
+        if (prev) {
+          const intentMap: Record<string, string> = { informational: "informational", commercial: "commercial", transactional: "commercial" };
+          const mappedIntent = m.intent ? intentMap[m.intent] : undefined;
+          db.put("seen-terms", termId(word), { ...prev, ...patch, ...(mappedIntent && !prev.intent ? { intent: mappedIntent } : {}), updatedAt: new Date().toISOString() });
+          bumpSeenTermsVersion(db);
+        }
+        // 全门槛达标且未标 → 自动出标（免费降级已标的词不覆写，维持批2 拍板）
+        const verdict = evalSiteGate({ ...t, ...patch }, gate);
+        if (!verdict.pass || markedIds.has(termId(word))) continue;
+        const seoId = word.toLowerCase();
+        const prevSeo = db.get<any>("seo-terms", seoId);
+        if (prevSeo?.siteCandidate === true) continue;
+        const stamp = new Date().toISOString();
+        // 域名清单（W7-10 新增3）：词根 + 常见后缀变体查可注册性（metrics 池 1 次/词），可注册前 5 落 doc
+        let domainSuggestions: string[] | undefined;
+        if (seoBudgetLeft(db, "metrics") > 0) {
+          try {
+            const base = termId(word).slice(0, 30).replace(/[^a-z0-9]/g, "") || "tool";
+            const cand = [...new Set([`${base}.com`, `${base}.io`, `${base}.app`, `${base}.dev`, `${base}.net`, `${base}ai.com`, `get${base}.com`, `try${base}.com`])];
+            const raw = await seoApi.domainAvailability(db, cand, doFetch) as any;
+            seoSpend(db, "metrics", 1);
+            const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.domains ?? [];
+            const available = list.filter((x) => (x?.available ?? x?.registrable ?? false) === true).map((x) => String(x?.domain || x?.name || "")).filter(Boolean);
+            domainSuggestions = (available.length ? available : cand).slice(0, 5);
+          } catch { /* 域名查询失败不阻塞出标 */ }
+        }
+        db.put("seo-terms", seoId, {
+          ...(prevSeo ?? {}), ...patch,
+          ...(domainSuggestions ? { domainSuggestions } : {}),
+          id: seoId, term: word,
+          siteCandidate: true, siteCandidateBy: "builtin-gate-v1", siteRationale: verdict.reason,
+          updatedAt: stamp, ...(prevSeo?.createdAt ? {} : { createdAt: stamp }),
+        });
+        markedIds.add(termId(word));
+        marked++;
+      }
+      db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: terms.length, stamped, marked });
+      if (marked > 0) {
+        // 出卡触发（W7-8 链路末端）：动态 import 避免与 opportunity.ts 的模块循环
+        const { generateOpportunities } = await import("./opportunity");
+        const r = generateOpportunities(db, { source: "auto" });
+        console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → 触发机会生成：新增 ${r.created} 卡`);
+      }
+      if (terms.length || marked) console.log(`[seo-metrics] 哥飞指标日更：补查 ${terms.length} 词（落库 ${stamped}）/ 全门槛新出标 ${marked}`);
+    } catch (e) {
+      console.error("[seo-metrics] 哥飞指标日更失败（次日重试）:", e instanceof Error ? e.message : e);
+      db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
+    } finally {
+      db.del("meta", "seo-metrics-running");
     }
   })();
 }
