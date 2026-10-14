@@ -1,11 +1,43 @@
 // 工作台全量 UI 审计（第七轮批4 沉淀）：视图遍历 + 关键交互冒烟 + 控制台错误捕获 + 截图产出。
-// 运行：node scripts/e2e-audit.mjs（需工作台已在 127.0.0.1:5173 运行；本机 Docker 个人版）。
+// 运行：node scripts/e2e-audit.mjs（需工作台已在 127.0.0.1:5173 运行）。
 // 产出：data/e2e-<view>.png 截图 + JSON 摘要（stdout）；发现 errors 时 exit 1。
-// 与 layout-audit.mjs 的分工：layout-audit 只查布局溢出；本脚本追加「功能断言」——
-// 每视图的关键区块/交互控件必须存在，交互动作（筛选/抽屉/回传框）必须生效。
-// playwright 来源与本机 Chrome 可执行路径沿用 data/layout-audit.mjs 的既有模式（不新增依赖）
-import { chromium } from 'file:///C:/Users/77958/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+//
+// Playwright 解析顺序（不强制新增 npm 依赖）：
+//   1. E2E_PLAYWRIGHT_PATH 环境变量指向 playwright 的 index.mjs（本机已有全局安装时用）；
+//   2. 项目 node_modules 内的 playwright（npm i -D playwright 后自动生效）。
+// Chrome 可执行路径：E2E_CHROME_PATH 环境变量；未设置时回退 playwright 自带 Chromium
+//（npx playwright install chromium）或常见安装位置。
+import { existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const FALLBACK_CHROME_PATHS = [
+  "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium-browser",
+];
+
+async function loadChromium() {
+  const candidates = [
+    process.env.E2E_PLAYWRIGHT_PATH,
+    "playwright",
+  ].filter(Boolean);
+  for (const spec of candidates) {
+    try {
+      const mod = spec.includes("/") || spec.includes("\\") ? await import(pathToFileURL(spec).href) : await import(spec);
+      if (mod?.chromium) return mod.chromium;
+    } catch { /* 尝试下一个来源 */ }
+  }
+  throw new Error("未找到 playwright：npm i -D playwright，或设 E2E_PLAYWRIGHT_PATH 指向其 index.mjs 绝对路径。");
+}
+
+function resolveChrome() {
+  if (process.env.E2E_CHROME_PATH) return process.env.E2E_CHROME_PATH;
+  return FALLBACK_CHROME_PATHS.find((p) => existsSync(p));
+}
+
+const chromium = await loadChromium();
+const CHROME = resolveChrome();
 
 const BASE = "http://127.0.0.1:5173";
 const views = ["discover", "hotspots", "library", "chat", "trends", "ideas", "activities", "decisions", "plans", "sources", "runs", "connections", "skills", "settings"];
@@ -29,7 +61,7 @@ const assertions = {
   ],
 };
 
-const browser = await chromium.launch({ headless: true, executablePath: CHROME });
+const browser = await chromium.launch({ headless: true, ...(CHROME ? { executablePath: CHROME } : {}) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror: ${String(e.message).slice(0, 120)}`));
