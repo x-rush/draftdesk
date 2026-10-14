@@ -9,10 +9,10 @@
 //   （写 root-probe-slowdown 名单，nextRootBatch 轮转剔除；名单 30 天后重新评估）
 // 全部日/周/月闸幂等；collect 池预算尽自动停；开关关闭=零调用。
 import type { Store } from "./store";
-import { termId, observeSuggestion } from "./seen-terms";
-import { seoSourceEnabled, seoBudgetLeft, seoSpend, seoApi } from "./seo-source";
+import { termId, observeSuggestion, bumpSeenTermsVersion } from "./seen-terms";
+import { seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, seoApi, SeoQuotaError, parseManualGephei } from "./seo-source";
 import { TOOL_ROOTS, AI_ROOTS, rootYieldStats } from "./seen-dig";
-import { now } from "./store";
+import { now, hash } from "./store";
 
 const DAY_MS = 86400000;
 
@@ -150,6 +150,8 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
   const month = monthOf(nowDate);
   if (db.get("meta", "geo-benchmark-done:" + month)) return;
   if (!seoSourceEnabled(db)) return;
+  // 双重门控（批4 W7-11⑤）：标杆站月更为付费接口，需「允许自动月更标杆站与外链反推」授权
+  if (!seoSourceOf(db).autoCollect) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
   const running = db.get<any>("meta", "geo-benchmark-running");
   if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
@@ -205,6 +207,8 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
   const half = halfMonthOf(nowDate);
   if (db.get("meta", "geo-links-done:" + half)) return;
   if (!seoSourceEnabled(db)) return;
+  // 双重门控（批4 W7-11⑤）：外链反推为付费接口，同上需授权勾选
+  if (!seoSourceOf(db).autoCollect) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
   const running = db.get<any>("meta", "geo-links-running");
   if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
@@ -248,3 +252,152 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
     }
   })();
 }
+
+// —— 新词发现批次（批4 W7-11③，GET keywords/batches 0 积分，免费保留自动）——
+// 每日一道闸：拉最新批次 → 过滤（英文/非品牌/长度，复用 filterTrendWord）→ 注入
+// seen-terms（source=gephei-newwords, status=new, seed=批次 id）；批次幂等（done 键记批次 id）。
+function parseBatches(raw: unknown): { id: string; keywordCount: number }[] {
+  const list: any[] = raw && typeof raw === "object" && Array.isArray((raw as any).data?.batches) ? (raw as any).data.batches : [];
+  return list
+    .filter((b) => typeof b?.id === "string")
+    .map((b) => ({ id: String(b.id), keywordCount: typeof b.keyword_count === "number" ? b.keyword_count : 0 }));
+}
+
+function parseBatchKeywords(raw: unknown): { keyword: string; verdict?: string }[] {
+  const kws: any[] = raw && typeof raw === "object" && Array.isArray((raw as any).data?.keywords) ? (raw as any).data.keywords : [];
+  return kws
+    .filter((k) => typeof k?.keyword === "string")
+    .map((k) => ({ keyword: String(k.keyword), verdict: typeof k.verdict === "string" ? k.verdict : undefined }));
+}
+
+export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
+  const day = nowDate.toISOString().slice(0, 10);
+  if (db.get("meta", "geo-newwords-done:" + day)) return;
+  if (!seoSourceEnabled(db)) return; // token 出口唯一；免费接口也只在数据源开启时跑
+  const running = db.get<any>("meta", "geo-newwords-running");
+  if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
+  db.put("meta", "geo-newwords-running", { at: new Date().toISOString() });
+  void (async () => {
+    try {
+      // 最新一批（哥飞新词发现管线每日多批，当日批优先；已消费批次幂等跳过）
+      const batchesRes = await doFetch(`${seoSourceOf(db).baseUrl.replace(/\/+$/, "")}/keywords/batches?page=1`, {
+        headers: { Authorization: `Bearer ${seoSourceOf(db).token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!batchesRes.ok) throw new Error(`batches HTTP ${batchesRes.status}`);
+      const batches = parseBatches(await batchesRes.json());
+      if (!batches.length) { db.put("meta", "geo-newwords-done:" + day, { at: new Date().toISOString(), injected: 0, batch: "" }); return; }
+      const latest = batches[0];
+      if (db.get("meta", "geo-newwords-batch:" + latest.id)) {
+        db.put("meta", "geo-newwords-done:" + day, { at: new Date().toISOString(), injected: 0, batch: latest.id, note: "最新批已消费" });
+        return;
+      }
+      const detailRes = await doFetch(`${seoSourceOf(db).baseUrl.replace(/\/+$/, "")}/keywords/batches/${encodeURIComponent(latest.id)}`, {
+        headers: { Authorization: `Bearer ${seoSourceOf(db).token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!detailRes.ok) throw new Error(`batch detail HTTP ${detailRes.status}`);
+      const keywords = parseBatchKeywords(await detailRes.json());
+      let injected = 0, skipped = 0;
+      for (const k of keywords) {
+        const clean = filterTrendWord(k.keyword);
+        if (!clean) { skipped++; continue; }
+        observeSuggestion(db, clean, "gephei-newwords:" + latest.id, { source: "gephei-newwords" });
+        injected++;
+      }
+      db.put("meta", "geo-newwords-batch:" + latest.id, { at: new Date().toISOString(), injected, skipped });
+      db.put("meta", "geo-newwords-done:" + day, { at: new Date().toISOString(), batch: latest.id, injected, skipped });
+      console.log(`[geo-collect] 新词发现：批次 ${latest.id}（${keywords.length} 词）/ 注入 ${injected} / 过滤 ${skipped}`);
+    } catch (e) {
+      console.error("[geo-collect] 新词发现失败（次日重试）:", e instanceof Error ? e.message : e);
+      db.put("meta", "geo-newwords-done:" + day, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
+    } finally {
+      db.del("meta", "geo-newwords-running");
+    }
+  })();
+}
+
+// —— 手动回传（批4 W7-11④）：哥飞站内查询结果粘贴 → 落词库指标字段 → 站群卡价值面板即时点亮 ——
+// ✋ 手动数据权重最高：写 monthlySearch/kd/cpc + gepheiFetchedAt=manualAt（复用新鲜度通道）+
+// sources 加 manual-gephei + manualAt；哥飞 intent 顺带落库并与内置对照（冲突标 intentConflict）。
+export function applyManualGephei(
+  db: Store,
+  raw: string,
+): { mode: "json" | "text"; applied: number; skipped: number; intentConflicts: number; cardsLit: number } {
+  const { items, mode } = parseManualGephei(raw);
+  const stamp = new Date().toISOString();
+  let applied = 0, skipped = 0, intentConflicts = 0, cardsLit = 0;
+  for (const item of items) {
+    const id = termId(item.term);
+    const prev = db.get<any>("seen-terms", id);
+    if (prev && prev.manualAt) { skipped++; continue; } // ✋ 已有手动数据权重最高，不覆盖
+    const patch = {
+      ...(item.monthlySearch !== undefined ? { monthlySearch: item.monthlySearch } : {}),
+      ...(item.kd !== undefined ? { kd: item.kd } : {}),
+      ...(item.cpc !== undefined ? { cpc: item.cpc } : {}),
+      gepheiFetchedAt: stamp,
+      manualAt: stamp,
+    };
+    if (prev) {
+      // 哥飞意图对照（②）：内置标注 vs 手动回传冲突标记留人工
+      let conflict = false;
+      if (item.intent && prev.intent && !String(prev.intent).toLowerCase().includes(String(item.intent).toLowerCase())) {
+        conflict = true;
+        intentConflicts++;
+      }
+      const mergedSources = [...new Set([...(prev.sources || []), "manual-gephei"])];
+      db.put("seen-terms", id, {
+        ...prev, ...patch,
+        sources: mergedSources,
+        ...(item.intent && !prev.intent ? { intent: item.intent } : {}),
+        ...(conflict ? { intentConflict: { manual: item.intent, builtin: prev.intent, at: stamp } } : {}),
+        updatedAt: stamp,
+      });
+      bumpSeenTermsVersion(db);
+    } else {
+      const mergedSources = ["manual-gephei"];
+      db.put("seen-terms", id, {
+        id, term: item.term.trim(),
+        status: "new" as const, observations: 1,
+        sources: mergedSources, relatedSearches: [], daysSeen: [stamp.slice(0, 10)],
+        obsByDay: { [stamp.slice(0, 10)]: 1 },
+        firstSeenAt: stamp, lastSeenAt: stamp, createdAt: stamp,
+        ...patch,
+        region: "global" as const,
+        relevance: undefined, // 手动指标不预设相关性，判定层照常
+        producedBy: "manual-gephei/1.0",
+        updatedAt: stamp,
+      });
+      bumpSeenTermsVersion(db);
+    }
+    applied++;
+    // seo-terms 已标词同步指标 → 机会卡即时点亮
+    const seoId = item.term.trim().toLowerCase();
+    const seo = db.get<any>("seo-terms", seoId);
+    if (seo?.siteCandidate === true) {
+      const nextSeo = { ...seo, ...patch, updatedAt: stamp };
+      db.put("seo-terms", seoId, nextSeo);
+      const score = item.monthlySearch !== undefined && item.kd !== undefined && item.cpc !== undefined
+        ? Math.round((item.monthlySearch * item.cpc / Math.max(1, item.kd)) * 10) / 10
+        : undefined;
+      const cardId = "opp-" + hash(`site:cand:${id}`).slice(0, 20); // 与 opportunity.upsert 同口径
+      const card = db.get<any>("opportunities", cardId);
+      if (card) {
+        db.put("opportunities", cardId, {
+          ...card,
+          ...(score !== undefined ? { seoMetrics: { monthlySearch: item.monthlySearch, kd: item.kd, cpc: item.cpc, valueScore: score }, valueUnverified: undefined } : {}),
+          updatedAt: stamp,
+        });
+        cardsLit++;
+      }
+    }
+  }
+  // 最近 3 条回传记录（UI 展示）
+  const rec = db.get<any>("meta", "manual-gephei-recent") || [];
+  const list: any[] = Array.isArray(rec) ? rec : [];
+  list.unshift({ at: stamp, mode, applied, skipped: items.length - applied, sample: items.slice(0, 3).map((i) => i.term) });
+  db.put("meta", "manual-gephei-recent", list.slice(0, 3));
+  return { mode, applied, skipped, intentConflicts, cardsLit };
+}
+
+

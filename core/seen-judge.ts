@@ -14,7 +14,7 @@
 import type { Store } from "./store";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { fetchSuggest, Limiter } from "./seen-dig";
-import { GEPHEI_TTL_MS, seoSourceEnabled, seoBudgetLeft, seoSpend, fetchKeywordMetrics, fetchSerp, seoApi } from "./seo-source";
+import { GEPHEI_TTL_MS, seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, fetchKeywordMetrics, fetchSerp, seoApi } from "./seo-source";
 
 const DAY_MS = 86400000;
 // 吞吐扩容（第五轮 §5，「按积压动态批数」落到验收口径）：
@@ -646,11 +646,15 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
   const day = nowDate.toISOString().slice(0, 10);
   if (db.get("meta", "seo-metrics-done:" + day)) return;
   if (!seoSourceEnabled(db)) return;
+  // 双重门控（批4 W7-11①）：付费接口自动查需 settings「允许自动查关键词指标」授权，
+  // 关闭时零调用——准站群卡走「待查指标」指导深链（手动回传）
+  if (!seoSourceOf(db).autoMetrics) return;
   const gate = siteGateOf(db);
   const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
   const candidates = db.list<any>("seen-terms")
     .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global"
       && typeof t.serpDedicated === "number" && t.serpDedicated <= gate.serpDedicatedMax
+      && (t.observations ?? 0) >= 5 // 批4：月累计 30 额度稀缺，只补观测达标的词
       && !seoMetricsFresh(t) && !markedIds.has(termId(String(t.term || t.id))))
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, Math.min(METRICS_DAILY_MAX, seoBudgetLeft(db, "metrics")));

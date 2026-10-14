@@ -157,7 +157,7 @@ export const routes: RouteDef[] = [
       const src = seoSourceOf(db);
       const budgetKeys = { tier: "builtinTierBudget", metrics: "builtinMetricsBudget", collect: "builtinCollectBudget" } as Record<string, "builtinTierBudget" | "builtinMetricsBudget" | "builtinCollectBudget">;
       const pools = (["tier", "metrics", "collect"] as const).map((p) => ({ pool: p, used: seoBudgetUsed(db, p), budget: src[budgetKeys[p]] }));
-      return json({ enabled: src.enabled, provider: src.provider, baseUrl: src.baseUrl, pools, hasToken: !!src.token });
+      return json({ enabled: src.enabled, provider: src.provider, baseUrl: src.baseUrl, pools, hasToken: !!src.token, autoMetrics: src.autoMetrics, autoCollect: src.autoCollect });
     },
   },
   {
@@ -171,6 +171,8 @@ export const routes: RouteDef[] = [
         builtinTierBudget: z.number().int().min(1).max(10000).optional(),
         builtinMetricsBudget: z.number().int().min(1).max(100000).optional(),
         builtinCollectBudget: z.number().int().min(1).max(10000).optional(),
+        autoMetrics: z.boolean().optional(),
+        autoCollect: z.boolean().optional(),
       }).strict().parse(await readBody());
       const prev = seoSourceOf(db);
       const token = parsed.token !== undefined ? parsed.token.trim() : prev.token;
@@ -178,7 +180,7 @@ export const routes: RouteDef[] = [
       db.put("config", "seoDataSource", next);
       const budgetKeys = { tier: "builtinTierBudget", metrics: "builtinMetricsBudget", collect: "builtinCollectBudget" } as const;
       const pools = (["tier", "metrics", "collect"] as const).map((p) => ({ pool: p, used: seoBudgetUsed(db, p), budget: next[budgetKeys[p]] }));
-      return json({ enabled: next.enabled, provider: next.provider, baseUrl: next.baseUrl, pools, hasToken: !!next.token });
+      return json({ enabled: next.enabled, provider: next.provider, baseUrl: next.baseUrl, pools, hasToken: !!next.token, autoMetrics: next.autoMetrics, autoCollect: next.autoCollect });
     },
   },
   {

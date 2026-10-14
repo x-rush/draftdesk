@@ -12,7 +12,7 @@ import { seenJudgeTick, seoMetricsTick } from "../core/seen-judge";
 import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
-import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick } from "../core/gephei-collect";
+import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick, newWordsTick } from "../core/gephei-collect";
 import { outlineCategoryTick } from "../core/outline-categorize";
 import { outlineDraftTick } from "../core/outline-draft";
 import { requestModel } from "../core/model";
@@ -43,9 +43,10 @@ export function startWorkerLoop(db: Store) {
         // external 模式此 tick 零动作（大纲由外部 Agent 写）。
         outlineDraftTick(db, requestModel);
         seenJudgeTick(db);
-        // 哥飞指标日更（第七轮批3 W7-8，采集=内置 tick，token 唯一出口）：
-        // 每日批量补查三指标落词库，全门槛达标自动出标；出标>0 时内部触发出卡（W7-8 链路末端）
+        // 哥飞指标日更（第七轮批3 W7-8；批4 双门控：autoMetrics 勾选才调付费接口，月池 30+obs≥5）
         seoMetricsTick(db);
+        // 新词发现批次（批4 W7-11③，0 积分免费保留自动）：latest 批次注入 seen-terms
+        newWordsTick(db);
         // 哥飞挖需求采集组（第七轮批3 W7-9）：趋势周更（周日）/标杆站月更（1 日）/外链反推（15 日），
         // collect 池记账；开关关闭=零调用（初筛采集，不受 consumerMode 门控）
         trendsRisingTick(db);

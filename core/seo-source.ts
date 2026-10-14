@@ -12,10 +12,13 @@ export type SeoSourceConfig = {
   provider: "gephei";
   token: string;
   baseUrl: string;
-  // 预算分池（老大批3 拍板）：档位补位链/指标补查/新词采集 各配独立日额度，互不抢占
+  // 预算分池（老大批3 拍板）：档位补位链/指标补查/新词采集 各配独立额度，互不抢占
   builtinTierBudget: number;
-  builtinMetricsBudget: number;
+  builtinMetricsBudget: number; // metrics 池为「每月」额度（批4：月累计 30）
   builtinCollectBudget: number;
+  // 授权勾选（批4 W7-11①⑤，默认关=纯手动模式零余额消耗）：付费接口自动调用需显式授权
+  autoMetrics: boolean; // 允许自动查关键词指标（三指标/域名清单）
+  autoCollect: boolean; // 允许自动月更标杆站与外链反推
 };
 
 export const DEFAULT_SEO_SOURCE: SeoSourceConfig = {
@@ -26,6 +29,8 @@ export const DEFAULT_SEO_SOURCE: SeoSourceConfig = {
   builtinTierBudget: 60,
   builtinMetricsBudget: 30,
   builtinCollectBudget: 100,
+  autoMetrics: false,
+  autoCollect: false,
 };
 
 const DAY_MS = 86400000;
@@ -48,27 +53,32 @@ export function seoSourceEnabled(db: Store): boolean {
 // ---- 积分断路器（内置侧）：三池独立记账（tier=SERP 量级档位补位 / metrics=三指标补查 / collect=新词采集），
 // 超限静默停（免费路径兜底）。老大批3 拍板：各池独立额度互不抢占。
 export type SeoPool = "tier" | "metrics" | "collect";
-const POOL_META: Record<SeoPool, { prefix: string; budget: (s: SeoSourceConfig) => number }> = {
+// metrics 池为月粒度（批4 W7-11①「月累计 30」），tier/collect 仍按日
+const POOL_META: Record<SeoPool, { prefix: string; budget: (s: SeoSourceConfig) => number; monthly?: boolean }> = {
   tier: { prefix: "seo-api-used:tier:", budget: (s) => s.builtinTierBudget },
-  metrics: { prefix: "seo-api-used:metrics:", budget: (s) => s.builtinMetricsBudget },
+  metrics: { prefix: "seo-api-used:metrics:", budget: (s) => s.builtinMetricsBudget, monthly: true },
   collect: { prefix: "seo-api-used:collect:", budget: (s) => s.builtinCollectBudget },
 };
 
-function poolKey(pool: SeoPool, day: string) { return POOL_META[pool].prefix + day; }
-
-export function seoBudgetUsed(db: Store, pool: SeoPool): number {
-  const day = new Date().toISOString().slice(0, 10);
-  return db.get<any>("meta", poolKey(pool, day))?.calls ?? 0;
+function poolKey(pool: SeoPool, now: Date): string {
+  const meta = POOL_META[pool];
+  const stamp = meta.monthly
+    ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit" }).format(now)
+    : new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(now);
+  return meta.prefix + stamp;
 }
 
-export function seoBudgetLeft(db: Store, pool: SeoPool): number {
-  return Math.max(0, POOL_META[pool].budget(seoSourceOf(db)) - seoBudgetUsed(db, pool));
+export function seoBudgetUsed(db: Store, pool: SeoPool, now: Date = new Date()): number {
+  return db.get<any>("meta", poolKey(pool, now))?.calls ?? 0;
 }
 
-export function seoSpend(db: Store, pool: SeoPool, words: number): void {
+export function seoBudgetLeft(db: Store, pool: SeoPool, now: Date = new Date()): number {
+  return Math.max(0, POOL_META[pool].budget(seoSourceOf(db)) - seoBudgetUsed(db, pool, now));
+}
+
+export function seoSpend(db: Store, pool: SeoPool, words: number, now: Date = new Date()): void {
   if (words <= 0) return;
-  const day = new Date().toISOString().slice(0, 10);
-  const key = poolKey(pool, day);
+  const key = poolKey(pool, now);
   const prev = db.get<any>("meta", key)?.calls ?? 0;
   db.put("meta", key, { calls: prev + words, at: new Date().toISOString() });
 }
@@ -182,10 +192,10 @@ export async function fetchKeywordMetrics(db: Store, terms: string[], doFetch: t
   seoSpend(db, "metrics", spend);
   const batch = terms.slice(0, spend);
   const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch((e) => { if (e instanceof SeoQuotaError) throw e; return fallback; });
-  const [volumes, difficulties, intents] = await Promise.all([
+  // search_intent 永久内置 AI（批4 W7-11②：不自动查哥飞意图，省 5 分/词；仅手动回传顺带落库对照）
+  const [volumes, difficulties] = await Promise.all([
     safe(gepheiCall(db, GEPHEI_ENDPOINTS.keywordVolume, { keywords: batch }, doFetch, outer), null as any),
-    safe(gepheiCall(db, GEPHEI_ENDPOINTS.keywordDifficulty, { keywords: batch }, doFetch, outer), null as any),
-    safe(gepheiCall(db, GEPHEI_ENDPOINTS.searchIntent, { keywords: batch }, doFetch, outer), null as any),
+    safe(gepheiCall(db, GEPHEI_ENDPOINTS.bulkKeywordDifficulty, { keywords: batch }, doFetch, outer), null as any),
   ]).catch((e) => {
     if (e instanceof SeoQuotaError) console.warn(`[seo-source] 哥飞余额不足，本批 ${batch.length} 词跳过（充值后次日自动恢复）`);
     throw e;
@@ -199,16 +209,15 @@ export async function fetchKeywordMetrics(db: Store, terms: string[], doFetch: t
     }
     return m;
   };
-  const v = byTerm(volumes), d = byTerm(difficulties), i = byTerm(intents);
+  const v = byTerm(volumes), d = byTerm(difficulties);
   for (const term of batch) {
     const key = term.trim().toLowerCase();
     // 显式赋值合并（弃用三连 spread：tsx 下曾出现后段键值静默丢失的诡异行为）
     const merged: KeywordMetrics = {};
-    const mv = v.get(key), md = d.get(key), mi = i.get(key);
+    const mv = v.get(key), md = d.get(key);
     if (mv?.monthlySearch !== undefined) merged.monthlySearch = mv.monthlySearch;
     if (mv?.cpc !== undefined) merged.cpc = mv.cpc;
     if (md?.kd !== undefined) merged.kd = md.kd;
-    if (mi?.intent !== undefined) merged.intent = mi.intent;
     if (merged.monthlySearch !== undefined || merged.kd !== undefined || merged.cpc !== undefined || merged.intent !== undefined) out.set(term, merged);
   }
   return out;
@@ -296,3 +305,55 @@ export async function seoConnectionTest(db: Store, doFetch: typeof fetch): Promi
     return { ok: false, message: "连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 160) };
   }
 };
+
+// —— 哥飞站内工具页深链（批4 W7-11①⑥：实测真实路径 2026-10-14 全部 200，禁止臆造 /tools/）——
+// 准站群卡「待查指标」指导行用：词专属预填 kw 参数，老大点开即达零记忆。
+export const GEPHEI_SITE = "https://seo.web.cafe";
+export function gepheiToolLinks(term: string): { label: string; url: string }[] {
+  const kw = encodeURIComponent(term);
+  return [
+    { label: "难度", url: `${GEPHEI_SITE}/kd/?kw=${kw}` },
+    { label: "搜索量/拓词", url: `${GEPHEI_SITE}/ideas/?kw=${kw}` },
+    { label: "SERP", url: `${GEPHEI_SITE}/serp/?kw=${kw}` },
+    { label: "站点词", url: `${GEPHEI_SITE}/sitekw/?kw=${kw}` },
+    { label: "流量", url: `${GEPHEI_SITE}/traffic/?kw=${kw}` },
+    { label: "估值", url: `${GEPHEI_SITE}/worth/?kw=${kw}` },
+    { label: "DR", url: `${GEPHEI_SITE}/dr/?kw=${kw}` },
+  ];
+}
+
+// 手动回传（批4 W7-11④）：解析哥飞站内查询结果粘贴文本——JSON 优先，回退按行
+// 切分（tab/竖线/多空格），字段序=词 月搜 KD CPC（后三可缺）。防御式，解析不出的行跳过。
+export type ManualGepheiItem = { term: string; monthlySearch?: number; kd?: number; cpc?: number; intent?: string };
+export function parseManualGephei(raw: string): { items: ManualGepheiItem[]; mode: "json" | "text" } {
+  const text = String(raw || "").trim();
+  if (!text) return { items: [], mode: "text" };
+  try {
+    const parsed = JSON.parse(text);
+    const list: any[] = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : [];
+    const items: ManualGepheiItem[] = [];
+    for (const item of list) {
+      const term = String(item?.keyword ?? item?.term ?? "").trim().slice(0, 80);
+      if (!term) continue;
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      items.push({
+        term,
+        monthlySearch: num(item?.volume ?? item?.monthlySearch ?? item?.monthly_search),
+        kd: num(item?.difficulty ?? item?.kd),
+        cpc: num(item?.cpc),
+        intent: typeof item?.intent === "string" ? item.intent.slice(0, 30) : undefined,
+      });
+    }
+    if (items.length) return { items, mode: "json" };
+  } catch { /* 回退文本模式 */ }
+  const items: ManualGepheiItem[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const cols = line.trim().split(/\t|\s{2,}|\s*\|\s*/).filter(Boolean);
+    if (cols.length < 2) continue;
+    const term = cols[0].trim().slice(0, 80);
+    const nums = cols.slice(1).map((c) => Number(String(c).replace(/[$,%]/g, ""))).filter((n) => Number.isFinite(n));
+    if (!term || !nums.length) continue;
+    items.push({ term, monthlySearch: nums[0], kd: nums[1], cpc: nums[2] });
+  }
+  return { items, mode: "text" };
+}

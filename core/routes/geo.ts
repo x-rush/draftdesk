@@ -7,7 +7,7 @@ import { json } from "../http/middleware";
 import { paginatedSql } from "../http/pagination";
 import { now } from "../store";
 import { observeSuggestion, termId } from "../seen-terms";
-import { ensureBenchmarkSeeds } from "../gephei-collect";
+import { ensureBenchmarkSeeds, applyManualGephei } from "../gephei-collect";
 
 const BRAND_RE = /openai|anthropic|claude|gemini|midjourney|perplexity|google|microsoft|github|amazon|netlify|facebook|apple|nvidia|notion|slack|zoom|figma|spotify|youtube|tesla|chatgpt|bytedance|baidu|alibaba|tencent/i;
 
@@ -83,6 +83,29 @@ export const routes: RouteDef[] = [
     methods: ["GET"],
     pattern: "link-prospects",
     handler: ({ db }) => json({ items: db.list<any>("link-prospects"), total: db.list<any>("link-prospects").length }),
+  },
+  {
+    // UI 口：手动回传（批4 W7-11④）——粘贴哥飞站内查询结果（JSON/文本双模式后端解析），
+    // 落词库指标字段（✋manual-gephei 权重最高）+ 已出标词的机会卡价值面板即时点亮
+    methods: ["POST"],
+    pattern: "seo-terms/manual",
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({ raw: z.string().min(2).max(20000) }).strict().parse(await readBody());
+      const result = applyManualGephei(db, parsed.raw);
+      return json({
+        ok: true, ...result,
+        note: `回传 ${result.applied} 词（${result.mode === "json" ? "JSON" : "文本"}模式）${result.cardsLit ? `，${result.cardsLit} 张站群卡价值面板已点亮` : ""}${result.intentConflicts ? `，意图冲突 ${result.intentConflicts} 条留人工` : ""}。`,
+      });
+    },
+  },
+  {
+    // UI 口：最近 3 条手动回传记录
+    methods: ["GET"],
+    pattern: "seo-terms/manual/recent",
+    handler: ({ db }) => {
+      const rec = db.get<any>("meta", "manual-gephei-recent");
+      return json({ items: Array.isArray(rec) ? rec.slice(0, 3) : [] });
+    },
   },
   {
     // Agent 读口：标杆站页面（第十二步消费侧=外部 Agent 挑高流量页需求词）

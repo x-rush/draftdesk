@@ -22,7 +22,7 @@ function cleanup(dir: string) {
 }
 
 const enableSeo = (db: Store, budgets: { tier?: number; metrics?: number; collect?: number } = {}) =>
-  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100 });
+  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100, autoMetrics: true, autoCollect: true });
 
 const mkTerm = (term: string, extra: Record<string, unknown> = {}) => ({
   id: termId(term), term, status: "rising", observations: 9,
@@ -173,7 +173,7 @@ test("哥飞指标日更（W7-8）：批量补查落库+全门槛出标+域名�
     assert.ok(seen, "日更批次完成键落盘");
     assert.equal(seen.monthlySearch, 880, "三指标落词库");
     assert.equal(seen.kd, 12);
-    assert.equal(seen.intent, "commercial", "哥飞意图补缺");
+    assert.equal(seen.intent, undefined, "批4②：意图不自动查（手动回传才落哥飞意图对照）");
     assert.ok(seen.gepheiFetchedAt, "时间戳");
     const seo = db.get<any>("seo-terms", "zz mock tool");
     assert.equal(seo.siteCandidate, true, "全门槛达标自动出标");

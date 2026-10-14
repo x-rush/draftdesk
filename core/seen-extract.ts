@@ -195,6 +195,7 @@ function applyExtractedTerms(db: Store, text: string): number {
 // persona 判定标尺（种子池污染清洗批 ②）：提取与回填判定共用同一段，
 // 混合词按动态内容判定（汽车词=off），正反例给足防误标。
 const PERSONA_RUBRIC = [
+  "深度判断方法论参照 skills/seo-methodology/SKILL.md（哥飞 SEO 方法论判定引擎，工作台内置）。",
   "## 我们做什么（persona，相关性判断的唯一基准）",
   "AI 工作流 / 内容创作 / 独立开发 / 出海工具站——即 AI 全谱系：技术、工具、模型、AI 名人动态、AI 政策与版权、AI 内容赛道。",
   "",

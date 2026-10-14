@@ -264,9 +264,27 @@ export function Settings({
                 onChange={(e) => setSeoToken(e.target.value)}
               />
             </Field>
-            <Field label="每日积分预算（三池独立，互不抢占）" hint="内置侧断路器：档位补位链（tier）/指标补查（metrics）/新词采集（collect）各配独立日额度，额度尽自动停、次日恢复。">
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label className="check" title="勾选后日更 tick 自动查三指标/域名清单（月累计 metrics 池 30 + 单词观测≥5）；不勾=纯手动模式（手动回传+指导深链），零余额消耗">
+                <input
+                  type="checkbox"
+                  checked={!!seoSrc?.autoMetrics}
+                  onChange={(e) => setSeoSrc({ ...seoSrc, autoMetrics: e.target.checked })}
+                />
+                允许自动查关键词指标（三指标/域名清单，月累计 30）
+              </label>
+              <label className="check" title="勾选后每月 1 日自动标杆站分析、每月 15 日外链反推；不勾=纯手动模式">
+                <input
+                  type="checkbox"
+                  checked={!!seoSrc?.autoCollect}
+                  onChange={(e) => setSeoSrc({ ...seoSrc, autoCollect: e.target.checked })}
+                />
+                允许自动月更标杆站与外链反推
+              </label>
+            </div>
+            <Field label="积分预算（三池独立，互不抢占；指标补查按月累计）" hint="内置侧断路器：档位补位链（tier/日）/指标补查（metrics/月累计，批4 默认 30）/新词采集（collect/日），额度尽自动停、下期恢复。">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {([["builtinTierBudget", "档位补位 tier"], ["builtinMetricsBudget", "指标补查 metrics"], ["builtinCollectBudget", "新词采集 collect"]] as const).map(([key, label]) => (
+                {([["builtinTierBudget", "档位补位 tier/日"], ["builtinMetricsBudget", "指标补查 metrics/月"], ["builtinCollectBudget", "新词采集 collect/日"]] as const).map(([key, label]) => (
                   <label key={key} style={{ fontSize: 12 }}>
                     <span className="muted">{label}</span>
                     <input
@@ -290,6 +308,8 @@ export function Settings({
                   setSeoMsg(null);
                   void api<any>("seoDataSource", {
                     enabled: seoSrc.enabled,
+                    autoMetrics: !!seoSrc.autoMetrics,
+                    autoCollect: !!seoSrc.autoCollect,
                     builtinTierBudget: Number(seoSrc.builtinTierBudget) || 60,
                     builtinMetricsBudget: Number(seoSrc.builtinMetricsBudget) || 30,
                     builtinCollectBudget: Number(seoSrc.builtinCollectBudget) || 100,

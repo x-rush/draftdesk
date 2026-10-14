@@ -316,6 +316,7 @@ function SeenTermDrawer({ ws, term, onClose, onSearch }: { ws: Workspace; term: 
         <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
           状态 {term.status} · 观测 {term.observations} 次{term.seed ? ` · 血缘 ${term.seed}` : ""}
           {(term.sources || []).some((x: string) => String(x).startsWith("gephei-")) && " · ⬆ 哥飞注入"}
+          {term.manualAt && <span style={{ color: "#8a6d1a" }}> · ✋ 手动回传（{new Date(term.manualAt).toLocaleDateString("zh-CN")}，权重最高）</span>}
           {stale && " · ⏳ 数据待更新（超 60 天，回探针队列重测中）"}
         </p>
 

@@ -65,8 +65,8 @@ test("适配器门控：关闭时零外部调用（fetch 计数 0）；开启后
     assert.equal(metrics?.monthlySearch, 1000);
     assert.equal(metrics?.kd, 10);
     assert.equal(metrics?.cpc, 0.5);
-    assert.equal(metrics?.intent, "commercial");
-    assert.equal(calls.length, 3, "三接口各一次");
+    assert.equal(metrics?.intent, undefined, "search_intent 内置化（批4②不自动查哥飞意图）");
+    assert.equal(calls.length, 2, "双接口各一次（volume+difficulty，intent 内置化）");
     assert.equal(seoBudgetUsed(db, "metrics"), 1, "按词计预算（metrics 池）");
     // 全门槛判定路径：带 gepheiFetchedAt 的新鲜指标 → full 达标
     const term = { relevance: "strong", region: "global", serpDedicated: 0, ...metrics, gepheiFetchedAt: new Date().toISOString() };
@@ -159,7 +159,7 @@ test("siteGateAutoMark 哥飞补查：降级达标词拉指标落库并按全门
     assert.ok(String(seo.siteRationale).includes("全门槛达标"), "升级为全门槛口径");
     const seen = db.get<any>("seen-terms", "达标词");
     assert.equal(seen.monthlySearch, 1000, "词库（seen-terms）同落指标（W7-8 同口径）");
-    assert.equal(seen.intent, "commercial", "哥飞意图补缺落词库轴");
+    assert.equal(seen.intent, undefined, "批4②：意图不自动查（内置 AI 标注为准）");
     // 不达标指标词：全门槛未达 → 不出标
     db.put("seen-terms", "弱价值词", { id: "弱价值词", term: "弱价值词", status: "rising", observations: 9, sources: ["hn"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "", relevance: "strong", region: "global", serpDedicated: 0 });
     const { fakeFetch: lowFetch } = mockGephei({ volume: 100 });

@@ -120,6 +120,14 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                     ) : (
                       o.seoMetrics && <p className="muted" style={{ margin: "0 0 4px" }}>🌐 域名清单：配置 SEO 数据源后由日更自动补全（可注册域名 up to 5）。</p>
                     )}
+                    {o.valueUnverified && (
+                      <p className="muted" style={{ margin: "0 0 4px" }}>
+                        ⏳ 待查指标（点开即达哥飞站内，词已预填；或站点发现页「手动回传」粘贴结果）：
+                        {["kd", "ideas", "serp"].map((tool) => (
+                          <a key={tool} className="text-button" style={{ padding: "0 4px" }} target="_blank" rel="noopener noreferrer" href={`https://seo.web.cafe/${tool}/?kw=${encodeURIComponent(o.term || "")}`}>{tool === "kd" ? "难度" : tool === "ideas" ? "搜索量/拓词" : "SERP"} ↗</a>
+                        ))}
+                      </p>
+                    )}
                     {o.competitors?.length ? (
                       <details className="fold-card">
                         <summary>竞品档案：SERP 前 {o.competitors.length} 域名（类型/量级档）</summary>
@@ -257,6 +265,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
       </nav>
       {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} onJumpSites={(host) => { setTab("sites"); setNotice("新站发现交叉站：" + host + "（已在站点发现列表中，可按排序查看）。"); }} />}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
+      {tab === "sites" && <ManualReturnPanel ws={ws} />}
       {tab === "sites" && <BenchmarkPanel ws={ws} />}
       {tab === "sites" && (
         discoveries.length === 0 ? (
@@ -362,6 +371,39 @@ function BenchmarkPanel({ ws }: { ws: Workspace }) {
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+// 手动回传（批4 W7-11④）：粘贴哥飞站内查询结果 → 后端解析（JSON/文本双模式）落词库指标
+// （✋manual-gephei 权重最高）→ 站群卡价值面板即时点亮；带最近 3 条回传记录。仅数据源开启时显示。
+function ManualReturnPanel({ ws }: { ws: Workspace }) {
+  const seoEnabled = !!ws.data?.config?.seoDataSource?.enabled;
+  const [raw, setRaw] = useState("");
+  const [recent, setRecent] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const load = () => void api<any>("seo-terms/manual/recent").then((r) => setRecent(r.items || [])).catch(() => {});
+  useEffect(() => { load(); }, []);
+  if (!seoEnabled) return null;
+  return (
+    <section className="surface" style={{ padding: "16px 18px", marginBottom: 14 }}>
+      <p className="dash-label" style={{ marginTop: 0 }}>✋ 手动回传<span className="dash-label-sub">粘贴哥飞站内查询结果（JSON 或 每行「词 月搜 KD CPC」文本），✋手动数据权重最高，站群卡价值面板即时点亮</span></p>
+      <textarea
+        style={{ width: "100%", minHeight: 72, fontFamily: "monospace", fontSize: 12 }}
+        placeholder={'JSON：[{"keyword":"ai agent","volume":880,"kd":12,"cpc":0.6}]' + "\n" + '或文本（每行）：ai agent  880  12  0.6'}
+        onChange={(e) => setRaw(e.target.value)}
+      />
+      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+        <button disabled={busy || raw.trim().length < 2} onClick={() => {
+          setBusy(true);
+          void api<any>("seo-terms/manual", { raw }).then((r) => { ws.setNotice(""); setRaw(""); load(); ws.refresh(); }).catch(() => {}).finally(() => setBusy(false));
+        }}>{busy ? "回传中…" : "回传落库"}</button>
+        {recent.length > 0 && (
+          <span className="muted" style={{ fontSize: 12 }}>
+            最近：{recent.map((r, i) => `${new Date(r.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} ${r.applied} 词${i < recent.length - 1 ? " · " : ""}`)}
+          </span>
+        )}
+      </div>
     </section>
   );
 }
