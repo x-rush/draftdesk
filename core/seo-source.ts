@@ -22,7 +22,7 @@ export const DEFAULT_SEO_SOURCE: SeoSourceConfig = {
   enabled: false,
   provider: "gephei",
   token: "",
-  baseUrl: "https://seo.web.cafe/api",
+  baseUrl: "https://seo.web.cafe/api/v1",
   builtinTierBudget: 60,
   builtinMetricsBudget: 200,
   builtinCollectBudget: 100,
@@ -34,7 +34,10 @@ export const GEPHEI_TTL_MS = 90 * DAY_MS;
 
 export function seoSourceOf(db: Store): SeoSourceConfig {
   const cfg = db.get<any>("config", "seoDataSource");
-  return { ...DEFAULT_SEO_SOURCE, ...(cfg && typeof cfg === "object" ? cfg : {}), provider: "gephei" };
+  const merged = { ...DEFAULT_SEO_SOURCE, ...(cfg && typeof cfg === "object" ? cfg : {}), provider: "gephei" as const };
+  // 存量纠正（第七轮批3 联调）：预置过的旧 baseUrl 以 /api 结尾，真实合同是 /api/v1 前缀
+  if (typeof merged.baseUrl === "string" && merged.baseUrl.endsWith("/api")) merged.baseUrl += "/v1";
+  return merged;
 }
 
 export function seoSourceEnabled(db: Store): boolean {
@@ -74,28 +77,56 @@ export function seoSpend(db: Store, pool: SeoPool, words: number): void {
 // 预置约定：POST JSON，Authorization: Bearer <token>。哥飞实际合同在批3 联调时校准。
 type SeoEndpoints = Record<string, string>;
 export const GEPHEI_ENDPOINTS: SeoEndpoints = {
+  // —— 关键词 ——
   keywordVolume: "/keyword_volume",
-  keywordDifficulty: "/bulk_keyword_difficulty",
+  keywordDifficulty: "/keyword_difficulty",
+  bulkKeywordDifficulty: "/bulk_keyword_difficulty",
   searchIntent: "/search_intent",
   keywordIdeas: "/keyword_ideas",
+  lookupKeywords: "/lookup_keywords",
+  searchKnownKeywords: "/search_known_keywords",
+  keywordsBatches: "/keywords/batches",
+  // —— SERP / 趋势 ——
+  serp: "/serp",
+  serpReview: "/serp_review",
   trendsRising: "/trends_rising",
   googleTrends: "/google_trends",
-  serp: "/serp",
+  translateDemand: "/translate_demand",
+  // —— 网站 / 域名 ——
   siteKeywords: "/site_keywords",
   domainOverview: "/domain_overview",
   domainTraffic: "/domain_traffic",
-  domainRating: "/domain_rating",
+  domainDr: "/domain_dr",
   findLinkProspects: "/find_link_prospects",
   domainAvailability: "/domain_availability",
   lookupDomains: "/lookup_domains",
   websiteWorth: "/website_worth",
+  domainReview: "/domain_review",
+  bulkDomainScan: "/bulk_domain_scan",
+  searchKnownSites: "/search_known_sites",
+  siteHistory: "/site_history",
+  domainTimeline: "/domain_timeline",
+  // —— 页面 / 变现 ——
+  pageCoach: "/page_coach",
+  onpageAudit: "/onpage_audit",
+  adsenseAudit: "/adsense_audit",
+  brandNaming: "/brand_naming",
+  fetchUrl: "/fetch_url",
+  // —— 知识库 ——
+  loadGuide: "/load_guide",
+  knowledgeAsk: "/knowledge_ask",
   knowledgeSearch: "/knowledge_search",
   knowledgeRead: "/knowledge_read",
-  knowledgeAsk: "/knowledge_ask",
-};
+}
 
 export class SeoSourceOffError extends Error {
   constructor() { super("SEO 数据源未配置：设置页开启「SEO 数据源」并填写令牌后解锁（关闭状态下零外部调用）。"); }
+}
+
+// 开放 API 只扣钱包余额（每日赠送额度仅限网站内使用）——402 quota = 余额不足，
+// 批量调用应短路当日而非逐词重试。
+export class SeoQuotaError extends Error {
+  constructor(message: string) { super(message); }
 }
 
 export async function gepheiCall<T = any>(db: Store, endpoint: string, payload: Record<string, unknown>, doFetch: typeof fetch, outer?: AbortSignal): Promise<T> {
@@ -108,6 +139,7 @@ export async function gepheiCall<T = any>(db: Store, endpoint: string, payload: 
     body: JSON.stringify(payload),
     signal: AbortSignal.any([outer ?? AbortSignal.timeout(60000), AbortSignal.timeout(15000)]),
   });
+  if (response.status === 402) throw new SeoQuotaError("哥飞开放 API 积分余额不足（每日赠送额度不适用于开放 API）——到 seo.web.cafe/wallet/ 购买积分包后继续。");
   if (!response.ok) throw new Error(`gephei ${endpoint} HTTP ${response.status}`);
   return await response.json() as T;
 }
@@ -149,12 +181,15 @@ export async function fetchKeywordMetrics(db: Store, terms: string[], doFetch: t
   const spend = Math.min(terms.length, seoBudgetLeft(db, "metrics"));
   seoSpend(db, "metrics", spend);
   const batch = terms.slice(0, spend);
-  const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch(() => fallback);
+  const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch((e) => { if (e instanceof SeoQuotaError) throw e; return fallback; });
   const [volumes, difficulties, intents] = await Promise.all([
     safe(gepheiCall(db, GEPHEI_ENDPOINTS.keywordVolume, { keywords: batch }, doFetch, outer), null as any),
     safe(gepheiCall(db, GEPHEI_ENDPOINTS.keywordDifficulty, { keywords: batch }, doFetch, outer), null as any),
     safe(gepheiCall(db, GEPHEI_ENDPOINTS.searchIntent, { keywords: batch }, doFetch, outer), null as any),
-  ]);
+  ]).catch((e) => {
+    if (e instanceof SeoQuotaError) console.warn(`[seo-source] 哥飞余额不足，本批 ${batch.length} 词跳过（充值后次日自动恢复）`);
+    throw e;
+  });
   const byTerm = (raw: any): Map<string, KeywordMetrics> => {
     const m = new Map<string, KeywordMetrics>();
     const list: any[] = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Array.isArray(raw.data) ? raw.data : Object.entries(raw).map(([keyword, v]) => ({ keyword, ...(typeof v === "object" ? v : { volume: v }) })) : [];
@@ -208,20 +243,23 @@ export function normalizeSerpResults(raw: unknown): SeoSerpResult[] {
 
 export async function fetchSerp(db: Store, term: string, doFetch: typeof fetch, outer?: AbortSignal): Promise<SeoSerpResult[]> {
   if (!seoSourceEnabled(db)) throw new SeoSourceOffError();
-  const raw = await gepheiCall(db, GEPHEI_ENDPOINTS.serp, { keyword: term }, doFetch, outer);
+  // 官方合同：serp 参数名 q（≤200 字符），gl 默认 us
+  const raw = await gepheiCall(db, GEPHEI_ENDPOINTS.serp, { q: term.slice(0, 200), gl: "us" }, doFetch, outer);
   return normalizeSerpResults(raw);
 }
 
 // ---- 全量扩展方法面（挖词/找词/找需求；批3 外部 Agent 日更与内置深查使用）----
 export const seoApi = {
   keywordIdeas: (db: Store, term: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.keywordIdeas, { keyword: term }, doFetch, outer),
-  trendsRising: (db: Store, geo: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.trendsRising, { geo }, doFetch, outer),
+  // 官方合同：trends_rising 收词根数组（≤20，不传用预设词根表）
+  trendsRising: (db: Store, roots: string[], doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.trendsRising, { roots: roots.slice(0, 20) }, doFetch, outer),
   googleTrends: (db: Store, term: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.googleTrends, { keyword: term }, doFetch, outer),
-  siteKeywords: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.siteKeywords, { domain }, doFetch, outer),
+  siteKeywords: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.siteKeywords, { target: domain, limit: 50 }, doFetch, outer),
   domainOverview: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.domainOverview, { domain }, doFetch, outer),
-  domainTraffic: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.domainTraffic, { domain }, doFetch, outer),
+  domainTraffic: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.domainTraffic, { domains: [domain] }, doFetch, outer),
   domainRating: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.domainRating, { domain }, doFetch, outer),
-  findLinkProspects: (db: Store, term: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.findLinkProspects, { keyword: term }, doFetch, outer),
+  // 官方合同：find_link_prospects 是卖链站市场快照（8万+ Guest Post 挂牌），按筛选器查询而非关键词
+  findLinkProspects: (db: Store, opts: { minDr?: number; minTraffic?: number; limit?: number }, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.findLinkProspects, { minDr: opts.minDr ?? 20, minTraffic: opts.minTraffic ?? 1000, limit: opts.limit ?? 30 }, doFetch, outer),
   domainAvailability: (db: Store, domains: string[], doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.domainAvailability, { domains }, doFetch, outer),
   lookupDomains: (db: Store, domains: string[], doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.lookupDomains, { domains }, doFetch, outer),
   websiteWorth: (db: Store, domain: string, doFetch: typeof fetch, outer?: AbortSignal) => gepheiCall(db, GEPHEI_ENDPOINTS.websiteWorth, { domain }, doFetch, outer),
@@ -235,19 +273,19 @@ export const seoApi = {
 export async function seoConnectionTest(db: Store, doFetch: typeof fetch): Promise<{ ok: boolean; message: string; credits?: number }> {
   if (!seoSourceEnabled(db)) return { ok: false, message: "SEO 数据源未开启或令牌未填写——先打开开关并保存令牌。" };
   try {
-    await gepheiCall(db, GEPHEI_ENDPOINTS.domainRating, { domain: "example.com" }, doFetch, AbortSignal.timeout(8000));
-    let credits: number | undefined;
-    try {
-      const src = seoSourceOf(db);
-      const res = await doFetch(`${src.baseUrl.replace(/\/+$/, "")}/credits`, { headers: { Authorization: `Bearer ${src.token}`, Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
-      if (res.ok) {
-        const j = await res.json() as any;
-        credits = typeof j === "number" ? j : j?.credits ?? j?.balance ?? j?.data?.credits;
-        if (typeof credits !== "number" || !Number.isFinite(credits)) credits = undefined;
-      }
-    } catch { /* 余额端点可选 */ }
-    return { ok: true, message: `连接成功，token 有效${credits !== undefined ? `，积分余额 ${credits}` : "（余额接口待联调校准）"}`, credits };
+    // 官方合同：GET /me 免费返回余额/剩余（零积分消耗的连接测试）
+    const res = await doFetch(`${seoSourceOf(db).baseUrl.replace(/\/+$/, "")}/me`, {
+      headers: { Authorization: `Bearer ${seoSourceOf(db).token}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await res.json().catch(() => ({})) as any;
+    if (res.status === 402 || body?.code === "quota") {
+      return { ok: true, message: "token 有效，但开放 API 积分余额为 0（每日赠送额度仅限网站内使用）——到 seo.web.cafe/wallet/ 购买积分包后功能自动生效。", credits: 0 };
+    }
+    if (!res.ok) return { ok: false, message: `连接失败：HTTP ${res.status}` };
+    const credits = Number(body?.balance ?? body?.credits ?? body?.data?.balance ?? NaN);
+    return { ok: true, message: `连接成功，token 有效，API 积分余额 ${Number.isFinite(credits) ? credits : "（字段待确认）"}`, credits: Number.isFinite(credits) ? credits : undefined };
   } catch (e) {
     return { ok: false, message: "连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 160) };
   }
-}
+};

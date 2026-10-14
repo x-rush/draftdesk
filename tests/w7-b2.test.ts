@@ -32,6 +32,7 @@ function mockGephei(overrides: { volume?: number; kd?: number; cpc?: number } = 
     const kw = (body.keywords || [])[0] || body.keyword || "";
     if (u.includes("keyword_volume")) return new Response(JSON.stringify([{ keyword: kw, volume: overrides.volume ?? 1000, cpc: overrides.cpc ?? 0.5 }]), { status: 200 });
     if (u.includes("bulk_keyword_difficulty")) return new Response(JSON.stringify([{ keyword: kw, difficulty: overrides.kd ?? 10 }]), { status: 200 });
+    if (u.includes("keyword_difficulty")) return new Response(JSON.stringify([{ keyword: kw, difficulty: overrides.kd ?? 10 }]), { status: 200 });
     if (u.includes("search_intent")) return new Response(JSON.stringify([{ keyword: kw, intent: "commercial" }]), { status: 200 });
     if (u.includes(GEPHEI_ENDPOINTS.serp)) return new Response(JSON.stringify({ data: [
       { domain: "en.wikipedia.org", rank: 1, traffic: 500000 },

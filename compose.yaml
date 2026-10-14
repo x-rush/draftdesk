@@ -11,6 +11,7 @@ services:
         HTTP_PROXY: ${DOCKER_BUILD_PROXY:-}
         HTTPS_PROXY: ${DOCKER_BUILD_PROXY:-}
         NO_PROXY: localhost,127.0.0.1,searxng,dailyhot
+        NPM_REGISTRY: ${DOCKER_BUILD_NPM_REGISTRY:-}
     ports:
       - "127.0.0.1:${DRAFTDESK_PORT:-5173}:3000"
     volumes:

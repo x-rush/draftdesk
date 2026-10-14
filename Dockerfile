@@ -2,7 +2,9 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund --fetch-retries=5
+# NPM_REGISTRY 可经 build-arg 切镜像源（国内网络 DOCKER_BUILD_NPM_REGISTRY=https://registry.npmmirror.com）
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund --fetch-retries=5 --registry="${NPM_REGISTRY:-https://registry.npmjs.org/}"
 COPY . /app
 RUN npm run build
 FROM node:24-bookworm-slim AS runtime

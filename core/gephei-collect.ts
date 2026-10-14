@@ -111,18 +111,25 @@ export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDa
       const pending = all.filter((r) => !done.has(r));
       const batch = (pending.length ? pending : all).slice(0, TRENDS_ROOTS_PER_RUN);
       let injected = 0, skipped = 0, failed = 0;
-      for (const root of batch) {
-        if (seoBudgetLeft(db, "collect") <= 0) break;
+      if (seoBudgetLeft(db, "collect") > 0) {
         try {
-          const raw = await seoApi.trendsRising(db, root, doFetch);
+          // 官方合同：trends_rising 收词根数组（≤20）——整批一次调用（collect 池计 1 次）
+          const raw = await seoApi.trendsRising(db, batch, doFetch);
           seoSpend(db, "collect", 1);
-          for (const word of parseTrendWords(raw)) {
-            const clean = filterTrendWord(word);
+          const words = parseTrendWords(raw);
+          // 词→根归属按响应顺序就近回填（roots 数组顺序即产出分组）
+          const perRoot = Math.max(1, Math.ceil(words.length / batch.length));
+          for (let wi = 0; wi < words.length; wi++) {
+            const root = batch[Math.min(batch.length - 1, Math.floor(wi / perRoot))];
+            const clean = filterTrendWord(words[wi]);
             if (!clean) { skipped++; continue; }
             observeSuggestion(db, clean, root, { source: "gephei-trends" });
             injected++;
           }
-        } catch { failed++; }
+        } catch (e) {
+          failed++;
+          if (e instanceof Error && e.name === "SeoQuotaError") console.warn("[geo-collect] 趋势周更跳过：哥飞余额不足");
+        }
       }
       db.put("meta", "geo-trends-cursor", { roots: [...done, ...batch], updatedAt: new Date().toISOString() });
       db.put("meta", "geo-trends-done:" + week, { at: new Date().toISOString(), roots: batch.length, injected, skipped, failed });
@@ -177,7 +184,10 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
           db.put("benchmark-sites", site.host, { ...site, lastAnalyzedAt: new Date().toISOString(), pagesCount: (site.pagesCount || 0) + count, analyzedRuns: (site.analyzedRuns || 0) + 1 });
           pages += count;
           analyzed++;
-        } catch { failed++; }
+        } catch (e) {
+          failed++;
+          if (e instanceof Error && e.name === "SeoQuotaError") console.warn("[geo-collect] 标杆站跳过：哥飞余额不足");
+        }
       }
       db.put("meta", "geo-benchmark-done:" + month, { at: new Date().toISOString(), analyzed, pages, failed });
       if (analyzed) console.log(`[geo-collect] 标杆站月更：分析 ${analyzed} 站（失败 ${failed}）/ 页面数据 ${pages} 条`);
@@ -201,36 +211,35 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
   db.put("meta", "geo-links-running", { at: new Date().toISOString() });
   void (async () => {
     try {
-      // 查询词=观测最高的 strong 蓝海词（sd 已查且低竞争）top 3——竞品外链并集法的词面入口
-      const seeds = db.list<any>("seen-terms")
-        .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global" && typeof t.serpDedicated === "number" && t.serpDedicated <= 1)
-        .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
-        .slice(0, 3);
+      // 官方合同：find_link_prospects=卖链站市场快照（8万+ Guest Post 挂牌），按筛选器拉榜单——
+      // 外部 Agent 结合词库分析（注册时间+流量）识别隐秘赚钱产品；市场快照无词面归属，fromTerm 记批次
+      if (seoBudgetLeft(db, "collect") <= 0) return;
       let injected = 0, failed = 0;
-      for (const t of seeds) {
-        if (seoBudgetLeft(db, "collect") <= 0) break;
-        try {
-          const raw = await seoApi.findLinkProspects(db, String(t.term), doFetch);
-          seoSpend(db, "collect", 1);
-          const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.prospects ?? [];
-          for (const item of list.slice(0, 30)) {
-            const host = String(item?.domain ?? item?.host ?? "").toLowerCase().replace(/^www\./, "").slice(0, 120);
-            if (!host || !host.includes(".")) continue;
-            const prev = db.get<any>("link-prospects", host);
-            if (prev) continue;
-            db.put("link-prospects", host, {
-              id: host, host,
-              fromTerm: String(t.term).slice(0, 80),
-              dr: typeof item?.dr === "number" ? item.dr : typeof item?.domain_rating === "number" ? item.domain_rating : undefined,
-              traffic: typeof item?.traffic === "number" ? item.traffic : undefined,
-              firstSeenAt: new Date().toISOString(),
-            });
-            injected++;
-          }
-        } catch { failed++; }
+      try {
+        const raw = await seoApi.findLinkProspects(db, { minDr: 20, minTraffic: 1000, limit: 30 }, doFetch);
+        seoSpend(db, "collect", 1);
+        const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.prospects ?? [];
+        for (const item of list.slice(0, 30)) {
+          const host = String(item?.domain ?? item?.host ?? "").toLowerCase().replace(/^www\./, "").slice(0, 120);
+          if (!host || !host.includes(".")) continue;
+          const prev = db.get<any>("link-prospects", host);
+          if (prev) continue;
+          db.put("link-prospects", host, {
+            id: host, host,
+            fromTerm: "market-snapshot",
+            dr: typeof item?.dr === "number" ? item.dr : typeof item?.domain_rating === "number" ? item.domain_rating : undefined,
+            traffic: typeof item?.traffic === "number" ? item.traffic : typeof item?.etv === "number" ? item.etv : undefined,
+            price: typeof item?.price === "number" ? item.price : undefined,
+            firstSeenAt: new Date().toISOString(),
+          });
+          injected++;
+        }
+      } catch (e) {
+        failed++;
+        if (e instanceof Error && e.name === "SeoQuotaError") console.warn("[geo-collect] 外链反推跳过：哥飞余额不足");
       }
-      db.put("meta", "geo-links-done:" + half, { at: new Date().toISOString(), seeds: seeds.length, injected, failed });
-      if (seeds.length) console.log(`[geo-collect] 外链反推：查询 ${seeds.length} 词（失败 ${failed}）/ 新来源站 ${injected}`);
+      db.put("meta", "geo-links-done:" + half, { at: new Date().toISOString(), injected, failed });
+      console.log(`[geo-collect] 外链反推：市场快照（失败 ${failed}）/ 新来源站 ${injected}`);
     } catch (e) {
       console.error("[geo-collect] 外链反推失败（下半月重试）:", e instanceof Error ? e.message : e);
       db.put("meta", "geo-links-done:" + half, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });

@@ -129,6 +129,7 @@ function mockGepheiFull(overrides: { volume?: number; kd?: number; cpc?: number 
     const kw = (body.keywords || [])[0] || body.keyword || body.domain || "";
     if (u.includes("keyword_volume")) return new Response(JSON.stringify([{ keyword: kw, volume: overrides.volume ?? 880, cpc: overrides.cpc ?? 0.6 }]), { status: 200 });
     if (u.includes("bulk_keyword_difficulty")) return new Response(JSON.stringify([{ keyword: kw, difficulty: overrides.kd ?? 12 }]), { status: 200 });
+    if (u.includes("keyword_difficulty")) return new Response(JSON.stringify([{ keyword: kw, difficulty: overrides.kd ?? 12 }]), { status: 200 });
     if (u.includes("search_intent")) return new Response(JSON.stringify([{ keyword: kw, intent: "commercial" }]), { status: 200 });
     if (u.includes("domain_availability")) return new Response(JSON.stringify({ data: [
       { domain: "zzmocktool.com", available: true }, { domain: "zzmocktool.io", available: true }, { domain: "zzmocktool.dev", available: false },
@@ -255,14 +256,13 @@ test("标杆站月更（第十二步）+ 外链反推（第十三步）：落库
     benchmarkSitesTick(db, fakeFetch, new Date("2026-10-20T02:00:00Z"));
     await new Promise((r) => setTimeout(r, 60));
     assert.equal(calls.length, before, "月闸幂等");
-    // 外链反推（15 日）：高分词查外链来源站
-    db.put("seen-terms", "high score tool", mkTerm("high score tool", { relevance: "strong", region: "global", serpDedicated: 0, observations: 99 }));
+    // 外链反推（15 日）：市场快照（官方合同=卖链站挂牌榜单，按筛选器拉取）
     linkProspectsTick(db, fakeFetch, mid);
     await new Promise((r) => setTimeout(r, 150));
     const links = db.list<any>("link-prospects");
     assert.deepEqual(links.map((l) => l.host).sort(), ["indiehackers.com", "somesite.net"], "来源站落库");
     assert.equal(links.find((l) => l.host === "indiehackers.com")?.dr, 80, "DR 字段");
-    assert.equal(links[0].fromTerm, "high score tool", "血缘词");
+    assert.equal(links[0].fromTerm, "market-snapshot", "市场快照批次归属");
   } finally {
     db?.close();
     cleanup(dir);
