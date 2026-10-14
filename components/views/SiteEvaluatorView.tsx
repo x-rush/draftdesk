@@ -120,14 +120,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                     ) : (
                       o.seoMetrics && <p className="muted" style={{ margin: "0 0 4px" }}>🌐 域名清单：配置 SEO 数据源后由日更自动补全（可注册域名 up to 5）。</p>
                     )}
-                    {o.valueUnverified && (
-                      <p className="muted" style={{ margin: "0 0 4px" }}>
-                        ⏳ 待查指标（点开即达哥飞站内，词已预填；或站点发现页「手动回传」粘贴结果）：
-                        {["kd", "ideas", "serp"].map((tool) => (
-                          <a key={tool} className="text-button" style={{ padding: "0 4px" }} target="_blank" rel="noopener noreferrer" href={`https://seo.web.cafe/${tool}/?kw=${encodeURIComponent(o.term || "")}`}>{tool === "kd" ? "难度" : tool === "ideas" ? "搜索量/拓词" : "SERP"} ↗</a>
-                        ))}
-                      </p>
-                    )}
                     {o.competitors?.length ? (
                       <details className="fold-card">
                         <summary>竞品档案：SERP 前 {o.competitors.length} 域名（类型/量级档）</summary>
@@ -143,6 +135,14 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                     ) : null}
                   </div>
                 ) : null}
+                {o.valueUnverified && (
+                  <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                    ⏳ 待查指标（点开即达哥飞站内，词已预填；或站点发现页「手动回传」粘贴结果）：
+                    {["kd", "ideas", "serp"].map((tool) => (
+                      <a key={tool} className="text-button" style={{ padding: "0 4px" }} target="_blank" rel="noopener noreferrer" href={`https://seo.web.cafe/${tool}/?kw=${encodeURIComponent(o.term || "")}`}>{tool === "kd" ? "难度" : tool === "ideas" ? "搜索量/拓词" : "SERP"} ↗</a>
+                    ))}
+                  </p>
+                )}
                 <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
                   初判理由：{o.verdictReason}
                   {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}

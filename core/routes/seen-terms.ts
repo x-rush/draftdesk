@@ -106,6 +106,7 @@ function seenListPayload(db: any, query: URLSearchParams) {
     originCounts: {
       "gephei-trends": (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') LIKE '%gephei-trends%'")[0] as { c: number }).c,
       "gephei-ideas": (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') LIKE '%gephei-ideas%'")[0] as { c: number }).c,
+      "gephei-newwords": (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') LIKE '%gephei-newwords%'")[0] as { c: number }).c,
       normal: (db.kv.sqlRows("SELECT COUNT(*) c FROM documents WHERE collection='seen-terms' AND json_extract(body,'$.sources') NOT LIKE '%gephei-%'")[0] as { c: number }).c,
     },
   };
