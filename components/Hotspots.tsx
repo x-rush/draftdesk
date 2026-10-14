@@ -14,16 +14,25 @@ type HotspotsProps = {
   onPromote:(row:any,payload:{clusterId:string;platform:string;angle:string})=>void;
   clusters:any[];clusterId?:string;plans?:any[];
 };
-export function Hotspots({feed,sources,query,status,source,plan,busy,loading,consumed,onConsumed,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort}:HotspotsProps){
+export function Hotspots({feed,sources,query,status,source,plan,busy,loading,consumed,onConsumed,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort,plans}:HotspotsProps){
   const [promoting,setPromoting]=useState<string|null>(null);
   const [promotePlatform,setPromotePlatform]=useState("公众号");
   const [promoteCluster,setPromoteCluster]=useState(clusterId||"clu-inbox");
   const [promoteAngle,setPromoteAngle]=useState("");
   const available=sources.filter(s=>s.enabled&&["hotlist","aggregated","trends"].includes(s.type));
+  // 来源三态标注（未采集笼统标注拆解，小拾 UI 建议落地）：
+  // 上次采集失败（排了但失败，sourceHealth）/ 已排期待首采（绑定启用计划但当前批次无产出）/ 未排进计划（孤儿源，去研究策略勾选生效）
+  const scheduledIds=new Set((plans||[]).filter(p=>p.scheduleEnabled).flatMap(p=>p.sourceIds||[]));
+  const healthById=new Map((feed?.sourceHealth||[]).map(s=>[s.id,s]));
+  const uncollectedLabel=(id:string)=>{
+    if(healthById.get(id)?.status==="failed")return" · 上次采集失败";
+    if(scheduledIds.has(id))return" · 已排期待首采";
+    return" · 未排进计划";
+  };
   return <section className="hotspot-view" aria-label="热点列表">
     <div className="hotspot-controls hotspot-controls-wide">
       <input aria-label="搜索热点" placeholder="搜索标题、来源或筛选原因" value={query} onChange={e=>onQuery(e.target.value)}/>
-      <Select aria-label="热点来源" value={source} onChange={e=>onSource(e.target.value)}><option value="all">全部来源</option>{feed?.sourceOptions.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}{available.filter(s=>!feed?.sourceOptions.some(option=>option.id===s.id)).map(s=><option value={s.id} key={s.id}>{s.name} · 尚未采集</option>)}</Select>
+      <Select aria-label="热点来源" value={source} onChange={e=>onSource(e.target.value)}><option value="all">全部来源</option>{feed?.sourceOptions.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}{available.filter(s=>!feed?.sourceOptions.some(option=>option.id===s.id)).map(s=><option value={s.id} key={s.id}>{s.name}{uncollectedLabel(s.id)}</option>)}</Select>
       <Select aria-label="热点状态" value={status} onChange={e=>onStatus(e.target.value)}><option value="all">全部线索</option><option value="watch">待观察</option><option value="selected">进入过分析</option><option value="filtered">被策略筛除</option></Select>
       <Select aria-label="排序方式" value={hotspotSort||"interested"} onChange={e=>onSort(e.target.value)}><option value="interested">感兴趣分类置顶</option><option value="time">纯时间序</option></Select>
       <Select aria-label="采集策略" value={plan} onChange={e=>onPlan(e.target.value)}><option value="all">全部采集批次</option>{feed?.planOptions.map(name=><option value={name} key={name}>{name}</option>)}</Select>
