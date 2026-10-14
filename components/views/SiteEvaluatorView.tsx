@@ -13,6 +13,7 @@ import { Empty, api, date } from "../ui";
 
 const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newtech: "新技术", news: "新资讯", trend: "热词趋势" };
 const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
+const FORM_LABELS: Record<string, string> = { web: "Web 应用", app: "App 应用", miniprogram: "小程序", tool: "工具站" };
 const VERDICT_STYLE: Record<string, string> = { 推荐: "#1a7f4b", 可以试试: "#8a6d1a", 不值得做: "#8a3a3a", 待验证: "#5a6b7a" };
 const MOTIVE_LABELS: Record<string, string> = { keyword: "冲着关键词", pain: "解决自己痛点", others: "满足别人需求", hobby: "兴趣爱好", business: "商业机会", unclear: "没说清" };
 const MOTIVE_SOURCE_LABELS: Record<string, string> = { quote: "作者原话", guess: "推测" };
@@ -26,10 +27,11 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   const [signal, setSignal] = useState("");
   const [source, setSource] = useState("");
   const [kind, setKind] = useState("");
+  const [form, setForm] = useState("");
   const [generating, setGenerating] = useState(false);
-  // kind 筛选（第六轮批 B §2.5①）：单入口看全部形态——全部/应用 app/站群 site
+  // kind 筛选（第六轮批 B §2.5①）+ form 形态筛选（第七轮批2 W7-5）
   const filtered = opportunities.filter((o) =>
-    (!kind || o.kind === kind) && (!signal || (o.signals || []).includes(signal)) && (!source || o.source === source));
+    (!kind || o.kind === kind) && (!form || o.form === form) && (!signal || (o.signals || []).includes(signal)) && (!source || o.source === source));
   const counts = { app: opportunities.filter((o) => o.kind === "app").length, site: opportunities.filter((o) => o.kind === "site").length };
   const auto = opportunities.filter((o) => o.source === "auto").length;
 
@@ -49,10 +51,16 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   return (
     <>
       <div className="filter-row">
-        <nav className="discovery-modes" aria-label="机会形态筛选">
-          <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>全部形态 {opportunities.length}</button>
+        <nav className="discovery-modes" aria-label="机会类型筛选">
+          <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>全部 {opportunities.length}</button>
           <button className={kind === "app" ? "active" : ""} onClick={() => setKind("app")}>应用 {opportunities.filter((o) => o.kind === "app").length}</button>
           <button className={kind === "site" ? "active" : ""} onClick={() => setKind("site")}>站群 {opportunities.filter((o) => o.kind === "site").length}</button>
+        </nav>
+        <nav className="discovery-modes" aria-label="机会形态筛选">
+          <button className={form === "" ? "active" : ""} onClick={() => setForm("")}>全部形态</button>
+          {Object.entries(FORM_LABELS).map(([key, label]) => (
+            <button key={key} className={form === key ? "active" : ""} onClick={() => setForm(key)}>{label} {opportunities.filter((o) => o.form === key).length}</button>
+          ))}
         </nav>
       </div>
       <div className="filter-row">
@@ -87,16 +95,23 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                 <div className="row-meta">
                   <OpportunityBadge color={VERDICT_STYLE[o.verdict]}>{o.verdict}</OpportunityBadge>
                   <span className="pill">{KIND_LABELS[o.kind] || o.kind}</span>
+                  {o.form && <span className="pill">{FORM_LABELS[o.form] || o.form}</span>}
                   {(o.signals || []).map((s: string) => <span key={s} className="pill">{SIGNAL_LABELS[s] || s}</span>)}
                   <span className="pill"><Zap size={11} /> {o.source}</span>
+                  {o.valueUnverified && <span className="pill" title="未配 SEO 数据源或三指标缺失/过期——配置后自动升级为全门槛判定+价值分">价值未验证</span>}
                   {o.platform && <span>{o.platform}</span>}
                   {typeof o.watchRefs === "number" && o.watchRefs > 0 && <span>引用 {o.watchRefs} 次</span>}
                   <span>{date(o.createdAt)}</span>
                 </div>
                 <button className="article-title" style={{ fontSize: 16, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(o.title); setNotice("已复制：" + o.title); }}>{o.title}</button>
                 <p style={{ margin: "4px 0 0" }}>{o.oneLiner}</p>
+                {o.seoMetrics && (
+                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }} title="哥飞三指标（90 天新鲜度）与综合价值分 = 月搜×CPC÷KD">
+                    月搜 {o.seoMetrics.monthlySearch.toLocaleString()} · KD {o.seoMetrics.kd} · CPC ${o.seoMetrics.cpc} · 价值分 {o.seoMetrics.valueScore}
+                  </p>
+                )}
                 <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
-                  形态：{o.form} · 初判理由：{o.verdictReason}
+                  初判理由：{o.verdictReason}
                   {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}
                 </p>
                 {o.verifyPlan?.length ? (

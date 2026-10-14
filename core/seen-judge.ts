@@ -14,6 +14,7 @@
 import type { Store } from "./store";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { fetchSuggest, Limiter } from "./seen-dig";
+import { GEPHEI_TTL_MS, seoSourceEnabled, seoBudgetLeft, seoSpend, fetchKeywordMetrics, fetchSerp, seoApi } from "./seo-source";
 
 const DAY_MS = 86400000;
 // 吞吐扩容（第五轮 §5，「按积压动态批数」落到验收口径）：
@@ -171,6 +172,22 @@ export function maxTrafficTier(tiers: (TrafficTier | undefined)[]): TrafficTier 
   return tiers.filter((t): t is TrafficTier => !!t).sort((a, b) => TIER_RANK[b] - TIER_RANK[a])[0];
 }
 
+// 月访问量 → 量级档位（>10万 large / 1–10万 mid / <1万 small / 0 none；SW 与哥飞共用一套口径）
+export function visitsToTier(monthly: number): TrafficTier {
+  return monthly > 100000 ? "large" : monthly >= 10000 ? "mid" : monthly > 0 ? "small" : "none";
+}
+
+function cacheTraffic(db: Store, host: string, tier: TrafficTier, visits: number | undefined, source: "sw" | "gephei") {
+  db.put("web-traffic", host.toLowerCase(), { tier, ...(visits !== undefined ? { visits } : {}), source, at: new Date().toISOString() });
+}
+
+function cachedTier(db: Store, host: string): TrafficTier | undefined {
+  const cached = db.get<any>("web-traffic", host.toLowerCase());
+  if (!cached?.tier) return undefined;
+  return Date.now() - Date.parse(cached.at || 0) < SW_TTL_MS ? cached.tier as TrafficTier : undefined;
+}
+
+// Similarweb 免费档监测哨（W7-3 定位降级）：哥飞未配置/未命中时的量级来源。
 export async function trafficTierOf(host: string, db: Store, doFetch: typeof fetch, budget: { left: number }): Promise<TrafficTier | undefined> {
   const id = host.toLowerCase();
   const cached = db.get<any>("web-traffic", id);
@@ -191,8 +208,8 @@ export async function trafficTierOf(host: string, db: Store, doFetch: typeof fet
     const visits = Object.values(data.EstimatedMonthlyVisits || {});
     if (!visits.length) throw new Error("similarweb 无流量数据");
     const monthly = Math.max(...visits);
-    const tier: TrafficTier = monthly > 100000 ? "large" : monthly >= 10000 ? "mid" : monthly > 0 ? "small" : "none";
-    db.put("web-traffic", id, { tier, visits: monthly, at: new Date().toISOString() });
+    const tier = visitsToTier(monthly);
+    cacheTraffic(db, id, tier, monthly, "sw");
     return tier;
   } catch {
     db.put("web-traffic", id, { at: new Date().toISOString() });
@@ -200,11 +217,49 @@ export async function trafficTierOf(host: string, db: Store, doFetch: typeof fet
   }
 }
 
+// 哥飞量级补位（W7-3 权威源，老大批2 指令：serpTop3Tier 缺口用 serp 接口补位）：
+// serp(term) 前 10 结果自带流量估计则直接派生前 3 档位（并缓存对应 host）；
+// 结果不带流量时对缺失 host 逐个 domainTraffic。按调用计预算（积分纪律）。
+export async function gepheiTierOf(term: string, hosts: string[], db: Store, doFetch: typeof fetch, outer?: AbortSignal): Promise<TrafficTier | undefined> {
+  if (!seoSourceEnabled(db)) return undefined;
+  try {
+    if (seoBudgetLeft(db) > 0) {
+      const results = await fetchSerp(db, term, doFetch, outer);
+      seoSpend(db, 1);
+      const withTraffic = results.slice(0, 3).filter((r) => typeof r.traffic === "number");
+      if (withTraffic.length) {
+        const tiers = withTraffic.map((r) => {
+          const tier = visitsToTier(r.traffic!);
+          cacheTraffic(db, r.host, tier, r.traffic, "gephei");
+          return tier;
+        });
+        return maxTrafficTier(tiers);
+      }
+    }
+  } catch { /* serp 通道失败落逐 host */ }
+  let best: TrafficTier | undefined;
+  for (const h of hosts) {
+    if (seoBudgetLeft(db) <= 0) break;
+    try {
+      const raw = await seoApi.domainTraffic(db, h, doFetch, outer) as any;
+      seoSpend(db, 1);
+      const visits = typeof raw === "number" ? raw : Number(raw?.visits ?? raw?.traffic ?? raw?.monthly_traffic ?? raw?.data?.visits ?? NaN);
+      if (Number.isFinite(visits)) {
+        const tier = visitsToTier(visits);
+        cacheTraffic(db, h, tier, visits, "gephei");
+        best = maxTrafficTier([best, tier]);
+      }
+    } catch { /* 单 host 失败继续 */ }
+  }
+  return best;
+}
+
 // ---- siteGate 站群门槛（第七轮 W7-4，哥飞判断参数内化）----
 // 判定 tick 达标即自动标 siteCandidate=true（siteCandidateBy=builtin-gate-v1），替代人工标注；
 // 外部 Agent 经 GET /agent/siteGate 读同一份规则（规则同源，v1 硬编码白名单废弃）。
-// 三指标（monthlySearch/kd/cpc）齐全走全门槛；缺失走降级判定（strong + SERP 竞争≤上限 + global），
-// 理由注明「价值未验证」；改 config.siteGate 数值双端行为跟随（内置 sweep 只增不撤，撤标走人工）。
+// 三指标（monthlySearch/kd/cpc）齐全且带 90 天内 gepheiFetchedAt（哥飞权威源，W7-3）走全门槛；
+// 缺失/过期走降级判定（strong + SERP 竞争≤上限 + global），理由注明「价值未验证」；
+// 改 config.siteGate 数值双端行为跟随（内置 sweep 只增不撤，撤标走人工）。
 export type SiteGate = { requireStrong: boolean; serpDedicatedMax: number; monthlySearchMin: number; kdMax: number; cpcMin: number };
 export const DEFAULT_SITE_GATE: SiteGate = { requireStrong: true, serpDedicatedMax: 1, monthlySearchMin: 300, kdMax: 29, cpcMin: 0.1 };
 
@@ -213,15 +268,28 @@ export function siteGateOf(db: Store): SiteGate {
   return { ...DEFAULT_SITE_GATE, ...(cfg && typeof cfg === "object" ? cfg : {}) };
 }
 
+// 哥飞权威指标新鲜度：gepheiFetchedAt 在 90 天内才算全门槛原料（过期=缺失，走降级）
+export function seoMetricsFresh(t: { gepheiFetchedAt?: string }): boolean {
+  return typeof t.gepheiFetchedAt === "string" && Number.isFinite(Date.parse(t.gepheiFetchedAt)) && Date.now() - Date.parse(t.gepheiFetchedAt) < GEPHEI_TTL_MS;
+}
+
+// 综合价值分（W7-3/W7-10 口径）：月搜 × CPC ÷ KD。三指标齐备且新鲜才可算（kd<1 按 1 防除零）。
+export function valueScoreOf(t: { monthlySearch?: number; kd?: number; cpc?: number; gepheiFetchedAt?: string }): number | undefined {
+  if (!seoMetricsFresh(t)) return undefined;
+  const { monthlySearch, kd, cpc } = t;
+  if (typeof monthlySearch !== "number" || typeof kd !== "number" || typeof cpc !== "number") return undefined;
+  return Math.round((monthlySearch * cpc / Math.max(1, kd)) * 10) / 10;
+}
+
 export function evalSiteGate(
-  term: { relevance?: string; region?: string; serpDedicated?: number; monthlySearch?: number; kd?: number; cpc?: number },
+  term: { relevance?: string; region?: string; serpDedicated?: number; monthlySearch?: number; kd?: number; cpc?: number; gepheiFetchedAt?: string },
   gate: SiteGate,
 ): { pass: boolean; reason: string } {
   if ((term.region ?? "global") !== "global") return { pass: false, reason: "非 global 词不进站群池" };
   if (gate.requireStrong && term.relevance !== "strong") return { pass: false, reason: "relevance 未达 strong" };
   if (typeof term.serpDedicated !== "number" || term.serpDedicated > gate.serpDedicatedMax)
     return { pass: false, reason: `SERP 竞争站 ${typeof term.serpDedicated === "number" ? term.serpDedicated : "未查"} 超过上限 ${gate.serpDedicatedMax}` };
-  const full = typeof term.monthlySearch === "number" && typeof term.kd === "number" && typeof term.cpc === "number";
+  const full = seoMetricsFresh(term) && typeof term.monthlySearch === "number" && typeof term.kd === "number" && typeof term.cpc === "number";
   if (!full) return { pass: true, reason: `降级门槛达标：strong + SERP 竞争 ${term.serpDedicated}≤${gate.serpDedicatedMax}（三指标未配，价值未验证）` };
   const misses: string[] = [];
   if (term.monthlySearch! < gate.monthlySearchMin) misses.push(`月搜 ${term.monthlySearch}<${gate.monthlySearchMin}`);
@@ -234,17 +302,46 @@ export function evalSiteGate(
 // 自动标注 sweep：判定 tick 批末跑——达标词 upsert 进 seo-terms（站群卡消费集合，
 // generateFromSiteCandidates 读 siteCandidate:true 出卡）。已标词（含外部 Agent 标注）
 // 一律跳过不覆写；单次上限 200 防写爆，余量随下一批判定自然接续。
-export function siteGateAutoMark(db: Store, limit = 200): { marked: number; scanned: number } {
+// SEO 数据源开启时（W7-3）：降级达标的词先经哥飞补查三指标落库（seen-terms 词库字段
+// + gepheiFetchedAt 时间戳），按全门槛重判——达标出标（价值分可算）、不过保持不标；
+// 补查失败/预算尽保持降级口径出标（增值源故障不丢候选）。
+export async function siteGateAutoMark(db: Store, doFetch: typeof fetch = fetch, limit = 200): Promise<{ marked: number; scanned: number; enriched: number }> {
   const gate = siteGateOf(db);
+  const seoOn = seoSourceEnabled(db);
   const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
-  let marked = 0;
+  let marked = 0, enriched = 0;
   const all = db.list<any>("seen-terms");
   for (const t of all) {
     if (marked >= limit) break;
     const word = String(t.term || t.id || "").trim();
     if (!word || t.status === "archived") continue;
     if (markedIds.has(termId(word))) continue;
-    const verdict = evalSiteGate(t, gate);
+    let verdict = evalSiteGate(t, gate);
+    let metrics: { monthlySearch?: number; kd?: number; cpc?: number; gepheiFetchedAt?: string } = {};
+    // 哥飞补查：降级达标但无新鲜指标 → 拉三指标落库并按全门槛重判（每日预算闸内）
+    if (verdict.pass && !seoMetricsFresh(t) && seoOn && seoBudgetLeft(db) > 0) {
+      try {
+        const [m] = [...(await fetchKeywordMetrics(db, [word], doFetch)).values()];
+        if (m && (m.monthlySearch !== undefined || m.kd !== undefined || m.cpc !== undefined || m.intent !== undefined)) {
+          enriched++;
+          metrics = { ...(m.monthlySearch !== undefined ? { monthlySearch: m.monthlySearch } : {}), ...(m.kd !== undefined ? { kd: m.kd } : {}), ...(m.cpc !== undefined ? { cpc: m.cpc } : {}), gepheiFetchedAt: new Date().toISOString() };
+          // 词库落库（W7-8 外部 Agent 同一落点字段）。哥飞意图四分映射词库 intent 轴
+          //（transactional→commercial；navigational 在词库轴无对应不猜测），只补缺不覆盖。
+          const intentMap: Record<string, string> = { informational: "informational", commercial: "commercial", transactional: "commercial" };
+          const mappedIntent = m.intent ? intentMap[m.intent] : undefined;
+          const prevTerm = db.get<any>("seen-terms", termId(word));
+          if (prevTerm) {
+            db.put("seen-terms", termId(word), {
+              ...prevTerm, ...metrics,
+              ...(mappedIntent && !prevTerm.intent ? { intent: mappedIntent } : {}),
+              updatedAt: new Date().toISOString(),
+            });
+            bumpSeenTermsVersion(db);
+          }
+          verdict = evalSiteGate({ ...t, ...metrics }, gate);
+        }
+      } catch { /* 补查失败保持降级口径 */ }
+    }
     if (!verdict.pass) continue;
     // seo-terms id 口径 = term 小写（保空格），与 PUT agent/seo-terms 一致
     const seoId = word.toLowerCase();
@@ -253,6 +350,7 @@ export function siteGateAutoMark(db: Store, limit = 200): { marked: number; scan
     const stamp = new Date().toISOString();
     db.put("seo-terms", seoId, {
       ...(prev ?? {}),
+      ...metrics,
       id: seoId,
       term: word,
       siteCandidate: true,
@@ -264,7 +362,8 @@ export function siteGateAutoMark(db: Store, limit = 200): { marked: number; scan
     markedIds.add(termId(word));
     marked++;
   }
-  return { marked, scanned: all.length };
+  if (marked || enriched) console.log(`[seen-judge] siteGate 自动标注 ${marked} 词${enriched ? `（哥飞补查 ${enriched} 词指标）` : ""}（builtin-gate-v1，扫描 ${all.length}）`);
+  return { marked, scanned: all.length, enriched };
 }
 
 // 站群候选池判定口（第六轮批 B §2.5② 双通道 + 第七轮 W7-1 意图通道）：
@@ -445,14 +544,18 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
           //（带过滤查询的结果里结构性没有论坛站）。失败静默，不阻塞判定主流程。
           let webResults: SerpHit[] = [];
           try { webResults = await searchSearxngRaw(db, `"${t.term}"`, doFetch, outer); } catch { /* 静默 */ }
-          // 竞争观测结构化（第七轮 W7-2）：前 10 首页数 + 前 3 名流量档位
-          //（Similarweb 免费档 best-effort，缓存 + 批次预算，失败静默不落字段）。
+          // 竞争观测结构化（第七轮 W7-2/W7-3）：前 10 首页数 + 前 3 名流量档位。
+          // 档位探测链：web-traffic 缓存 → 哥飞权威补位（serp 接口，配置时）→ Similarweb 监测哨。
           const serpSource = webResults.length ? webResults : results;
           const serpTop10Home = top10HomeCount(serpSource);
           let serpTop3Tier: TrafficTier | undefined;
           try {
             const hosts = [...new Set(serpSource.slice(0, 3).map((r) => r.host))];
-            serpTop3Tier = maxTrafficTier(await Promise.all(hosts.map((h) => trafficTierOf(h, db, doFetch, swBudget))));
+            serpTop3Tier = maxTrafficTier(hosts.map((h) => cachedTier(db, h)));
+            if (!serpTop3Tier && hosts.length) {
+              if (seoSourceEnabled(db)) serpTop3Tier = await gepheiTierOf(t.term, hosts, db, doFetch, outer);
+              if (!serpTop3Tier) serpTop3Tier = maxTrafficTier(await Promise.all(hosts.map((h) => trafficTierOf(h, db, doFetch, swBudget))));
+            }
           } catch { /* 静默 */ }
           // suggest 需求判定：失败不阻塞（按有需求处理，不误标品牌词）
           let demand = true;
@@ -512,13 +615,10 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
       db.del("meta", "seen-judge-running");
       const topReasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([r, n]) => `${n}×${r.slice(0, 50)}`).join("；");
       console.log(`[seen-judge] 第 ${batchNo} 批完成：查询 ${queried}（失败 ${failed}${topReasons ? "：" + topReasons : ""}）/ 发现站点 ${sites} / 游标 ${summary.cursor.slice(0, 24)}`);
-      // siteGate 自动标注（第七轮 W7-4）：批末 sweep，新达标词即日出标（替代人工标注）
-      try {
-        const gateRun = siteGateAutoMark(db);
-        if (gateRun.marked) console.log(`[seen-judge] siteGate 自动标注 ${gateRun.marked} 词（builtin-gate-v1，扫描 ${gateRun.scanned}）`);
-      } catch (e) {
-        console.error("[seen-judge] siteGate 自动标注失败（不影响判定主流程）:", e instanceof Error ? e.message : e);
-      }
+      // siteGate 自动标注（第七轮 W7-4）：批末 sweep，新达标词即日出标（替代人工标注）；
+      // SEO 数据源开启时先经哥飞补查三指标（W7-3，异步不阻塞收尾）
+      void siteGateAutoMark(db, doFetch).catch((e) =>
+        console.error("[seen-judge] siteGate 自动标注失败（不影响判定主流程）:", e instanceof Error ? e.message : e));
     }
   })();
 }

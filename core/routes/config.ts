@@ -9,6 +9,7 @@ import { requestModel } from "../model";
 import { recentModelMetrics } from "../model-metrics";
 import { searchProvider } from "../sources";
 import { siteGateOf } from "../seen-judge";
+import { seoSourceOf, seoBudgetUsed } from "../seo-source";
 
 // persona 人设配置（决策个性化输入）；字段宽松校验，结构由 UI 与种子约定。
 const personaInput = z.object({
@@ -145,6 +146,33 @@ export const routes: RouteDef[] = [
       const next = { ...siteGateOf(db), ...parsed };
       db.put("config", "siteGate", next);
       return json(next);
+    },
+  },
+  {
+    // SEO 数据源（第七轮批2 W7-3）：可选增值数据源（哥飞 SEO 工具箱，自行注册）。
+    // 默认关闭零外部调用；token 只写不读（GET 脱敏为 hasToken）。联调期 baseUrl 可指向自建端点。
+    methods: ["GET"],
+    pattern: "seoDataSource",
+    handler: ({ db }) => {
+      const src = seoSourceOf(db);
+      return json({ enabled: src.enabled, provider: src.provider, baseUrl: src.baseUrl, builtinDailyBudget: src.builtinDailyBudget, hasToken: !!src.token, budgetUsedToday: seoBudgetUsed(db) });
+    },
+  },
+  {
+    methods: ["POST"],
+    pattern: "seoDataSource",
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({
+        enabled: z.boolean().optional(),
+        token: z.string().max(200).optional(),
+        baseUrl: z.string().url().max(300).optional(),
+        builtinDailyBudget: z.number().int().min(1).max(10000).optional(),
+      }).strict().parse(await readBody());
+      const prev = seoSourceOf(db);
+      const token = parsed.token !== undefined ? parsed.token.trim() : prev.token;
+      const next = { ...prev, ...parsed, token, provider: "gephei" as const };
+      db.put("config", "seoDataSource", next);
+      return json({ enabled: next.enabled, provider: next.provider, baseUrl: next.baseUrl, builtinDailyBudget: next.builtinDailyBudget, hasToken: !!next.token });
     },
   },
   {

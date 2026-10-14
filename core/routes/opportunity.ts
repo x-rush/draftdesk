@@ -4,7 +4,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { generateOpportunities, SIGNAL_LABELS, KIND_LABELS } from "../opportunity";
+import { generateOpportunities, SIGNAL_LABELS, KIND_LABELS, FORM_LABELS } from "../opportunity";
 
 export const routes: RouteDef[] = [
   {
@@ -25,18 +25,20 @@ export const routes: RouteDef[] = [
     },
   },
   {
-    // UI 只读口：?kind=app|site&signal=complaint|newtech|news|trend&source=auto|agent&limit（默认 100 上限 300）
+    // UI 只读口：?kind=app|site&form=web|app|miniprogram|tool&signal=…&source=…&limit（默认 100 上限 300）
     methods: ["GET"],
     pattern: "opportunities",
     handler: ({ db, query }) => {
       const kind = query.get("kind") || "";
       const signal = query.get("signal") || "";
       const source = query.get("source") || "";
+      const form = query.get("form") || "";
       const limit = Math.min(300, Math.max(1, Number(query.get("limit")) || 100));
       const all = db.list<any>("opportunities").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
       const items = all.filter((o) =>
         (!kind || o.kind === kind) &&
         (!source || o.source === source) &&
+        (!form || o.form === form) &&
         (!signal || (o.signals || []).includes(signal)),
       ).slice(0, limit);
       const counts = {
@@ -44,8 +46,9 @@ export const routes: RouteDef[] = [
         byKind: { app: all.filter((o) => o.kind === "app").length, site: all.filter((o) => o.kind === "site").length },
         bySource: { auto: all.filter((o) => o.source === "auto").length, agent: all.filter((o) => o.source === "agent").length },
         bySignal: Object.fromEntries(Object.keys(SIGNAL_LABELS).map((s) => [s, all.filter((o) => (o.signals || []).includes(s as any)).length])),
+        byForm: Object.fromEntries(Object.keys(FORM_LABELS).map((f) => [f, all.filter((o) => o.form === f).length])),
       };
-      return json({ items, total: all.length, limit, counts, labels: { signals: SIGNAL_LABELS, kinds: KIND_LABELS } });
+      return json({ items, total: all.length, limit, counts, labels: { signals: SIGNAL_LABELS, kinds: KIND_LABELS, forms: FORM_LABELS } });
     },
   },
 ];

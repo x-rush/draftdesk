@@ -6,7 +6,7 @@ import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiP
 import { now } from "./helpers";
 import { cleanSeedPollution } from "../seen-clean";
 import { backfillSeenTermRegions, mergeSpaceVariants } from "../seen-terms";
-import { retightenNewsOpportunities } from "../opportunity";
+import { retightenNewsOpportunities, normalizeForm } from "../opportunity";
 import { reapplySiteRules } from "../seen-judge";
 import { normalizePlatform } from "../platforms";
 import type { KV } from "./kv";
@@ -397,6 +397,22 @@ export const migrations: Migration[] = [
         archived++;
       }
       if (archived) console.log(`[migration] seen-off-archive-v1：存量 off 词归档 ${archived} 条`);
+    },
+  },
+  {
+    id: "opportunity-form-v1",
+    // form 形态字段枚举化（第七轮批2 W7-5）：存量自由文本（「web 工具」「内容页 / 工具页」…）
+    // 归一为 web/app/miniprogram/tool 四值；内容线卡的「XX 内容页」无产品形态 → 清空。
+    run: ({ kv }) => {
+      let normalized = 0, cleared = 0;
+      for (const op of kv.list<any>("opportunities")) {
+        if (!("form" in op)) continue;
+        const next = normalizeForm(op.form);
+        if (next === op.form) continue;
+        kv.put("opportunities", String(op.id), { ...op, form: next, updatedAt: now() });
+        if (next) normalized++; else cleared++;
+      }
+      if (normalized || cleared) console.log(`[migration] opportunity-form-v1：form 归一 ${normalized} 张、清空 ${cleared} 张（内容线卡无产品形态）`);
     },
   },
 ];

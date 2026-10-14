@@ -169,6 +169,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 - `demandIntent`：`tool | info | nav` 三分类（tool=工具/产品需求语义，如 generator/converter/calculator 词根族）。内置 AI 判 strong 时自动产出；外部 Agent 复核 PUT `/agent/seen-terms` 时也可带同名字段。标尺读 `persona.intentPolicy`（`GET /agent/persona` 即含），与内置判定同源。
 - `GET /agent/siteGate`：站群门槛规则（`requireStrong/serpDedicatedMax/monthlySearchMin/kdMax/cpcMin`）。外部 Agent 的站群标注逻辑必须读它而不是硬编码白名单——改 `config.siteGate` 数值双端行为跟随。内置判定 tick 会自动给达标词标 `siteCandidate=true`（`siteCandidateBy=builtin-gate-v1`），Agent 复核只需处理价值分与域名清单；已标注词内置 sweep 不覆写。
+- 哥飞三指标（第七轮批2）：`PUT /agent/seo-terms` 已放行 `monthlySearch/kd/cpc/gepheiFetchedAt` 四字段（W7-8 日更落库同口径）；`gepheiFetchedAt` 超 90 天视为过期，读方（siteGate 全门槛判定、价值分 月搜×CPC÷KD）自动回退降级。工作台内置适配器（`core/seo-source.ts`）仅在 settings 开启「SEO 数据源」后调用哥飞；外部 Agent 自带令牌直连，不经工作台适配器。
 
 ## ⑧ 大纲提交（选题体系 · 第六轮批 B）
 

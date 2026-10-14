@@ -248,13 +248,19 @@ test("evalSiteGate：降级/全门槛/一票否决三分支；siteGateOf 读 con
   assert.equal(evalSiteGate({ ...base, relevance: "weak" }, DEFAULT_SITE_GATE).pass, false, "requireStrong 拦 weak");
   assert.equal(evalSiteGate({ ...base, serpDedicated: 2 }, DEFAULT_SITE_GATE).pass, false, "竞争超上限");
   assert.equal(evalSiteGate({ relevance: "strong", region: "global" }, DEFAULT_SITE_GATE).pass, false, "SERP 未查不标");
-  // 全门槛：三指标齐全才启用
-  const full = { ...base, monthlySearch: 1000, kd: 10, cpc: 0.5 };
+  // 全门槛：三指标齐全 + gepheiFetchedAt 新鲜（90 天内）才启用（W7-3 权威源口径）
+  const full = { ...base, monthlySearch: 1000, kd: 10, cpc: 0.5, gepheiFetchedAt: new Date().toISOString() };
   assert.equal(evalSiteGate(full, DEFAULT_SITE_GATE).pass, true, "全门槛达标");
+  assert.ok(evalSiteGate(full, DEFAULT_SITE_GATE).reason.includes("全门槛达标"));
   assert.equal(evalSiteGate({ ...full, monthlySearch: 100 }, DEFAULT_SITE_GATE).pass, false, "月搜不足");
   assert.equal(evalSiteGate({ ...full, kd: 50 }, DEFAULT_SITE_GATE).pass, false, "KD 超标");
   assert.equal(evalSiteGate({ ...full, cpc: 0.01 }, DEFAULT_SITE_GATE).pass, false, "CPC 不足");
   assert.equal(evalSiteGate({ ...full, kd: undefined }, DEFAULT_SITE_GATE).pass, true, "指标缺失走降级");
+  // 批2 新鲜度语义：无时间戳/过期时间戳的指标不作为全门槛原料
+  const stale = { ...base, monthlySearch: 1000, kd: 10, cpc: 0.5, gepheiFetchedAt: new Date(Date.now() - 91 * 86400000).toISOString() };
+  assert.equal(evalSiteGate(stale, DEFAULT_SITE_GATE).pass, true, "过期指标回退降级（仍 pass）");
+  assert.ok(evalSiteGate(stale, DEFAULT_SITE_GATE).reason.includes("价值未验证"), "过期指标不按全门槛判");
+  assert.ok(!evalSiteGate({ ...base, monthlySearch: 1000, kd: 10, cpc: 0.5 }, DEFAULT_SITE_GATE).reason.includes("全门槛达标"), "无时间戳不按全门槛判");
   // requireStrong=false 时 weak 也可达标
   const looseGate = { ...DEFAULT_SITE_GATE, requireStrong: false };
   assert.equal(evalSiteGate({ ...base, relevance: "weak" }, looseGate).pass, true);
@@ -273,7 +279,7 @@ test("evalSiteGate：降级/全门槛/一票否决三分支；siteGateOf 读 con
   }
 });
 
-test("siteGateAutoMark：出标 builtin-gate-v1、不覆写外部标注、limit 硬顶、门槛跟随 config", () => {
+test("siteGateAutoMark：出标 builtin-gate-v1、不覆写外部标注、limit 硬顶、门槛跟随 config", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-w7mark-"));
   let db: Store | undefined;
   try {
@@ -287,10 +293,10 @@ test("siteGateAutoMark：出标 builtin-gate-v1、不覆写外部标注、limit 
     db.put("seo-terms", "外部标注词", { id: "外部标注词", term: "外部标注词", siteCandidate: true, siteRationale: "TypeScript→Rust 工具链需求", siteType: "工具站" });
     db.put("seen-terms", "外部标注词", mkTerm("外部标注词", { relevance: "strong", region: "global", serpDedicated: 0 }));
     // limit=1 硬顶：只标 1 个
-    const r1 = siteGateAutoMark(db, 1);
+    const r1 = await siteGateAutoMark(db, fetch, 1);
     assert.equal(r1.marked, 1, "limit 硬顶（列表 rowid 倒序，外部标注词跳过后标到达标词）");
     assert.ok(db.get<any>("seo-terms", "达标词")?.siteCandidate, "达标词出标 builtin-gate-v1");
-    const r2 = siteGateAutoMark(db);
+    const r2 = await siteGateAutoMark(db, fetch);
     assert.equal(r2.marked, 0, "全库已标词不重复标注");
     // 外部标注词：不覆写 rationale / siteType
     const ext = db.get<any>("seo-terms", "外部标注词");
@@ -305,9 +311,9 @@ test("siteGateAutoMark：出标 builtin-gate-v1、不覆写外部标注、limit 
     // 门槛收紧（serpDedicatedMax=0）：sd=1 的新词不再标
     db.put("config", "siteGate", { serpDedicatedMax: 0 });
     db.put("seen-terms", "紧门词条", mkTerm("紧门词条", { relevance: "strong", region: "global", serpDedicated: 1 }));
-    assert.equal(siteGateAutoMark(db).marked, 0, "收紧后不达标不标");
+    assert.equal((await siteGateAutoMark(db, fetch)).marked, 0, "收紧后不达标不标");
     db.put("seen-terms", "零竞争词", mkTerm("零竞争词", { relevance: "strong", region: "global", serpDedicated: 0 }));
-    assert.equal(siteGateAutoMark(db).marked, 1, "改 gate 数值行为跟随");
+    assert.equal((await siteGateAutoMark(db, fetch)).marked, 1, "改 gate 数值行为跟随");
   } finally {
     db?.close();
     cleanup(dir);

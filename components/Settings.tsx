@@ -5,7 +5,7 @@
 //    → 🤖 执行方 → 🎯 内容方向 → 🗂 数据健康（全集合核对）→ ⚠️ 危险操作。
 // 全部字段与保存逻辑不动，只重排层级；测试按钮从页尾移进各自分区（就近原则）。
 import { useEffect, useState } from "react";
-import { Plug, Wallet, Search, Bot, Target, Database, TriangleAlert } from "lucide-react";
+import { Plug, Wallet, Search, BarChart3, Bot, Target, Database, TriangleAlert } from "lucide-react";
 import { api, Field } from "./ui";
 import { Select } from "./Select";
 
@@ -18,9 +18,13 @@ export function Settings({
 }) {
   const [metrics, setMetrics] = useState<any[]>([]);
   const [collections, setCollections] = useState<{ today: any; yesterday: any } | null>(null);
+  const [seoSrc, setSeoSrc] = useState<any>(null);
+  const [seoToken, setSeoToken] = useState("");
+  const [seoSaving, setSeoSaving] = useState(false);
   useEffect(() => {
     void api<{ items: any[] }>("model-metrics?days=7").then((r) => setMetrics(r.items || [])).catch(() => {});
     void api<{ today: any; yesterday: any }>("collections-report").then(setCollections).catch(() => {});
+    void api<any>("seoDataSource").then(setSeoSrc).catch(() => {});
   }, []);
   const [value, setValue] = useState({
     baseUrl: config.baseUrl,
@@ -234,7 +238,65 @@ export function Settings({
         </button>
       </section>
 
-      {/* ⑤ 执行方 */}
+      {/* ⑤ SEO 数据源（可选增值，哥飞） */}
+      <p className="dash-label"><BarChart3 size={14} /> SEO 数据源<span className="dash-label-sub">可选增值数据源（哥飞 SEO 工具箱，会员积分制）——默认关闭零外部调用</span></p>
+      <section className="form-section">
+        <Field
+          label="数据源开关"
+          hint="关闭或未填令牌时全流程走免费降级路径：站群候选按「strong + 低竞争」判定并打「价值未验证」徽章；开启并配置后自动升级为全门槛判定（月搜/KD/CPC）+ 综合价值分排序。数据带 90 天新鲜度（gepheiFetchedAt），过期自动回退降级。"
+        >
+          <Select
+            value={seoSrc?.enabled ? "on" : "off"}
+            onChange={(e) => setSeoSrc({ ...seoSrc, enabled: e.target.value === "on" })}
+          >
+            <option value="off">关闭（免费降级路径，零外部调用）</option>
+            <option value="on">开启（哥飞 SEO 工具箱，需令牌）</option>
+          </Select>
+        </Field>
+        {seoSrc?.enabled && (
+          <>
+            <Field label={"哥飞令牌（WEBCAFE_TOKEN） · " + (seoSrc?.hasToken ? "已配置，留空保留" : "未配置——相关功能显示「配置后解锁」")}>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={seoToken}
+                onChange={(e) => setSeoToken(e.target.value)}
+              />
+            </Field>
+            <Field label="每日积分预算（词/次探测）" hint="内置侧断路器：指标补查与 SERP 量级探测每日不超过此数，额度尽自动停、次日恢复。哥飞侧另有自己的积分规则。">
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                value={seoSrc?.builtinDailyBudget ?? 200}
+                onChange={(e) => setSeoSrc({ ...seoSrc, builtinDailyBudget: Number(e.target.value) })}
+              />
+            </Field>
+            <button
+              type="button"
+              disabled={seoSaving}
+              onClick={() => {
+                setSeoSaving(true);
+                void api<any>("seoDataSource", {
+                  enabled: seoSrc.enabled,
+                  builtinDailyBudget: Number(seoSrc.builtinDailyBudget) || 200,
+                  ...(seoToken.trim() ? { token: seoToken.trim() } : {}),
+                }).then((r) => { setSeoSrc(r); setSeoToken(""); }).catch(() => {}).finally(() => setSeoSaving(false));
+              }}
+            >
+              {seoSaving ? "保存中…" : "保存 SEO 数据源配置"}
+            </button>
+            <p className="helper-text" style={{ marginBottom: 0 }}>
+              数据源可选，自行注册：哥飞 SEO 工具箱（seo.web.cafe）会员积分制，仓库不内置任何令牌。今日已用 {seoSrc?.budgetUsedToday ?? 0} / {seoSrc?.builtinDailyBudget ?? 200}。
+            </p>
+          </>
+        )}
+        {!seoSrc?.enabled && (
+          <p className="helper-text" style={{ marginBottom: 0 }}>当前关闭：零外部调用，站群候选全部走免费字段判定（价值未验证徽章）。</p>
+        )}
+      </section>
+
+      {/* ⑥ 执行方 */}
       <p className="dash-label"><Bot size={14} /> 执行方与参与方<span className="dash-label-sub">谁来干研究：内置管线或外部 Agent 二选一</span></p>
       <section className="form-section">
         <Field label="消费执行方（保存前即时生效）">
@@ -256,7 +318,7 @@ export function Settings({
         </p>
       </section>
 
-      {/* ⑥ 内容方向 */}
+      {/* ⑦ 内容方向 */}
       <p className="dash-label"><Target size={14} /> 内容方向<span className="dash-label-sub">受众定位与兴趣类别，影响热点排序与推荐</span></p>
       <section className="form-section">
         <Field label="受众与内容定位">
@@ -291,7 +353,7 @@ export function Settings({
         <p className="helper-text" style={{ marginBottom: 0 }}>勾选后热点资讯默认把感兴趣的分类置顶；可随时在热点页切换纯时间序。</p>
       </section>
 
-      {/* ⑦ 数据健康 */}
+      {/* ⑧ 数据健康 */}
       <p className="dash-label"><Database size={14} /> 数据健康<span className="dash-label-sub">全集合行数快照 · 异动标黄 · 保险丝快照在 data/snapshots/</span></p>
       <section className="form-section">
         {(() => {
@@ -331,7 +393,7 @@ export function Settings({
         </p>
       </section>
 
-      {/* ⑧ 危险操作 */}
+      {/* ⑨ 危险操作 */}
       <p className="dash-label"><TriangleAlert size={14} /> 危险操作</p>
       <section className="danger-zone">
         <label className="check">

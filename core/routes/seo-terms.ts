@@ -20,6 +20,11 @@ export const termSchema = z.object({
   siteType: z.enum(["资讯站", "工具站"]).optional(),
   siteRationale: z.string().max(600).optional(),
   contentOutline: z.array(z.string().max(200)).max(8).optional(),
+  // 哥飞三指标 + 时间戳（第七轮批2 W7-3/W7-8 外部 Agent 日更同口径；90 天过期由读方判定）
+  monthlySearch: z.number().int().min(0).max(100000000).optional(),
+  kd: z.number().min(0).max(100).optional(),
+  cpc: z.number().min(0).max(1000).optional(),
+  gepheiFetchedAt: z.string().datetime().optional(),
 }).strict();
 
 const upsertSchema = z.object({ items: z.array(termSchema).min(1).max(200) }).strict();
