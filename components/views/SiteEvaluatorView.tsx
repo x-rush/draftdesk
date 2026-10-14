@@ -382,6 +382,7 @@ function ManualReturnPanel({ ws }: { ws: Workspace }) {
   const [raw, setRaw] = useState("");
   const [recent, setRecent] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const load = () => void api<any>("seo-terms/manual/recent").then((r) => setRecent(r.items || [])).catch(() => {});
   useEffect(() => { load(); }, []);
   if (!seoEnabled) return null;
@@ -391,13 +392,19 @@ function ManualReturnPanel({ ws }: { ws: Workspace }) {
       <textarea
         style={{ width: "100%", minHeight: 72, fontFamily: "monospace", fontSize: 12 }}
         placeholder={'JSON：[{"keyword":"ai agent","volume":880,"kd":12,"cpc":0.6}]' + "\n" + '或文本（每行）：ai agent  880  12  0.6'}
+        value={raw}
         onChange={(e) => setRaw(e.target.value)}
       />
       <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
         <button disabled={busy || raw.trim().length < 2} onClick={() => {
           setBusy(true);
-          void api<any>("seo-terms/manual", { raw }).then((r) => { ws.setNotice(""); setRaw(""); load(); ws.refresh(); }).catch(() => {}).finally(() => setBusy(false));
+          setMsg(null);
+          void api<any>("seo-terms/manual", { raw })
+            .then((r) => { setMsg({ text: r.note || "已回传。", ok: true }); setRaw(""); load(); return ws.refresh(); })
+            .catch((e) => setMsg({ text: "回传失败：" + (e as Error).message, ok: false }))
+            .finally(() => setBusy(false));
         }}>{busy ? "回传中…" : "回传落库"}</button>
+        {msg && <p role="status" style={{ margin: "8px 0 0", fontSize: 13, color: msg.ok ? "#1a7f4b" : "#8a3a3a" }}>{msg.ok ? "✓ " : "✕ "}{msg.text}</p>}
         {recent.length > 0 && (
           <span className="muted" style={{ fontSize: 12 }}>
             最近：{recent.map((r, i) => `${new Date(r.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} ${r.applied} 词${i < recent.length - 1 ? " · " : ""}`)}
