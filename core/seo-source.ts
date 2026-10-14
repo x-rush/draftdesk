@@ -24,7 +24,7 @@ export const DEFAULT_SEO_SOURCE: SeoSourceConfig = {
   token: "",
   baseUrl: "https://seo.web.cafe/api/v1",
   builtinTierBudget: 60,
-  builtinMetricsBudget: 200,
+  builtinMetricsBudget: 30,
   builtinCollectBudget: 100,
 };
 

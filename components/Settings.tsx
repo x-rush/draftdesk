@@ -272,7 +272,7 @@ export function Settings({
                       type="number"
                       min={1}
                       max={100000}
-                      value={seoSrc?.[key] ?? { builtinTierBudget: 60, builtinMetricsBudget: 200, builtinCollectBudget: 100 }[key]}
+                      value={seoSrc?.[key] ?? { builtinTierBudget: 60, builtinMetricsBudget: 30, builtinCollectBudget: 100 }[key]}
                       onChange={(e) => setSeoSrc({ ...seoSrc, [key]: Number(e.target.value) })}
                       style={{ width: "100%" }}
                     />
@@ -289,7 +289,7 @@ export function Settings({
                   void api<any>("seoDataSource", {
                     enabled: seoSrc.enabled,
                     builtinTierBudget: Number(seoSrc.builtinTierBudget) || 60,
-                    builtinMetricsBudget: Number(seoSrc.builtinMetricsBudget) || 200,
+                    builtinMetricsBudget: Number(seoSrc.builtinMetricsBudget) || 30,
                     builtinCollectBudget: Number(seoSrc.builtinCollectBudget) || 100,
                     ...(seoToken.trim() ? { token: seoToken.trim() } : {}),
                   }).then((r) => { setSeoSrc(r); setSeoToken(""); }).catch(() => {}).finally(() => setSeoSaving(false));
@@ -311,7 +311,7 @@ export function Settings({
             <p className="helper-text" style={{ marginBottom: 0 }}>
               数据源可选，自行注册：哥飞 SEO 工具箱（seo.web.cafe）会员积分制，仓库不内置任何令牌。
               今日积分消耗（剩余/已用）：tier {(seoSrc?.pools?.find((x: any) => x.pool === "tier")?.budget ?? 60) - (seoSrc?.pools?.find((x: any) => x.pool === "tier")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "tier")?.used ?? 0} ·
-              metrics {(seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.budget ?? 200) - (seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0} ·
+              metrics {(seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.budget ?? 30) - (seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "metrics")?.used ?? 0} ·
               collect {(seoSrc?.pools?.find((x: any) => x.pool === "collect")?.budget ?? 100) - (seoSrc?.pools?.find((x: any) => x.pool === "collect")?.used ?? 0)}/{seoSrc?.pools?.find((x: any) => x.pool === "collect")?.used ?? 0}
             </p>
           </>
