@@ -37,7 +37,7 @@ export const SIGNAL_LABELS: Record<OpportunitySignal, string> = {
   trend: "热词趋势",
 };
 export const KIND_LABELS: Record<OpportunityKind, string> = { site: "站群/内容页", app: "应用" };
-export const PLATFORM_LABELS: Record<string, string> = { gzh: "公众号", "xhs-note": "小红书笔记", "xhs-video": "小红书视频", tiehao: "微信贴图号" };
+export const PLATFORM_LABELS: Record<string, string> = { gzh: "公众号", tiebuhao: "贴图号", "xhs-note": "小红书笔记", "xhs-video": "小红书视频", threads: "Threads" };
 
 export type Opportunity = {
   id: string;
@@ -69,14 +69,20 @@ export type Opportunity = {
 
 // 平台适配关键词（§1⑥b）：命中平台题材关键词的 watch 候选获得内容线机会二次精筛资格。
 export const PLATFORM_FIT: Record<string, RegExp> = {
-  gzh: /深度|分析|解读|复盘|报告|拆解/i,
-  "xhs-note": /实测|教程|攻略|清单|避坑|手把手/i,
-  "xhs-video": /实测|演示|上手|体验|开箱/i,
-  tiehao: /一图|图解|速览|快讯/i,
+  gzh: /深度|分析|解读|复盘|报告|拆解|研究|观察|趋势|白皮书/i,
+  tiebuhao: /突发|热搜|更新|发布|盘点|几件事|一次看完|快讯|速览|图解|一图|时间线/i,
+  "xhs-note": /实测|教程|攻略|清单|避坑|手把手|指南|上手|合集/i,
+  threads: /出海|海外|全球|GitHub|HN|HackerNews|开源|英文/i,
 };
+// R9-3③：一条 watch 候选可命中多平台——返回全部命中平台（每平台一张机会卡），
+// 不再 find 第一个即止；顺序跟随 affinity 传入序。
+export function platformFitsOf(title: string, affinity: string[] | undefined): string[] {
+  if (!affinity?.length) return [];
+  return affinity.filter((p) => PLATFORM_FIT[p]?.test(title));
+}
+// 兼容保留：单平台命中（首个）。
 export function platformFitOf(title: string, affinity: string[] | undefined): string | undefined {
-  if (!affinity?.length) return undefined;
-  return affinity.find((p) => PLATFORM_FIT[p]?.test(title));
+  return platformFitsOf(title, affinity)[0];
 }
 
 // 新品/上新措辞（newtech/news 信号，批 1 收尾收紧）：只认真·产品级变化
@@ -216,18 +222,22 @@ function generateFromComplaints(db: Store, source: "auto" | "agent", counters: C
           verifyPlan: VERIFY.app(c.title.slice(0, 60)), source,
         }, counters);
       } else if (c.status === "watch") {
-        const fit = platformFitOf(c.title, affinity);
-        if (!fit || claimedUrls.has(k)) continue;
+        // R9-3③：一条候选命中多平台 → 每平台一张卡（dedupeKey 带 platform 区分），
+        // 不再 find 首个即止；affinity 顺序即产出顺序。
+        const fits = platformFitsOf(c.title, affinity);
+        if (!fits.length || claimedUrls.has(k)) continue;
         claimedUrls.add(k);
-        upsert(db, {
-          dedupeKey: `site:ev:${hash(k).slice(0, 24)}`, kind: "site", signals: ["complaint"],
-          evidenceIds: [], url: c.url, title: c.title.slice(0, 120),
-          oneLiner: `平台适配命中（${PLATFORM_LABELS[fit] || fit}）：题材匹配当前内容线`,
-          form: undefined, // 内容线机会无产品形态（W7-5 四值为产品形态）
-          verdict: "待验证", verdictReason: "watch 候选平台适配二次精筛，未进过分析名额",
-          verifyPlan: VERIFY.site(c.title.slice(0, 40)), source, platform: fit,
-          watchRefs: refCounts.get(k) ?? 0,
-        }, counters);
+        for (const fit of fits) {
+          upsert(db, {
+            dedupeKey: `site:ev:${hash(k).slice(0, 24)}:${fit}`, kind: "site", signals: ["complaint"],
+            evidenceIds: [], url: c.url, title: c.title.slice(0, 120),
+            oneLiner: `平台适配命中（${PLATFORM_LABELS[fit] || fit}）：题材匹配当前内容线`,
+            form: undefined, // 内容线机会无产品形态（W7-5 四值为产品形态）
+            verdict: "待验证", verdictReason: "watch 候选平台适配二次精筛，未进过分析名额",
+            verifyPlan: VERIFY.site(c.title.slice(0, 40)), source, platform: fit,
+            watchRefs: refCounts.get(k) ?? 0,
+          }, counters);
+        }
       }
     }
   }
