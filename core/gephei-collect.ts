@@ -161,7 +161,10 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
         try {
           const raw = await seoApi.siteKeywords(db, site.host, doFetch);
           seoSpend(db, "collect", 1);
-          const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.keywords ?? [];
+          // 实测（2026-10-15）：data = { target, kind, total, metrics:{keywords,etv,...}, keywords:[{keyword,position,etv,volume,url?}] }
+          const d = raw?.data ?? raw ?? {};
+          const list: any[] = Array.isArray(d) ? d : Array.isArray(d.keywords) ? d.keywords : Array.isArray(raw) ? raw : [];
+          if (!list.length) throw new Error(`site_keywords 响应无关键词列表（total=${d.total ?? "?"}）`);
           let count = 0;
           for (const item of list.slice(0, 50)) {
             const keyword = String(item?.keyword ?? item?.term ?? "").trim().slice(0, 80);
@@ -187,7 +190,7 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
           if (e instanceof Error && e.name === "SeoQuotaError") console.warn("[geo-collect] 标杆站跳过：哥飞余额不足");
         }
       }
-      db.put("meta", "geo-benchmark-done:" + month, { at: new Date().toISOString(), analyzed, pages, failed });
+      db.put("meta", "geo-benchmark-done:" + month, { at: new Date().toISOString(), analyzed, pages, failed, note: analyzed ? "成功" : `全部失败（常见原因：上游无数据/余额不足 402/网络——详见当日容器日志 [geo-collect] 行）` });
       if (analyzed) console.log(`[geo-collect] 标杆站月更：分析 ${analyzed} 站（失败 ${failed}）/ 页面数据 ${pages} 条`);
     } catch (e) {
       console.error("[geo-collect] 标杆站月更失败（下月重试）:", e instanceof Error ? e.message : e);
