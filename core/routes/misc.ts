@@ -3,6 +3,9 @@ import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
 import { planSchema, type Plan } from "../schema";
+import { termId } from "../seen-terms";
+import { dailyMetricsCandidates, siteGateOf, isEnglishTerm } from "../seo-gate";
+import { gepheiToolLinks } from "../seo-source";
 
 export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "health", handler: () => json({ ok: true, version: "2.0.0" }) },
@@ -26,6 +29,45 @@ export const routes: RouteDef[] = [
       clusters: db.list("clusters"),
       outlines: db.list("outlines"),
     }),
+  },
+  {
+    // 今日摘要（R9-4②）：一次请求给齐「今天该看什么」——供外部每日摘要（小拾 03:10）调用。
+    // 四段：审查台待拍（大纲+决策）/ 今日待查（共享质量闸英文前 5 词+深链）/ 四聚合源昨晚候选数。
+    methods: ["GET"],
+    pattern: "summary/today",
+    handler: ({ db }) => {
+      const gate = siteGateOf(db);
+      const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
+      const checks = dailyMetricsCandidates(db, gate, markedIds)
+        .filter((t) => isEnglishTerm(String(t.term || t.id)))
+        .slice(0, 5)
+        .map((t) => ({
+          term: String(t.term || t.id),
+          observations: t.observations ?? 0,
+          links: gepheiToolLinks(String(t.term || t.id)).slice(0, 3),
+        }));
+      const outlinesPending = db.list<any>("outlines").filter((o) => o.decision === "pending").length;
+      const decisionsPending = db.list<any>("decisions").filter((d) => d.decision === "pending").length;
+      // 四聚合源候选数：最新一次含该源的 discovery 批次（昨日 01:15 定时或手动触发）
+      const fourSources: Record<string, number> = {};
+      const dailySources = ["dailyhot-tieba", "dailyhot-toutiao", "dailyhot-douyin", "dailyhot-zhihu"];
+      const latest = db.list<any>("discovery")
+        .filter((r) => (r.sources || []).some((s: any) => dailySources.includes(String(s.sourceId))))
+        .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
+      if (latest) {
+        for (const sid of dailySources) {
+          const cov = (latest.sources || []).find((s: any) => s.sourceId === sid);
+          fourSources[sid] = cov ? (latest.candidates || []).filter((c: any) => c.sourceId === sid).length : 0;
+        }
+      }
+      return json({
+        generatedAt: now(),
+        pendingOutlines: outlinesPending,
+        pendingDecisions: decisionsPending,
+        todayChecks: { total: checks.length, terms: checks },
+        fourSources,
+      });
+    },
   },
   {
     // 手动触发内置分析（信息架构 v2 增补）：入队 job，worker 认领后跑整理/提词/审核链
