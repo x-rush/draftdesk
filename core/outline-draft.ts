@@ -42,6 +42,7 @@ export function outlineDraftTick(db: Store, runModel: ModelRunner = requestModel
     .filter((o) => o.decision === "approved" && !o.draftBody)
     .sort((a, b) => String(b.decidedAt || "").localeCompare(String(a.decidedAt || "")))
     .slice(0, MAX_PER_RUN);
+  ensureTiebuhaoClones(db);
   if (!targets.length) {
     db.put("meta", hourKey, { at: nowDate.toISOString(), drafted: 0, note: "无待出稿的 approved 大纲" });
     return;
@@ -80,3 +81,37 @@ export function outlineDraftTick(db: Store, runModel: ModelRunner = requestModel
     }
   })();
 }
+
+// R8-2①：资讯类（category=news/newtech）簇强制覆盖贴图号——同簇无 tiebuhao 行时
+// 克隆一条 tiebuhao 版（pending、同标题同大纲），产出侧缺口补齐（模板侧已齐）。
+// 每次运行幂等（查重后克隆），不消耗模型调用。
+export function ensureTiebuhaoClones(db: Store): number {
+  const outlines = db.list<any>("outlines");
+  const newsish = outlines.filter((o) => (o.category === "news" || o.category === "newtech") && o.decision === "approved");
+  let cloned = 0;
+  for (const o of newsish) {
+    const clusterRows = outlines.filter((x) => x.clusterId === o.clusterId);
+    if (clusterRows.some((x) => x.platform === "tiebuhao")) continue;
+    const stamp = new Date().toISOString();
+    const clone = {
+      ...o,
+      id: o.id + "-tbh",
+      platform: "tiebuhao",
+      decision: "pending" as const,
+      perPlatformDecision: undefined,
+      draftBody: undefined,
+      draftRef: undefined,
+      publishedRef: undefined,
+      decidedAt: stamp,
+      decidedBy: o.decidedBy || "builtin",
+      createdAt: stamp,
+      updatedAt: stamp,
+      cloneOf: o.id,
+    };
+    db.put("outlines", clone.id, clone);
+    cloned++;
+  }
+  if (cloned) console.log(`[outline-draft] 资讯类簇补贴图号版大纲 ${cloned} 条（R8-2①）`);
+  return cloned;
+}
+

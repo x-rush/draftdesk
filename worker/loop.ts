@@ -14,8 +14,9 @@ import { opportunityTick, watchTtlTick } from "../core/opportunity";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
 import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick, newWordsTick } from "../core/gephei-collect";
+import { infoReflowTick } from "../core/info-reflow";
 import { outlineCategoryTick } from "../core/outline-categorize";
-import { outlineDraftTick } from "../core/outline-draft";
+import { outlineDraftTick, ensureTiebuhaoClones } from "../core/outline-draft";
 import { requestModel } from "../core/model";
 import { runJanitor } from "../core/janitor";
 
@@ -40,6 +41,10 @@ export function startWorkerLoop(db: Store) {
         rootProbeTick(db);
         // 选题题材标注（第六轮批 A）：存量 outlines 六类一次性回填（cheap 档，初筛不受 consumerMode 门控）
         outlineCategoryTick(db, requestModel);
+        // 资讯类簇强制覆盖贴图号（R8-2①）：库内克隆不耗模型，两模式都跑
+        ensureTiebuhaoClones(db);
+        // info 型强词回流内容线（R8-2②）：strong+info+obs≥3 → 贴图号短资讯卡进审查台待拍
+        infoReflowTick(db);
         // 双端兜底链（第六轮批 B §2④）：builtin 模式 approved → 自动第一版大纲 → drafting；
         // external 模式此 tick 零动作（大纲由外部 Agent 写）。
         outlineDraftTick(db, requestModel);
