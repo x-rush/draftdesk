@@ -87,7 +87,7 @@ export function outlineDraftTick(db: Store, runModel: ModelRunner = requestModel
 // 每次运行幂等（查重后克隆），不消耗模型调用。
 export function ensureTiebuhaoClones(db: Store): number {
   const outlines = db.list<any>("outlines");
-  const newsish = outlines.filter((o) => (o.category === "news" || o.category === "newtech") && o.decision === "approved");
+  const newsish = outlines.filter((o) => o.category === "news" || o.category === "newtech");
   let cloned = 0;
   for (const o of newsish) {
     const clusterRows = outlines.filter((x) => x.clusterId === o.clusterId);

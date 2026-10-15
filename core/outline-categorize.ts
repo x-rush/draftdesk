@@ -50,13 +50,16 @@ export async function categorizeOutlines(db: Store, runModel: ModelRunner, outer
   return { classified, failedBatches, remaining: pending.length - classified };
 }
 
-// 一次性回填 tick：标完全部存量即置位（done 键无日期——本任务生命周期一次）；
-// 失败批次留下的缺口在下一轮 worker 重启时补（done 键只在 remaining=0 或失败批耗尽时写）。
+// 可持续标注 tick（R9-1，原「一次性回填」改常态）：每日一道闸——存在无 category 的
+// 大纲即 cheap 档增量标注（新簇/新大纲次日自动补上，下游 ensureTiebuhaoClones、
+// 审查台题材筛选持续有数据）；失败也置当日 done（防每分钟打爆模型），次日重试。
 export function outlineCategoryTick(db: Store, runModel: ModelRunner, nowDate: Date = new Date()) {
-  if (db.get("meta", "outline-category-done")) return;
+  const day = nowDate.toISOString().slice(0, 10);
+  const doneKey = "outline-category-done:" + day;
+  if (db.get("meta", doneKey)) return;
   const pending = db.list<any>("outlines").filter((o) => !o.category).length;
   if (!pending) {
-    db.put("meta", "outline-category-done", { at: nowDate.toISOString(), note: "无待标注大纲" });
+    db.put("meta", doneKey, { at: nowDate.toISOString(), note: "无待标注大纲" });
     return;
   }
   const running = db.get<any>("meta", "outline-category-running");
@@ -66,10 +69,11 @@ export function outlineCategoryTick(db: Store, runModel: ModelRunner, nowDate: D
     try {
       const outer = AbortSignal.timeout(10 * 60000);
       const r = await categorizeOutlines(db, runModel, outer);
-      if (r.remaining === 0) db.put("meta", "outline-category-done", { at: nowDate.toISOString(), classified: r.classified });
-      console.log(`[outline-category] 题材标注：本次 ${r.classified}，剩余 ${r.remaining}（失败批 ${r.failedBatches}）${r.remaining === 0 ? "——回填完成" : "，下轮 tick 继续"}`);
+      db.put("meta", doneKey, { at: nowDate.toISOString(), classified: r.classified, remaining: r.remaining });
+      console.log(`[outline-category] 题材标注：本次 ${r.classified}，剩余 ${r.remaining}（失败批 ${r.failedBatches}）${r.remaining === 0 ? "——当日清零" : "，下轮 tick 继续"}`);
     } catch (e) {
-      console.error("[outline-category] 回填失败（下轮重试）:", e instanceof Error ? e.message : e);
+      db.put("meta", doneKey, { at: nowDate.toISOString(), error: String(e instanceof Error ? e.message : e).slice(0, 160) });
+      console.error("[outline-category] 标注失败（次日重试）:", e instanceof Error ? e.message : e);
     } finally {
       db.del("meta", "outline-category-running");
     }

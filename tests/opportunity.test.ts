@@ -301,9 +301,10 @@ test("选题体系批 A：platform 五枚举迁移 + 题材六值标注（normal
     await new Promise((r) => setTimeout(r, 250));
     assert.equal(db.get<any>("outlines", "out-c1").category, "newtech");
     assert.equal(db.get<any>("outlines", "out-c2").category, "oss");
-    assert.ok(db.get<any>("meta", "outline-category-done"), "全部标完置位");
+    const day = new Date().toISOString().slice(0, 10);
+    assert.ok(db.get<any>("meta", "outline-category-done:" + day), "当日 done 置位（可持续模式 R9-1）");
     outlineCategoryTick(db, model);
-    assert.ok(db.get<any>("meta", "outline-category-done"), "done 键幂等");
+    assert.ok(db.get<any>("meta", "outline-category-done:" + day), "当日 done 幂等");
   } finally {
     db?.close();
     cleanup(dir);
