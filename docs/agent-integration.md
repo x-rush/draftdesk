@@ -182,6 +182,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - `platform` 五值枚举：`gzh`（公众号）/ `tiebuhao`（贴图号）/ `xhs-note`（小红书笔记）/ `xhs-video`（小红书视频笔记）/ `threads`。旧值（公众号/小红书/Threads）与中文标签提交时自动归一。
 - `category` 六值枚举：`newtech`（AI 新技术）/ `news`（新资讯）/ `oss`（开源工具）/ `selfproduct`（自研产品）/ `thinking`（个人思考）/ `hot`（社会热点）。
 - **资讯类簇强制覆盖贴图号（R8-2①）**：category=news/newtech 的簇，产出大纲时 tiebuhao 版必须覆盖（哪怕其他平台未拍）——图卡形态：3-6 张图卡、首图即观点、每张文案 ≤54 字、视觉风格关键词 3-5 个。内置侧 outlineDraftTick 已自动为同簇缺失 tiebuhao 的资讯行克隆补贴（ensureTiebuhaoClones），外部 Agent 编排时同规则执行。
+- **机会引擎整理职责（R9-3，人不整理只拍板）**：opportunities 池的整理/去重/合并/遗弃建议由 AI/外部 Agent 巡检完成——platform 适配产出的多平台卡（同 url 不同 platform 的 site:ev:* 卡）按簇聚合、可标遗弃建议（老大批板后执行）。watch 候选命中多平台时每平台一张卡（dedupeKey 带 platform 后缀），trend-radar.platformAffinity=[gzh,tiebuhao,xhs-note,threads] 四平台。
 
 ### 提交大纲
 

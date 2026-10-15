@@ -389,7 +389,7 @@ function ManualReturnPanel({ ws }: { ws: Workspace }) {
   if (!seoEnabled) return null;
   return (
     <section className="surface" style={{ padding: "16px 18px", marginBottom: 14 }}>
-      <p className="dash-label" style={{ marginTop: 0 }}>✋ 手动回传<span className="dash-label-sub">粘贴哥飞站内查询结果（JSON 或 每行「词 月搜 KD CPC」文本），✋手动数据权重最高，站群卡价值面板即时点亮</span></p>
+      <p className="dash-label" style={{ marginTop: 0 }}>✋ 手动回传<span className="dash-label-sub">粘贴哥飞站内查询结果（JSON / Markdown 报告 / 每行「词 月搜 KD CPC」文本均可），✋手动数据权重最高，站群卡价值面板即时点亮</span></p>
       <textarea
         style={{ width: "100%", minHeight: 72, fontFamily: "monospace", fontSize: 12 }}
         placeholder={'JSON：[{"keyword":"ai agent","volume":880,"kd":12,"cpc":0.6}]' + "\n" + '或文本（每行）：ai agent  880  12  0.6'}
