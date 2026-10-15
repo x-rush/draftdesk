@@ -59,11 +59,6 @@ function parseTrendWords(raw: unknown): string[] {
   return out;
 }
 
-function sundayOf(day: Date): string {
-  const d = new Date(day.getTime());
-  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
-  return d.toISOString().slice(0, 10);
-}
 function monthOf(day: Date): string {
   return day.toISOString().slice(0, 7);
 }
@@ -93,9 +88,10 @@ export function rootSlowdownReview(db: Store, nowDate: Date = new Date()): { slo
 }
 
 export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
-  if (nowDate.getUTCDay() !== 0) return; // 每周日
-  const week = sundayOf(nowDate);
-  if (db.get("meta", "geo-trends-done:" + week)) return;
+  // R8-4④：周更→日更（缓存优先，trends_rising 缓存命中合 2 分/次，月成本约 60 分；
+  // 存量周 key 自然废弃无需迁移——新日 key 直接生效）
+  const dayKey = nowDate.toISOString().slice(0, 10);
+  if (db.get("meta", "geo-trends-done:" + dayKey)) return;
   if (!seoSourceEnabled(db)) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
   const running = db.get<any>("meta", "geo-trends-running");
@@ -132,13 +128,13 @@ export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDa
         }
       }
       db.put("meta", "geo-trends-cursor", { roots: [...done, ...batch], updatedAt: new Date().toISOString() });
-      db.put("meta", "geo-trends-done:" + week, { at: new Date().toISOString(), roots: batch.length, injected, skipped, failed });
+      db.put("meta", "geo-trends-done:" + dayKey, { at: new Date().toISOString(), roots: batch.length, injected, skipped, failed });
       // 第十四步随十一步
       const slow = rootSlowdownReview(db, nowDate);
       console.log(`[geo-collect] 趋势周更：词根 ${batch.length}（失败 ${failed}）/ 注入 ${injected} 词 / 过滤 ${skipped}；根词降频 ${slow.slowed.length}/${slow.checked}`);
     } catch (e) {
-      console.error("[geo-collect] 趋势周更失败（下周重试）:", e instanceof Error ? e.message : e);
-      db.put("meta", "geo-trends-done:" + week, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
+      console.error("[geo-collect] 趋势日更失败（次日重试）:", e instanceof Error ? e.message : e);
+      db.put("meta", "geo-trends-done:" + dayKey, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
     } finally {
       db.del("meta", "geo-trends-running");
     }
@@ -323,7 +319,7 @@ export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: 
 export function applyManualGephei(
   db: Store,
   raw: string,
-): { mode: "json" | "text"; applied: number; skipped: number; intentConflicts: number; cardsLit: number } {
+): { mode: "json" | "text" | "md"; applied: number; skipped: number; intentConflicts: number; cardsLit: number } {
   const { items, mode } = parseManualGephei(raw);
   const stamp = new Date().toISOString();
   let applied = 0, skipped = 0, intentConflicts = 0, cardsLit = 0;

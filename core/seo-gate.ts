@@ -135,30 +135,46 @@ export function siteCandidateEligibleOf(
   return false;
 }
 
-// ---- 哥飞指标日更（第七轮批3 W7-8，采集=内置 tick，token 唯一出口）----
-// 每日一道闸：挑当日待补指标词（strong+低竞争+global+无新鲜指标，按观测数降序 ≤200 与
-// metrics 池余量取小）批量查三指标落词库（W7-8 外部 Agent 同一落点），全门槛达标词
-// 自动出标（与 siteGateAutoMark 同语义：builtin-gate-v1、不覆写已有标注）。
-// 意图交叉验证/冲突标记属消费侧（外部 Agent 只读库）；开关关闭/token 缺失时零调用。
-const METRICS_DAILY_MAX = 200;
+// ---- 哥飞指标日更（第七轮批3 W7-8；批4 R8-3 重构：共享质量闸+语言分层+按次记账）----
+// 质量闸（共享函数，R8-4②「今日待查清单」直接复用，一次修两用）：
+// strong + global + SERP 竞争≤门槛上限 + obs≥5 + 未出标 + 指标过期（90 天），
+// 英文优先排序（哥飞 volume 仅英文数据，中文词上游无数据照扣不误——R8-3③）。
+export function isEnglishTerm(term: string): boolean {
+  return /^[a-z0-9][a-z0-9 '+.&-]{2,39}$/i.test(String(term || "").trim()) && /[a-z]/i.test(String(term || ""));
+}
+
+export function dailyMetricsCandidates(db: Store, gate: SiteGate, markedIds: Set<string>): any[] {
+  return db.list<any>("seen-terms")
+    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global"
+      && typeof t.serpDedicated === "number" && t.serpDedicated <= gate.serpDedicatedMax
+      && (t.observations ?? 0) >= 5
+      && !seoMetricsFresh(t) && !markedIds.has(termId(String(t.term || t.id))))
+    .sort((a, b) => {
+      const ea = isEnglishTerm(String(a.term || a.id)) ? 0 : 1;
+      const eb = isEnglishTerm(String(b.term || b.id)) ? 0 : 1;
+      return ea - eb || (b.observations ?? 0) - (a.observations ?? 0);
+    });
+}
 
 export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
   const day = nowDate.toISOString().slice(0, 10);
   if (db.get("meta", "seo-metrics-done:" + day)) return;
   if (!seoSourceEnabled(db)) return;
-  // 双重门控（批4 W7-11①）：付费接口自动查需 settings「允许自动查关键词指标」授权，
-  // 关闭时零调用——准站群卡走「待查指标」指导深链（手动回传）
+  // 双重门控（批4 W7-11①；R8-4 v4 后默认关）：付费接口自动查需 settings 授权，
+  // 关闭时零调用——准站群卡走「待查指标」指导深链+「今日待查」清单（手动回传）
   if (!seoSourceOf(db).autoMetrics) return;
   const gate = siteGateOf(db);
   const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
-  const candidates = db.list<any>("seen-terms")
-    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global"
-      && typeof t.serpDedicated === "number" && t.serpDedicated <= gate.serpDedicatedMax
-      && (t.observations ?? 0) >= 5 // 批4：月累计 30 额度稀缺，只补观测达标的词
-      && !seoMetricsFresh(t) && !markedIds.has(termId(String(t.term || t.id))))
-    .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
-    .slice(0, Math.min(METRICS_DAILY_MAX, seoBudgetLeft(db, "metrics")));
-  if (!candidates.length) { db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: 0, marked: 0 }); return; }
+  const allCandidates = dailyMetricsCandidates(db, gate, markedIds);
+  // 语言分层（R8-3①）：英文词优先（哥飞 volume 仅英文有数据）；中文词移出哥飞通道，
+  // 计入 skippedLang 留待 suggest-cn 免费联想线（不自动调用）
+  const candidates = allCandidates.filter((t) => isEnglishTerm(String(t.term || t.id)))
+    .slice(0, 50); // 官方 volume 上限 50 词/次
+  const skippedLang = allCandidates.length - candidates.length;
+  if (!candidates.length) {
+    db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: 0, marked: 0, skippedLang, note: allCandidates.length ? "候选全部为非英文（哥飞 volume 无数据）" : "无候选" });
+    return;
+  }
   const running = db.get<any>("meta", "seo-metrics-running");
   if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
   db.put("meta", "seo-metrics-running", { at: new Date().toISOString() });
@@ -210,14 +226,14 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
         markedIds.add(termId(word));
         marked++;
       }
-      db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: terms.length, stamped, marked });
+      db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: terms.length, stamped, marked, skippedLang, note: `英文 ${terms.length} 词（中文 ${skippedLang} 词无数据跳过）；额度 ${seoBudgetLeft(db, "metrics")} 次剩余` });
       if (marked > 0) {
         // 出卡触发（W7-8 链路末端）：动态 import 避免与 opportunity.ts 的模块循环
         const { generateOpportunities } = await import("./opportunity");
         const r = generateOpportunities(db, { source: "auto" });
         console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → 触发机会生成：新增 ${r.created} 卡`);
       }
-      if (terms.length || marked) console.log(`[seo-metrics] 哥飞指标日更：补查 ${terms.length} 词（落库 ${stamped}）/ 全门槛新出标 ${marked}`);
+      if (terms.length || marked) console.log(`[seo-metrics] 哥飞指标日更：补查 ${terms.length} 词（落库 ${stamped}，中文跳过 ${skippedLang}）/ 全门槛新出标 ${marked}`);
     } catch (e) {
       console.error("[seo-metrics] 哥飞指标日更失败（次日重试）:", e instanceof Error ? e.message : e);
       db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });

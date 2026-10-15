@@ -64,8 +64,8 @@ test("双重门控（W7-11①）：autoMetrics 关=tick 零调用；开=恢复�
     const { fakeFetch, calls } = mockGepheiFull();
     // 开关开但未授权 autoMetrics（默认关）→ 零调用
     enableSeo(db);
-    mkStrong(db!, "观测达标词", 9);
-    mkStrong(db!, "观测不足词", 2);
+    mkStrong(db!, "zzb4 en target", 9);
+    mkStrong(db!, "zzb4 weak obs", 2);
     seoMetricsTick(db, fakeFetch);
     await new Promise((r) => setTimeout(r, 80));
     assert.equal(calls.length, 0, "autoMetrics 关=零调用");
@@ -74,9 +74,9 @@ test("双重门控（W7-11①）：autoMetrics 关=tick 零调用；开=恢复�
     db.del("meta", "seo-metrics-done:" + new Date().toISOString().slice(0, 10));
     seoMetricsTick(db, fakeFetch);
     await new Promise((r) => setTimeout(r, 200));
-    const seen = db.get<any>("seen-terms", termId("观测达标词"));
+    const seen = db.get<any>("seen-terms", termId("zzb4 en target"));
     assert.equal(seen?.monthlySearch, 880, "授权后自动查落库");
-    assert.equal(db.get<any>("seen-terms", termId("观测不足词"))?.monthlySearch, undefined, "obs<5 不查");
+    assert.equal(db.get<any>("seen-terms", termId("zzb4 weak obs"))?.monthlySearch, undefined, "obs<5 不查");
     assert.ok(calls.some((u) => u.includes("keyword_volume")), "三指标调用");
     assert.ok(!calls.some((u) => u.includes("search_intent")), "search_intent 永久内置 AI（批4②不自动查）");
     // 月池：不同日期同月累计（在 tick 已消耗基础上 +20；次月重置）

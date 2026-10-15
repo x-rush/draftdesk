@@ -68,7 +68,7 @@ test("适配器门控：关闭时零外部调用（fetch 计数 0）；开启后
     assert.equal(metrics?.cpc, 0.5);
     assert.equal(metrics?.intent, undefined, "search_intent 内置化（批4②不自动查哥飞意图）");
     assert.equal(calls.length, 2, "双接口各一次（volume+difficulty，intent 内置化）");
-    assert.equal(seoBudgetUsed(db, "metrics"), 1, "按词计预算（metrics 池）");
+    assert.equal(seoBudgetUsed(db, "metrics"), 2, "按次计预算（一批 volume+kd 共 2 次，R8-3）");
     // 全门槛判定路径：带 gepheiFetchedAt 的新鲜指标 → full 达标
     const term = { relevance: "strong", region: "global", serpDedicated: 0, ...metrics, gepheiFetchedAt: new Date().toISOString() };
     const verdict = evalSiteGate(term, DEFAULT_SITE_GATE);
@@ -81,21 +81,29 @@ test("适配器门控：关闭时零外部调用（fetch 计数 0）；开启后
   }
 });
 
-test("积分断路器：预算 1 → 批量截断到 1 词；额度尽后续调用空手而回", async () => {
+test("积分断路器（R8-3 按次）：预算不足一对请求（<2 次）→ 零调用；额度尽后续空手而回", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-b2budget-"));
   let db: Store | undefined;
   try {
     db = new Store(dir);
     enableSeo(db, { metrics: 1 });
     const { fakeFetch, calls } = mockGephei();
+    // 一批=volume+kd 共 2 次，预算 1 次凑不齐一对 → 直接不发（半批比不发更浪费）
     const m = await fetchKeywordMetrics(db, ["词一", "词二"], fakeFetch);
-    assert.deepEqual([...m.keys()], ["词一"], "预算 1 只查首词");
-    assert.equal(seoBudgetUsed(db, "metrics"), 1);
-    assert.equal(seoBudgetLeft(db, "metrics"), 0);
-    const before = calls.length;
+    assert.equal(m.size, 0, "预算 <2 次零调用");
+    assert.equal(seoBudgetUsed(db, "metrics"), 0);
+    assert.equal(seoBudgetLeft(db, "metrics"), 1);
+    // 充值到 5 次：词三单批（+2）成功后剩 3，词四再一批（+2）后剩 1 → 凑不齐一对
+    db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: 60, builtinMetricsBudget: 5, builtinCollectBudget: 100, autoMetrics: true, autoCollect: false });
     const m2 = await fetchKeywordMetrics(db, ["词三"], fakeFetch);
-    assert.equal(m2.size, 0, "额度尽返回空");
+    assert.equal(m2.size, 1, "剩 3 次可发一批");
+    const m3 = await fetchKeywordMetrics(db, ["词四"], fakeFetch);
+    assert.equal(m3.size, 1, "剩 3 次再发一批");
+    const before = calls.length;
+    const m4 = await fetchKeywordMetrics(db, ["词五"], fakeFetch);
+    assert.equal(m4.size, 0, "剩 1 次凑不齐一对零调用");
     assert.equal(calls.length, before, "额度尽零调用");
+    assert.equal(seoBudgetUsed(db, "metrics"), 4, "4 次额度对齐");
   } finally {
     db?.close();
     cleanup(dir);

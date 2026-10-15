@@ -265,6 +265,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
       </nav>
       {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} onJumpSites={(host) => { setTab("sites"); setNotice("新站发现交叉站：" + host + "（已在站点发现列表中，可按排序查看）。"); }} />}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
+      {tab === "sites" && <TodayCheckPanel ws={ws} />}
       {tab === "sites" && <ManualReturnPanel ws={ws} />}
       {tab === "sites" && <BenchmarkPanel ws={ws} />}
       {tab === "sites" && (
@@ -411,6 +412,40 @@ function ManualReturnPanel({ ws }: { ws: Workspace }) {
           </span>
         )}
       </div>
+    </section>
+  );
+}
+
+// 今日待查清单（R8-4②，批4 指导行的聚合升级）：共享质量闸取前 10 词，
+// 每词三张实测深链；回传成功（manualAt）自动移出清单。与「手动回传」框联动。
+function TodayCheckPanel({ ws }: { ws: Workspace }) {
+  const seoEnabled = !!ws.data?.config?.seoDataSource?.enabled;
+  const [items, setItems] = useState<any[] | null>(null);
+  useEffect(() => { void api<any>("seo-terms/today").then((r) => setItems(r.items || [])).catch(() => setItems([])); }, []);
+  if (!seoEnabled || items === null) return null;
+  return (
+    <section className="surface" style={{ padding: "16px 18px", marginBottom: 14 }}>
+      <p className="dash-label" style={{ marginTop: 0 }}>📋 今日待查<span className="dash-label-sub">共享质量闸（strong+低竞争+obs≥5+未出标，英文优先）前 10 词——手动回传成功即从清单移除并点亮价值面板</span></p>
+      {items.length === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>今日清单空：所有达标词都已出标或已回传。</p>
+      ) : (
+        <div className="discovery-list">
+          {items.map((it) => (
+            <article className="discovery-row" key={it.term} style={{ padding: "10px 4px" }}>
+              <div className="row-content">
+                <div className="row-meta">
+                  <strong>{it.term}</strong>
+                  <span>观测 {it.observations} 次</span>
+                </div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>
+                  {it.links.map((l: any) => <a key={l.label} className="text-button" style={{ padding: "0 6px 0 0" }} target="_blank" rel="noopener noreferrer" href={l.url}>{l.label} ↗</a>)}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>查完把结果粘到下方「✋ 手动回传」框即可落库点亮。</p>
     </section>
   );
 }

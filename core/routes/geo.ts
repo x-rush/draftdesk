@@ -8,6 +8,8 @@ import { paginatedSql } from "../http/pagination";
 import { now } from "../store";
 import { observeSuggestion, termId } from "../seen-terms";
 import { ensureBenchmarkSeeds, applyManualGephei } from "../gephei-collect";
+import { dailyMetricsCandidates, isEnglishTerm, siteGateOf } from "../seo-gate";
+import { gepheiToolLinks } from "../seo-source";
 
 const BRAND_RE = /openai|anthropic|claude|gemini|midjourney|perplexity|google|microsoft|github|amazon|netlify|facebook|apple|nvidia|notion|slack|zoom|figma|spotify|youtube|tesla|chatgpt|bytedance|baidu|alibaba|tencent/i;
 
@@ -105,6 +107,26 @@ export const routes: RouteDef[] = [
     handler: ({ db }) => {
       const rec = db.get<any>("meta", "manual-gephei-recent");
       return json({ items: Array.isArray(rec) ? rec.slice(0, 3) : [] });
+    },
+  },
+  {
+    // UI 口：今日待查清单（R8-4②，批4 指导行的聚合升级）——共享质量闸
+    // （dailyMetricsCandidates：strong+global+低竞争+obs≥5+未出标+过期，英文优先）取前 10，
+    // 每词三张实测深链；回传成功（manualAt）自动移出清单。
+    methods: ["GET"],
+    pattern: "seo-terms/today",
+    handler: ({ db }) => {
+      const gate = siteGateOf(db);
+      const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
+      const items = dailyMetricsCandidates(db, gate, markedIds)
+        .filter((t) => isEnglishTerm(String(t.term || t.id)))
+        .slice(0, 10)
+        .map((t) => ({
+          term: String(t.term || t.id),
+          observations: t.observations ?? 0,
+          links: gepheiToolLinks(String(t.term || t.id)).slice(0, 3),
+        }));
+      return json({ items, total: items.length, generatedAt: now() });
     },
   },
   {

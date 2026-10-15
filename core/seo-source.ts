@@ -183,14 +183,15 @@ export function normalizeKeywordMetrics(raw: unknown): KeywordMetrics {
 }
 
 // 批量三指标（W7-8 同款三接口：keyword_volume + bulk_keyword_difficulty + search_intent）：
-// 内部并行三调用，按词归一合并；按词计积分预算。单词失败不影响其他词（该词字段缺省走降级）。
+// 内部并行双调用（volume+difficulty；intent 内置化），按「次」计预算（R8-3①：哥飞按次计费
+// ——volume 2-5 分/次 50 词上限 + kd 5 分/次 200 词上限，一次批量请求对≈10 分，与真实积分
+// 对齐；按词记账曾比真实成本严 3 倍把日更卡死）。单词失败不影响其他词（字段缺省走降级）。
 export async function fetchKeywordMetrics(db: Store, terms: string[], doFetch: typeof fetch, outer?: AbortSignal): Promise<Map<string, KeywordMetrics>> {
   const out = new Map<string, KeywordMetrics>();
   if (!terms.length || !seoSourceEnabled(db)) return out;
-  if (seoBudgetLeft(db, "metrics") <= 0) return out;
-  const spend = Math.min(terms.length, seoBudgetLeft(db, "metrics"));
-  seoSpend(db, "metrics", spend);
-  const batch = terms.slice(0, spend);
+  if (seoBudgetLeft(db, "metrics") < 2) return out; // 一批=volume+difficulty 共 2 次
+  seoSpend(db, "metrics", 2);
+  const batch = terms.slice(0, 50); // 官方上限：volume 50 词/次
   const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch((e) => { if (e instanceof SeoQuotaError) throw e; return fallback; });
   // search_intent 永久内置 AI（批4 W7-11②：不自动查哥飞意图，省 5 分/词；仅手动回传顺带落库对照）
   const [volumes, difficulties] = await Promise.all([
@@ -336,12 +337,15 @@ export function gepheiToolLinks(term: string): { label: string; url: string }[] 
   ];
 }
 
-// 手动回传（批4 W7-11④）：解析哥飞站内查询结果粘贴文本——JSON 优先，回退按行
-// 切分（tab/竖线/多空格），字段序=词 月搜 KD CPC（后三可缺）。防御式，解析不出的行跳过。
+// 手动回传（批4 W7-11④；R8-4② 增强）：解析哥飞站内查询结果粘贴文本——JSON 优先，
+// 回退按行切分（tab/竖线/多空格），字段序=词 月搜 KD CPC（后三可缺）。
+// Markdown 报告模式（R8-4②，哥飞网页一键复制）：剥粗体/标题记号后按文本模式解析，
+// 表格行（| 分隔）天然被分隔符覆盖。防御式，解析不出的行跳过。
 export type ManualGepheiItem = { term: string; monthlySearch?: number; kd?: number; cpc?: number; intent?: string };
-export function parseManualGephei(raw: string): { items: ManualGepheiItem[]; mode: "json" | "text" } {
+export function parseManualGephei(raw: string): { items: ManualGepheiItem[]; mode: "json" | "text" | "md" } {
   const text = String(raw || "").trim();
   if (!text) return { items: [], mode: "text" };
+  const looksLikeMarkdown = /\*\*|^#{1,6}\s|^\s*\|/m.test(text);
   try {
     const parsed = JSON.parse(text);
     const list: any[] = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : [];
@@ -361,7 +365,8 @@ export function parseManualGephei(raw: string): { items: ManualGepheiItem[]; mod
     if (items.length) return { items, mode: "json" };
   } catch { /* 回退文本模式 */ }
   const items: ManualGepheiItem[] = [];
-  for (const line of text.split(/\r?\n/)) {
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = looksLikeMarkdown ? rawLine.replace(/\*\*/g, "").replace(/^#{1,6}\s*/, "") : rawLine;
     const cols = line.trim().split(/\t|\s{2,}|\s*\|\s*/).filter(Boolean);
     if (cols.length < 2) continue;
     const term = cols[0].trim().slice(0, 80);
@@ -369,5 +374,5 @@ export function parseManualGephei(raw: string): { items: ManualGepheiItem[]; mod
     if (!term || !nums.length) continue;
     items.push({ term, monthlySearch: nums[0], kd: nums[1], cpc: nums[2] });
   }
-  return { items, mode: "text" };
+  return { items, mode: looksLikeMarkdown ? "md" : "text" };
 }
