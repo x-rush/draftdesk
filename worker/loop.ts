@@ -39,7 +39,7 @@ export function startWorkerLoop(db: Store) {
         seenDiggingTick(db);
         // 词根探针（第五轮批 2b）：34 工具词根+AI 词根轮转喂联想，≤48 词/日不冲判定重档
         rootProbeTick(db);
-        // 选题题材标注（第六轮批 A）：存量 outlines 六类一次性回填（cheap 档，初筛不受 consumerMode 门控）
+        // 选题题材标注（第六轮批 A；R9-1 改可持续）：每日增量标注无 category 大纲（cheap 档，不受 consumerMode 门控）
         outlineCategoryTick(db, requestModel);
         // 资讯类簇强制覆盖贴图号（R8-2①）：库内克隆不耗模型，两模式都跑
         ensureTiebuhaoClones(db);

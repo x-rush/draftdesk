@@ -99,6 +99,8 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 ## 应用机会（机会引擎 · 站点发现 · 新站发现）
 
+**热词计划 26 源全谱覆盖**（R9-2）：中文热榜官方接口+聚合补充双路（百度/微博/B站/贴吧/头条/抖音/知乎）、搜索联想中英、Google Trends 六国、开发者社区（GitHub/HN×2/V2EX/掘金）、AI 垂直（HF/reddit×3）、PH 新品、web 搜索；快手维持停用（上游不稳）。**机会引擎四平台适配**（R9-3）：watch 候选按 platformAffinity（gzh/tiebuhao/xhs-note/threads）关键词匹配产出内容线机会卡，一条命中多平台出多张卡；适配正则已扩充（tiebuhao=突发/热搜/时间线，threads=出海/GitHub/HN）。opportunities 池的整理/合并/遗弃建议由 AI/外部 Agent 巡检产出，人不整理只拍板。
+
 「应用机会」页是三类机会的单入口。**机会引擎**把四类信号统一成机会卡（同词/同证据去重，信号可叠加）：用户抱怨（应用策略的候选与 idea 产物）、新技术/新资讯（产品级变化推演配套缺口——额度监控/状态页/迁移/格式转换）、热词趋势（「推荐」蓝海词 → 站群内容页卡；工具意图词 → 应用卡；alternative 探针词 → 替代缺口卡）与站群候选（siteCandidate 标注词）。每张卡带自动初判（推荐/可以试试/待验证）与一周验证计划，来源标注 auto（内置 tick）或 agent（外部 Agent 经 `POST /api/v1/opportunities/generate` 触发——external 模式下内置不自动生成）。机会引擎内按形态（应用/站群）与信号筛选。
 
 **新站发现**（对标新站监控服务）：每日抓 Show HN 与 Product Hunt 新发布站，LLM 批量做中文转译、核心关键词与六类动机判定（冲着关键词/解决自己痛点/满足别人需求/兴趣爱好/商业机会/没说清，标注判定来源=作者原话或推测）；新站核心词命中我们热词库高分词时标「⚠️ 与我们撞词」——竞品早期形态信号。
