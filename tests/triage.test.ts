@@ -10,6 +10,7 @@ import { Store, hash } from "../core/store";
 import {
   shardCandidates, parseShardOutput, applyMerges, applyTriageToCandidates, runTriage,
   triageTick, requestTriage, triageEnabledOf, groupIdOf, triagePoolOf, MIN_CANDIDATES,
+  triageShardMessages, mergeInputOf, MERGE_INPUT_CAP,
   type Attention, type TriageGroup, type TriageRecord, type TriageRunner,
 } from "../core/triage";
 import { generateOpportunities } from "../core/opportunity";
@@ -37,12 +38,15 @@ function group(id: string, attention: Attention, memberUrls: string[], extra: Pa
     representativeUrl: memberUrls[0], sources: ["S1"], angles: [], ...extra,
   };
 }
-function runnerOf(responses: { shard?: string[]; merge?: string[]; fail?: boolean }): { runner: TriageRunner; calls: () => number } {
+function runnerOf(responses: { shard?: string[]; merge?: string[]; fail?: boolean }): { runner: TriageRunner; calls: () => number; temps: number[] } {
   let calls = 0;
+  const temps: number[] = [];
   return {
     calls: () => calls,
+    temps,
     runner: async (_db, messages, opts) => {
       calls++;
+      temps.push(opts.temperature);
       if (responses.fail) throw new Error("模型连接失败");
       opts.signal.throwIfAborted();
       const system = messages[0].content;
@@ -57,6 +61,20 @@ function runnerOf(responses: { shard?: string[]; merge?: string[]; fail?: boolea
     },
   };
 }
+
+// ---- 提示词工程（小拾审查 P1/P2/P4 落地守护）----
+test("分片 prompt：判级 few-shot 示例在位；criteria 双位置强调；无 criteria 不出现强调行", () => {
+  const shard = [cand(0)];
+  const base = triageShardMessages(PLAN, shard)[0].content;
+  assert.ok(base.includes("判级示例"), "few-shot 示例块在位");
+  assert.ok(base.includes("蹭 AI 词的娱乐向"), "none 边界示例（看起来像 AI 但判 none）");
+  assert.ok(base.includes("标题平淡但领域强信号"), "strong 边界示例（标题平淡但 strong）");
+  assert.ok(!base.includes("补充判级标准"), "无 criteria 时无补充标准块");
+  const withCriteria = triageShardMessages({ ...PLAN, aiPolicy: { attentionCriteria: "出海工具优先" } }, shard)[0].content;
+  assert.equal(withCriteria.split("出海工具优先").length - 1 >= 1, true, "criteria 本体注入");
+  assert.ok(withCriteria.includes("与默认三档定义或示例冲突时，一律以补充标准为准"), "P4：输出契约行前重复强调");
+  assert.ok(withCriteria.indexOf("补充判级标准（优先级最高）") < withCriteria.indexOf("再次强调：判级以上述补充判级标准为准"), "强调行在标准块之后");
+});
 
 // ---- 分片打包 ----
 test("分片：连续填充（同源天然同片）、每片 ≤60、池子封顶 960", () => {
@@ -160,6 +178,28 @@ test("分配：strong 优先占满 → potential → none 永不占 selected；�
   assert.equal(candidates.every((c) => c.attention === undefined || c.attention), true);
 });
 
+// ---- 合并轮输入封顶（小拾审查 P3）----
+test("mergeInputOf：组数超 200 按成员数降序取前 200，gid 保留 drafts 原索引且 applyMerges 可解析", () => {
+  const drafts = Array.from({ length: 250 }, (_, i) => ({
+    title: "组" + i,
+    attention: "potential" as Attention,
+    reason: "",
+    members: [cand(i), ...(i % 50 === 0 ? [cand(1000 + i), cand(2000 + i), cand(3000 + i)] : [])],
+    angles: [],
+  }));
+  const compact = mergeInputOf(drafts);
+  assert.equal(compact.length, MERGE_INPUT_CAP, "封顶 200");
+  const picked = new Set(compact.map((c) => Number(c.gid.slice(1))));
+  // 成员数 5 的组（i%50==0，共 5 个）必须全部入选；成员数 1 的尾部组被挤出
+  for (let i = 0; i < 250; i += 50) assert.ok(picked.has(i), `大组 g${i} 入选`);
+  assert.ok([246, 247, 248, 249].every((i) => !picked.has(i)), "单成员尾部组被挤出");
+  // gid 与原索引对齐 → applyMerges 按原索引仍可归并
+  const { groups, merges } = applyMerges(drafts, JSON.stringify({ merges: [{ keep: "g0", drop: ["g50"], title: "大组合并" }] }));
+  assert.equal(merges, 1);
+  const merged = groups.find((g) => g.title === "大组合并")!;
+  assert.equal(merged.members.length, 4 + 4, "两组成员并集（各 1+3）");
+});
+
 // ---- runTriage 端到端（mock runner）----
 test("runTriage：两片判级 + 片间合并 + 组 id 确定性；候选不足拒绝", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-run-"));
@@ -176,8 +216,9 @@ test("runTriage：两片判级 + 片间合并 + 组 id 确定性；候选不足�
     });
     const shard2 = JSON.stringify({ groups: [{ members: [0], title: "同事件甲（B源）", attention: "strong", reason: "发布" }] });
     const merge = JSON.stringify({ merges: [{ keep: "g0", drop: ["g2"], title: "同事件甲" }] });
-    const { runner, calls } = runnerOf({ shard: [shard1, shard2], merge: [merge] });
+    const { runner, calls, temps } = runnerOf({ shard: [shard1, shard2], merge: [merge] });
     const record = await runTriage(db!, PLAN, "job-x", candidates, new AbortController().signal, runner);
+    assert.ok(temps.length && temps.every((t) => t === 0.2), "P2：分类任务低温采样 temperature=0.2");
     assert.equal(calls(), 3, "2 分片 + 1 合并");
     assert.equal(record.shards, 2);
     assert.equal(record.calls, 3);

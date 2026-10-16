@@ -37,6 +37,7 @@ export async function requestModel(
     maxOutputTokens?: number;
     plan?: "cheap" | "full";
     model?: string;
+    temperature?: number;
   },
 ) {
   options.signal.throwIfAborted();
@@ -88,6 +89,8 @@ export async function requestModel(
         model: options.model || cfg.model,
         messages,
         max_tokens: outputTokens,
+        // 分类/结构化任务可收紧采样（语义初筛 0.2）；缺省不传走模型默认，零行为外溢
+        ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
         ...(qwenFlash ? { thinking_budget: thinkingBudget, preserve_thinking: false } : {}),
         stream: !!options.onText,
         ...(options.json ? { response_format: { type: "json_object" } } : {}),

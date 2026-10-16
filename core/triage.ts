@@ -54,6 +54,16 @@ function granularityText(policy: PlanTriagePolicy | undefined): string {
 
 // ---- prompt（纯函数，守护测试用）----
 type ShardItem = { url: string; title: string; sourceName: string };
+// 判级边界 few-shot（小拾审查 P1）：定义文解决不了边界案例——示例教边界比定义文有效一个量级。
+// 五条覆盖：平淡标题但 strong / 蹭 AI 词但娱乐 none / 产品资讯 potential / 价格大变动 strong / 用户数 potential。
+const ATTENTION_FEW_SHOT = [
+  '判级示例（边界参照，同型同判）：',
+  '- {"t":"HF trending 第一的开源推理框架，README 三天上千星"} → strong（标题平淡但领域强信号：开发者用脚投票）',
+  '- {"t":"某明星用 AI 修复老照片上热搜"} → none（蹭 AI 词的娱乐向话题，非技术/工具/需求信号）',
+  '- {"t":"大厂发布新款智能音箱，接入第三方大模型"} → potential（有 AI 要素但属单点产品资讯，观察后续生态动作）',
+  '- {"t":"某模型 API 突降 80%，开发者讨论迁移方案"} → strong（价格大变动+迁移需求，工具生态直接受影响）',
+  '- {"t":"某助手类 App 宣称用户破一亿"} → potential（用户规模数据，但非开发/工具向的强信号）',
+].join("\n");
 export function triageShardMessages(plan: Pick<Plan, "name" | "goal" | "platformAffinity"> & { aiPolicy?: PlanTriagePolicy }, shard: ShardItem[]): ModelMessage[] {
   const platforms = (plan.platformAffinity?.length ? plan.platformAffinity : [...ANGLE_PLATFORMS]).filter((p) => (ANGLE_PLATFORMS as readonly string[]).includes(p));
   const criteria = plan.aiPolicy?.attentionCriteria?.trim();
@@ -63,8 +73,10 @@ export function triageShardMessages(plan: Pick<Plan, "name" | "goal" | "platform
     "2. 注意力判级：每组给 attention 与一句话 reason。strong=AI/科技/创作者工具领域的强信号（重要发布、大版本、显著数据、研究策略方向上的大事件）；potential=有潜在价值、值得留观察池的次级信号；none=与 AI/科技/内容创作方向无关（纯体育赛事、时政要闻、社会民生、娱乐八卦）或无信息量的噪音。",
     `3. 双线草案：attention 非 none 的组给 angles（内容角度 0-3 条，platform 只能从 ${platforms.join("/")} 中选）；若该事件存在 web/app 配套工具缺口，给 appGap（一句话应用路线）；没有就不写该字段。`,
     `归类粒度：${granularityText(plan.aiPolicy ?? {})}。`,
+    ATTENTION_FEW_SHOT,
     `研究策略方向（判级参照）：${plan.goal.slice(0, 160)}`,
     criteria ? `补充判级标准（优先级最高）：${criteria.slice(0, 400)}` : "",
+    criteria ? "再次强调：判级以上述补充判级标准为准，与默认三档定义或示例冲突时，一律以补充标准为准。" : "",
     '只输出 JSON：{"groups":[{"members":[0,2],"title":"组主题(≤20字)","attention":"strong|potential|none","reason":"一句话理由(≤40字)","angles":[{"platform":"gzh","angle":"角度(≤30字)"}],"appGap":"路线(≤50字)"}]}。无 angles 就省略该字段；每个输入编号都必须落在某个组里。',
   ];
   return [
@@ -211,10 +223,10 @@ export function applyMerges(drafts: GroupDraft[], text: string): { groups: Group
 export type TriageRunner = (
   db: Store,
   messages: ModelMessage[],
-  opts: { signal: AbortSignal; tier: "cheap" | "full"; maxOutputTokens: number },
+  opts: { signal: AbortSignal; tier: "cheap" | "full"; maxOutputTokens: number; temperature: number },
 ) => Promise<{ text: string; usage?: number }>;
-export function defaultTriageRunner(db: Store, messages: ModelMessage[], opts: { signal: AbortSignal; tier: "cheap" | "full"; maxOutputTokens: number }) {
-  return import("./model").then((m) => m.requestModel(db, messages, { signal: opts.signal, json: true, plan: opts.tier, maxOutputTokens: opts.maxOutputTokens }));
+export function defaultTriageRunner(db: Store, messages: ModelMessage[], opts: { signal: AbortSignal; tier: "cheap" | "full"; maxOutputTokens: number; temperature: number }) {
+  return import("./model").then((m) => m.requestModel(db, messages, { signal: opts.signal, json: true, plan: opts.tier, maxOutputTokens: opts.maxOutputTokens, temperature: opts.temperature }));
 }
 export function groupIdOf(jobId: string, memberUrls: string[]): string {
   return "grp-" + hash(jobId + "|" + [...memberUrls].sort().join(",")).slice(0, 16);
@@ -236,6 +248,22 @@ function finalizeGroups(jobId: string, drafts: GroupDraft[]): TriageGroup[] {
     };
   });
 }
+// 合并轮输入封顶（小拾审查 P3）：组数超上限时按成员数降序取前 N，其余组保持独立——
+// 并组遗漏可接受，合并轮撞上下文报「截断 JSON」不可接受；gid 携带 drafts 原索引，applyMerges 无需感知。
+export const MERGE_INPUT_CAP = 200;
+export function mergeInputOf(drafts: GroupDraft[]) {
+  const picked = new Set(
+    drafts.map((d, i) => i).sort((a, b) => drafts[b].members.length - drafts[a].members.length).slice(0, MERGE_INPUT_CAP),
+  );
+  return drafts.map((d, i) => ({ d, i })).filter(({ i }) => picked.has(i)).map(({ d, i }) => ({
+    gid: `g${i}`,
+    title: d.title,
+    attention: d.attention,
+    memberCount: d.members.length,
+    representative: d.members[0]?.title.slice(0, 60) || "",
+    sources: [...new Set(d.members.map((m) => m.sourceName))].slice(0, 3),
+  }));
+}
 export async function runTriage(
   db: Store,
   plan: Plan,
@@ -246,6 +274,8 @@ export async function runTriage(
 ): Promise<TriageRecord> {
   if (candidates.length < MIN_CANDIDATES) throw new AppError(`候选不足 ${MIN_CANDIDATES} 条，不值得跑语义初筛。`);
   const tier = db.get<any>("config", "aiPolicy")?.triage === "full" ? "full" : "cheap";
+  // 采样收紧（小拾审查 P2）：分类+结构化输出用低温，压判级抖动的采样分量
+  const temperature = 0.2;
   const shards = shardCandidates(candidates);
   const drafts: GroupDraft[] = [];
   let tokens = 0;
@@ -254,7 +284,7 @@ export async function runTriage(
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await runner(db, triageShardMessages(plan, shard), { signal, tier, maxOutputTokens: 6000 });
+        const res = await runner(db, triageShardMessages(plan, shard), { signal, tier, maxOutputTokens: 6000, temperature });
         tokens += res.usage ?? 0;
         calls++;
         drafts.push(...parseShardOutput(res.text, shard, plan));
@@ -273,15 +303,7 @@ export async function runTriage(
     const lastErrorHolder: { e: unknown } = { e: null };
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const compact = drafts.map((d, i) => ({
-          gid: `g${i}`,
-          title: d.title,
-          attention: d.attention,
-          memberCount: d.members.length,
-          representative: d.members[0]?.title.slice(0, 60) || "",
-          sources: [...new Set(d.members.map((m) => m.sourceName))].slice(0, 3),
-        }));
-        const res = await runner(db, triageMergeMessages(compact), { signal, tier, maxOutputTokens: 3000 });
+        const res = await runner(db, triageMergeMessages(mergeInputOf(drafts)), { signal, tier, maxOutputTokens: 3000, temperature });
         tokens += res.usage ?? 0;
         calls++;
         const applied = applyMerges(drafts, res.text);
