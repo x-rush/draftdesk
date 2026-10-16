@@ -11,6 +11,7 @@ import { seenDiggingTick } from "../core/seen-dig";
 import { seenJudgeTick } from "../core/seen-judge";
 import { seoMetricsTick } from "../core/seo-gate";
 import { opportunityTick, watchTtlTick } from "../core/opportunity";
+import { triageTick } from "../core/triage";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
 import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick, newWordsTick } from "../core/gephei-collect";
@@ -63,6 +64,9 @@ export function startWorkerLoop(db: Store) {
         // 机会引擎（第五轮）：watch 池 TTL 是初筛的一部分（不受 consumerMode 影响）；
         // 机会自动生成仅 builtin 模式（external 由外部 Agent 经 /opportunities/generate 触发）。
         watchTtlTick(db);
+        // 语义初筛补跑（R9-6）：失败批次重试 + POST /triage/generate 显式请求消费；
+        // 正常批次在 collect 内联跑，tick 只兜底（初筛，不受 consumerMode 门控）。
+        await triageTick(db);
         opportunityTick(db);
         runJanitor(db);
         const job = db.claim();

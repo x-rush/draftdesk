@@ -5,6 +5,7 @@ import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
 import {relevanceReason,type DiscoveryCandidate,type CandidateStatus,type SourceCoverage,type DiscoveryRecord} from "./discovery";
+import { applyTriageToCandidates, markTriageFailed, runTriage, triageEnabledOf, triagePoolOf } from "./triage";
 import { parseHnAlgolia, parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform } from "./hotlists";
 // 官方公开 JSON 接口（允许列表以精确 URL 匹配，配置来源时不可自填）：
 const BILIBILI_POPULAR_URL="https://api.bilibili.com/x/web-interface/popular";
@@ -499,15 +500,36 @@ export async function collect(
       coverage.push({sourceId:s.id,sourceName:s.name,status:"failed",raw:0,matched:0,selected:0,error:e instanceof Error?e.message:"读取失败"});
     }
   }
-  const reserveEvidence = plan.maxQueries > searches && sources.some(s=>s.type==="web") ? Math.min(4,Math.max(0,plan.maxEvidence-3)) : 0;
-  const unique = balancedEvidence(groups,plan.maxEvidence-reserveEvidence);
-  if(jobId){
-    const pending=new Set(unique.map(e=>e.url));
-    for(const candidate of candidates){
-      if(candidate.status!=="watch"||!pending.has(candidate.url))continue;
-      candidate.status="selected";candidate.reason=mode==="preview"?"已保留为采集预览证据，尚未进入 AI":"已进入本轮 AI 分析";pending.delete(candidate.url);
-      const row=coverage.find(s=>s.sourceId===candidate.sourceId);if(row)row.selected++;
+  // 语义初筛（R9-6）：批次内联跑「归类+注意力判级+双线草案」，属初筛不受 consumerMode 门控；
+  // 档位总开关 config.aiPolicy.triage（off=跳过，回退来源均衡分配）。失败降级不阻断采集。
+  let triage: Awaited<ReturnType<typeof runTriage>> | null = null;
+  const triagePool = triagePoolOf(candidates);
+  if (jobId && mode === "analysis" && triagePool.length >= 8 && triageEnabledOf(plan, db.get<any>("config", "aiPolicy"))) {
+    onProgress("AI 语义初筛：归类与注意力判级");
+    try {
+      triage = await runTriage(db, plan, jobId, triagePool, signal);
+    } catch (e) {
+      if (signal.aborted) throw e;
+      markTriageFailed(db, { jobId, at: now(), planName: plan.name, candidates, sources: coverage, limit: plan.maxEvidence, mode }, e);
+      warnings.push(`AI 语义初筛失败（已标待补跑）：${e instanceof Error ? e.message : "模型调用失败"}；本批名额暂按来源均衡分配。`);
     }
+  }
+  const reserveEvidence = plan.maxQueries > searches && sources.some(s=>s.type==="web") ? Math.min(4,Math.max(0,plan.maxEvidence-3)) : 0;
+  const limit = plan.maxEvidence - reserveEvidence;
+  const unique = triage
+    ? applyTriageToCandidates(candidates, triage.groups, limit)
+        .map((u) => groups.flat().find((e) => e.url === u))
+        .filter((e): e is EvidenceInput => !!e)
+    : balancedEvidence(groups, limit);
+  if(jobId){
+    if(!triage){
+      const pending=new Set(unique.map(e=>e.url));
+      for(const candidate of candidates){
+        if(candidate.status!=="watch"||!pending.has(candidate.url))continue;
+        candidate.status="selected";candidate.reason=mode==="preview"?"已保留为采集预览证据，尚未进入 AI":"已进入本轮 AI 分析";pending.delete(candidate.url);
+      }
+    }
+    for(const cov of coverage)cov.selected=candidates.filter(c=>c.sourceId===cov.sourceId&&c.status==="selected").length;
     const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit:plan.maxEvidence-reserveEvidence,mode};
     db.put("discovery",jobId,record);
     const cutoff=Date.now()-14*86400000;

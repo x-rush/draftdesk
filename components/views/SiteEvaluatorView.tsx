@@ -147,6 +147,21 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                   初判理由：{o.verdictReason}
                   {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}
                 </p>
+                {o.relatedIds?.length ? (
+                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }} title="语义初筛双线互挂（R9-6⑥）：内容线卡与应用卡互相引用，拍板时一并看双线价值">
+                    ⇄ 双线互挂：
+                    {o.relatedIds.map((rid: string) => {
+                      const other = opportunities.find((x) => x.id === rid);
+                      return other ? (
+                        <button key={rid} className="text-button" style={{ padding: "0 4px" }} onClick={() => { void navigator.clipboard.writeText(other.title); setNotice("已复制：" + other.title); }}>
+                          [{other.kind === "app" ? "应用" : "内容"}] {other.title.slice(0, 26)}{other.title.length > 26 ? "…" : ""}
+                        </button>
+                      ) : (
+                        <span key={rid} className="muted">（关联卡未生成）</span>
+                      );
+                    })}
+                  </p>
+                ) : null}
                 {o.verifyPlan?.length ? (
                   <details className="fold-card">
                     <summary>一周验证计划（{o.verifyPlan.length} 步）</summary>

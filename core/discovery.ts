@@ -1,7 +1,9 @@
 import type {EvidenceInput, Plan} from "./schema";
 
 export type CandidateStatus="selected"|"watch"|"filtered";
-export type DiscoveryCandidate={url:string;title:string;sourceId:string;sourceName:string;status:CandidateStatus;reason:string;observedAt:string;rank?:number;region?:string;metric?:{name:string;value:string;unit:string;period:string};publishedAt?:string;mediaType?:string;originUrl?:string;coverUrl?:string;author?:string};
+// attention/groupId（R9-6）：AI 语义初筛的判级与组归属；未跑初筛（off/失败）时缺省。
+export type Attention="strong"|"potential"|"none";
+export type DiscoveryCandidate={url:string;title:string;sourceId:string;sourceName:string;status:CandidateStatus;reason:string;observedAt:string;rank?:number;region?:string;metric?:{name:string;value:string;unit:string;period:string};publishedAt?:string;mediaType?:string;originUrl?:string;coverUrl?:string;author?:string;attention?:Attention;groupId?:string};
 export type SourceCoverage={sourceId:string;sourceName:string;status:"ok"|"failed";raw:number;matched:number;selected:number;error?:string};
 export type DiscoveryRecord={jobId:string;at:string;planName:string;candidates:DiscoveryCandidate[];sources:SourceCoverage[];limit:number;mode?:"analysis"|"preview"|"hotspot"};
 

@@ -11,6 +11,7 @@ import { urlKey } from "./hotspots";
 import { judgeVerdict, platformOf } from "./seen-judge";
 import { valueScoreOf } from "./seo-gate";
 import { termId } from "./seen-terms";
+import { ATTENTION_LABELS, type TriageRecord } from "./triage";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
 export type OpportunityKind = "site" | "app";
@@ -62,6 +63,8 @@ export type Opportunity = {
   verdict: OpportunityVerdict;
   verdictReason: string;
   verifyPlan: string[];
+  // 双线互挂（R9-6⑥）：内容线卡 ↔ app 卡互相引用的对方卡 id（opp-*，确定性可预计算）
+  relatedIds?: string[];
   source: "auto" | "agent";
   createdAt: string;
   updatedAt: string;
@@ -331,6 +334,46 @@ function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counte
   }
 }
 
+// f. 语义初筛组卡（R9-6⑤⑥）：trend-radar 等 trends 批次的 AI 归组按「组」消费——
+// 有注意力的组出内容线卡（四平台角度，每角度一张），判 web/app 配套缺口的组再出应用卡；
+// 双线互挂 relatedIds（id 由 dedupeKey 确定性派生，可先算后写）。组 id 幂等：重复 generate 不重出卡。
+// 跨日重复接受存在（当日整理当日数据，AI 不背历史组记忆），小拾整理时人工注明。
+export const TRIAGE_GROUPS_LOOKBACK_DAYS = 3;
+function generateFromGroups(db: Store, source: "auto" | "agent", counters: Counters) {
+  const cutoff = Date.now() - TRIAGE_GROUPS_LOOKBACK_DAYS * 86400000;
+  for (const record of db.list<TriageRecord>("candidate-groups")) {
+    if (Date.parse(record.at || "") < cutoff) continue;
+    for (const g of record.groups || []) {
+      if (!g?.id || g.attention === "none") continue;
+      const angles = (g.angles || []).filter((a) => a?.platform && a?.angle).slice(0, 3);
+      const appId = g.appGap ? "opp-" + hash(`app:grp:${g.id}`).slice(0, 20) : undefined;
+      const contentIds = angles.map((a) => "opp-" + hash(`site:grp:${g.id}:${a.platform}`).slice(0, 20));
+      const verdictReason = `注意力 ${ATTENTION_LABELS[g.attention]}（${(g.sources || []).join("/") || "AI 语义初筛"}）：${g.reason}`.slice(0, 160);
+      angles.forEach((a, i) => {
+        upsert(db, {
+          dedupeKey: `site:grp:${g.id}:${a.platform}`, kind: "site", signals: ["news"],
+          evidenceIds: [], url: g.representativeUrl, title: g.title.slice(0, 120),
+          oneLiner: `${PLATFORM_LABELS[a.platform] || a.platform}角度（AI 语义初筛）：${a.angle.slice(0, 100)}`,
+          form: undefined, // 内容线机会无产品形态
+          verdict: g.attention === "strong" ? "可以试试" : "待验证",
+          verdictReason, verifyPlan: VERIFY.site(g.title), source, platform: a.platform,
+          ...(appId ? { relatedIds: [appId] } : {}),
+        }, counters);
+      });
+      if (g.appGap && appId) {
+        upsert(db, {
+          dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
+          evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
+          oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
+          form: "web", verdict: "待验证",
+          verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
+          ...(contentIds.length ? { relatedIds: contentIds } : {}),
+        }, counters);
+      }
+    }
+  }
+}
+
 export function generateOpportunities(db: Store, opts: { source?: "auto" | "agent"; lookbackDays?: number } = {}): { created: number; merged: number; bySignal: Record<OpportunitySignal, number> } {
   const source = opts.source ?? "agent";
   const since = Date.now() - (opts.lookbackDays ?? 30) * 86400000;
@@ -340,6 +383,7 @@ export function generateOpportunities(db: Store, opts: { source?: "auto" | "agen
   generateFromNews(db, source, counters, since);
   generateFromTrend(db, source, counters);
   generateFromSiteCandidates(db, source, counters);
+  generateFromGroups(db, source, counters);
   return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal };
 }
 

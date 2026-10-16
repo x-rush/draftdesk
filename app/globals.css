@@ -470,6 +470,12 @@ main {
 .lens-list article > div { display: flex; gap: var(--s3); flex-wrap: wrap; color: #657960; font-size: 12px; margin-bottom: 7px; }
 .lens-list article small { color: #8b7651; }
 .lens-list article a { font-size: 15px; font-weight: 600; line-height: 1.5; }
+
+/* 注意力判级徽章（R9-6③）：AI 语义初筛的强/潜/无三级 */
+.lens-attention { font-weight: 600; }
+.att-strong { color: #1a7f4b; }
+.att-potential { color: #9a6b1f; }
+.att-none { color: #8b8b8b; }
 .lens-pages { display: flex; align-items: center; justify-content: center; gap: var(--s4); margin-top: 15px; }
 /* 采集覆盖漏斗（用户截图批复）：总览漏斗条 + 来源卡内迷你漏斗 */
 .coverage-funnel { margin: var(--s4) 0; }

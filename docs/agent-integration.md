@@ -173,6 +173,22 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - **哥飞分工（第七轮批4 v3.1 手动优先，覆盖旧口径）**：外部 Agent **直连哥飞永久移除**——哥飞 API 调用唯一出口=工作台内置 tick（token 在 settings，用户自填）。外部 Agent 为**只读消费方**：读词库指标/机会卡/标杆站页面（GET /agent/benchmark-pages）/外链来源站（GET /agent/link-prospects）做分析与意图交叉验证（哥飞权威 vs 内置标注，冲突标 intent-conflict 留人工）。付费接口自动调用由用户在 settings 授权勾选（autoMetrics/autoCollect，默认关=纯手动模式）；手动数据经「站点发现页手动回传框」或 POST /api/v1/seo-terms/manual 落库（✋manual-gephei 权重最高）。判定方法论共用 skills/seo-methodology/SKILL.md（工作台内置，与内置判定同源）。
 - **哥飞余额语义（实测）**：`GET /api/v1/me` 返回 `apiAvailable`（开放 API 可用，工作台自动调用只扣这部分）/`wallet.daySpent/dayCap`（日上限）/`gift`（每日赠送 500，仅限网站内使用，API 不扣）。响应归一已按真实合同校准（2026-10-14 实测：data.keywords 为 map；volume 值含 avg/avgCpc；difficulty 值为纯数字）。
 
+## 语义初筛（R9-6：归类 + 注意力判级 + 双线草案）
+
+采集批次入库后，内置 AI 对**规则放行的存活池**做一次语义初筛（分片 cheap 调用 + 片间合并），产出三件事：
+
+1. **归类**：同一事件/主题的跨源候选并为「组」（candidate-groups 集合，`tg-{jobId}` 一批一条）；组 id 幂等，重复触发不重算。
+2. **注意力判级**：strong / potential / none + 一句话理由——none（体育/时政/民生噪音）**永不占 selected 名额**；名额按组分配（strong 优先占满 → potential 补位）。
+3. **双线草案**：有注意力的组给四平台内容角度（platform ∈ plan.platformAffinity）与 web/app 配套缺口路线（appGap）。
+
+候选条目新增 `attention` 与 `groupId` 字段，判级理由写入 `reason`（`GET /agent/hotspots` 直读可见）。
+
+- **总开关**：`config.aiPolicy.triage`（off/cheap/full，审查台「内置 AI 参与开关」可改；off=回退来源均衡分配，不跑 AI）。计划级 `plan.aiPolicy` 可微调：`enabled`（缺省 trends 类计划开）/`attentionCriteria`（追加判级标准，优先级最高）/`groupGranularity`（coarse=同大事件并组，fine=只有同一事件才并组）。
+- **触发**：正常批次在采集时内联跑（初筛，不受 consumerMode 门控）；失败批次标「待语义初筛」由 worker tick 自动补跑（日上限 3 批）。显式补跑：`POST /api/v1/triage/generate`（可带 `{"jobId":"…"}` 定向；**不要带令牌**，本机无鉴权口）。
+- **读结果**：`GET /api/v1/triage/groups?jobId=…`（组+成员+判级+草案）；`GET /api/v1/triage/status?jobId=…`（done/failed/pending）。
+- **组卡（双线）**：外部 Agent 点 `POST /api/v1/opportunities/generate`（同样不带令牌）时，近 3 天批次的组自动出卡——每角度一张内容线卡（`site:grp:*`，strong→可以试试/potential→待验证）+ 有 appGap 的组一张应用卡（`app:grp:*`）；双卡经 `relatedIds` 互挂。
+- **分工边界**：内置 AI 出「组+判级+双线草案」；**外部 Agent（小拾）对组做主分析**（哪些组值得写、写什么角度、app 路线深挖——草案是输入不是替代）+ 质量巡检（抽查归类准确性，归错组超标报用户调 prompt/aiPolicy）；拍板只在审查台。跨日重复组（同一事件分属两天批次）是已知形态，小拾主分析时在拍板建议里注明「与 X 日某组同事件」。
+
 ## ⑧ 大纲提交（选题体系 · 第六轮批 B）
 
 外部 Agent（external 模式）是「approved → 第一版大纲」的主执行者。builtin 兜底仅在没有外部 Agent 时启用（aiPolicy.draft 联动），两者不双跑。

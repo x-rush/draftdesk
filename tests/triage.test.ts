@@ -1,0 +1,316 @@
+// 语义初筛守护（R9-6）：分片打包、模型输出归一（覆盖兜底/枚举净化/平台过滤）、
+// 片间合并、名额按组分配（strong→potential→none 永不占 selected）、tick 补跑与失败标注、
+// 机会引擎组卡（双线卡+互挂 relatedIds+幂等）。
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Store, hash } from "../core/store";
+import {
+  shardCandidates, parseShardOutput, applyMerges, applyTriageToCandidates, runTriage,
+  triageTick, requestTriage, triageEnabledOf, groupIdOf, triagePoolOf, MIN_CANDIDATES,
+  type Attention, type TriageGroup, type TriageRecord, type TriageRunner,
+} from "../core/triage";
+import { generateOpportunities } from "../core/opportunity";
+import { planSchema } from "../core/schema";
+import type { DiscoveryCandidate, DiscoveryRecord } from "../core/discovery";
+
+function cleanup(dir: string) {
+  try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
+}
+
+const PLAN = {
+  id: "trend-radar", name: "热词与内容机会", kind: "trends" as const, goal: "追踪 AI 领域热点与 web/app 工具机会",
+  audience: "AI 从业者", keywords: [], excludeKeywords: [], includeDomains: [], sourceIds: ["s1"],
+  lookbackDays: 7, maxEvidence: 10, maxQueries: 4, maxItems: 4, maxModelCalls: 8, maxTokens: 400000,
+  scheduleEnabled: false, dailyTime: "01:15", publishPolicy: "manual" as const,
+  platformAffinity: ["gzh", "tiebuhao", "xhs-note", "threads"] as ("gzh" | "tiebuhao" | "xhs-note" | "threads")[],
+};
+
+function cand(i: number, sourceId = "s1", status: DiscoveryCandidate["status"] = "watch"): DiscoveryCandidate {
+  return { url: `https://example.com/${sourceId}/${i}`, title: `候选标题${i}`, sourceId, sourceName: sourceId.toUpperCase(), status, reason: "符合策略", observedAt: new Date().toISOString(), rank: i + 1 };
+}
+function group(id: string, attention: Attention, memberUrls: string[], extra: Partial<TriageGroup> = {}): TriageGroup {
+  return {
+    id, title: "组" + id, attention, reason: "判级理由", memberUrls,
+    representativeUrl: memberUrls[0], sources: ["S1"], angles: [], ...extra,
+  };
+}
+function runnerOf(responses: { shard?: string[]; merge?: string[]; fail?: boolean }): { runner: TriageRunner; calls: () => number } {
+  let calls = 0;
+  return {
+    calls: () => calls,
+    runner: async (_db, messages, opts) => {
+      calls++;
+      if (responses.fail) throw new Error("模型连接失败");
+      opts.signal.throwIfAborted();
+      const system = messages[0].content;
+      if (system.includes("分片初步归组")) {
+        const next = responses.merge?.shift();
+        if (next === undefined) throw new Error("意外的合并调用");
+        return { text: next, usage: 100 };
+      }
+      const next = responses.shard?.shift();
+      if (next === undefined) throw new Error("意外的分片调用");
+      return { text: next, usage: 200 };
+    },
+  };
+}
+
+// ---- 分片打包 ----
+test("分片：连续填充（同源天然同片）、每片 ≤60、池子封顶 960", () => {
+  const big = Array.from({ length: 70 }, (_, i) => cand(i, "a"));
+  const big2 = Array.from({ length: 70 }, (_, i) => cand(i, "b"));
+  const small = Array.from({ length: 30 }, (_, i) => cand(i, "c"));
+  const shards = shardCandidates([...big, ...big2, ...small]);
+  assert.deepEqual(shards.map((s) => s.length), [60, 60, 50], "170 条 → 3 片");
+  assert.ok(shards[0].every((c) => c.sourceId === "a"), "第一片整片源 a");
+  assert.equal(shards[1][0].sourceId, "a", "a 的尾部在第二片开头");
+  // 池子封顶：病态大批次截断到 16×60
+  const flood: DiscoveryCandidate[] = [];
+  for (let s = 0; s < 26; s++) for (let i = 0; i < 60; i++) flood.push(cand(i, `src${s}`));
+  assert.equal(triagePoolOf(flood).length, 960, "池子封顶 960");
+  assert.equal(shardCandidates(triagePoolOf(flood)).length, 16, "封顶后恰 16 片");
+});
+
+// ---- 模型输出归一 ----
+test("解析：非法判级净化为 none、越界编号丢弃、漏标编号兜底成组、平台不在 affinity 过滤", () => {
+  const shard = [cand(0), cand(1), cand(2), cand(3)];
+  const plan = { ...PLAN, platformAffinity: ["gzh", "tiebuhao"] as ("gzh" | "tiebuhao")[] };
+  const drafts = parseShardOutput(JSON.stringify({
+    groups: [
+      { members: [0, 1], title: "同一事件", attention: "strong", reason: "大发布", angles: [{ platform: "gzh", angle: "深度解读" }, { platform: "threads", angle: "不在 affinity" }] },
+      { members: [2, 99], title: "越界成员", attention: "潜力", reason: "非法枚举值" },
+    ],
+  }), shard, plan);
+  assert.equal(drafts.length, 3, "组1 + 组2 + 漏标的 3 号兜底");
+  assert.equal(drafts[0].attention, "strong");
+  assert.deepEqual(drafts[0].angles.map((a) => a.platform), ["gzh"], "threads 不在 affinity 被滤");
+  assert.equal(drafts[1].attention, "none", "非法判级净化为 none");
+  assert.deepEqual(drafts[1].members.map((m) => m.url), [shard[2].url], "越界编号丢弃");
+  assert.equal(drafts[2].attention, "none", "漏标编号兜底为无注意力");
+});
+
+// ---- 片间合并 ----
+test("合并：跨片同事件并组、成员并集、判级取强、非法引用跳过", () => {
+  const a = { title: "事件A", attention: "potential" as Attention, reason: "次级", members: [cand(0), cand(1)], angles: [], };
+  const b = { title: "事件A（另一源）", attention: "strong" as Attention, reason: "强信号", members: [cand(2)], angles: [], };
+  const c = { title: "事件B", attention: "none" as Attention, reason: "无关", members: [cand(3)], angles: [], };
+  const { groups, merges } = applyMerges([a, b, c], JSON.stringify({
+    merges: [
+      { keep: "g1", drop: ["g0"], attention: "strong", title: "事件A" },
+      { keep: "gX", drop: ["g2"] }, // keep 不存在 → 跳过
+    ],
+  }));
+  assert.equal(merges, 1);
+  assert.equal(groups.length, 2);
+  const merged = groups.find((g) => g.title === "事件A")!;
+  assert.deepEqual(merged.members.map((m) => m.url).sort(), ["https://example.com/s1/0", "https://example.com/s1/1", "https://example.com/s1/2"]);
+  assert.equal(merged.attention, "strong", "显式覆盖判级");
+  assert.ok(groups.some((g) => g.title === "事件B"), "未合并组保留");
+});
+
+// ---- 名额分配 ----
+test("分配：strong 优先占满 → potential → none 永不占 selected；已占名额的无注意力候选降级留池", () => {
+  const candidates = [
+    { ...cand(0), status: "selected" as const, reason: "已进入本轮 AI 分析" }, // 先到先得的旧 selected，属 none 组
+    cand(1), cand(2), cand(3), cand(4), cand(5, "s2"),
+  ];
+  candidates[5].status = "filtered"; // 规则筛除的不动
+  const groups = [
+    group("g-pot", "potential", [candidates[3].url, candidates[4].url]),
+    group("g-strong", "strong", [candidates[1].url, candidates[2].url]),
+    group("g-none", "none", [candidates[0].url]),
+  ];
+  const winners = applyTriageToCandidates(candidates, groups, 3);
+  assert.deepEqual(winners.slice().sort(), [candidates[1].url, candidates[2].url, candidates[3].url].sort(), "strong 2 席 + potential 1 席");
+  const byUrl = new Map(candidates.map((c) => [c.url, c]));
+  for (const u of [candidates[1].url, candidates[2].url]) {
+    assert.equal(byUrl.get(u)!.status, "selected");
+    assert.match(byUrl.get(u)!.reason, /组「组g-strong」/);
+    assert.equal(byUrl.get(u)!.groupId, "g-strong");
+    assert.equal(byUrl.get(u)!.attention, "strong");
+  }
+  assert.equal(byUrl.get(candidates[3].url)!.status, "selected", "potential 补位");
+  assert.equal(byUrl.get(candidates[4].url)!.reason.includes("名额已满"), true, "组满留池");
+  assert.equal(byUrl.get(candidates[0].url)!.status, "watch", "无注意力候选被降级出 selected");
+  assert.match(byUrl.get(candidates[0].url)!.reason, /注意力 无/);
+  assert.equal(byUrl.get(candidates[5].url)!.status, "filtered", "筛除候选不被改写");
+  assert.equal(candidates.every((c) => c.attention === undefined || c.attention), true);
+});
+
+// ---- runTriage 端到端（mock runner）----
+test("runTriage：两片判级 + 片间合并 + 组 id 确定性；候选不足拒绝", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-run-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const candidates = [...Array.from({ length: 70 }, (_, i) => cand(i, "a")), ...Array.from({ length: 10 }, (_, i) => cand(i, "b"))];
+    // 分片1覆盖全部 60 个编号（甲组 + 其余单大组），不留兜底单条 → 片2 的组恰为 drafts g2
+    const shard1 = JSON.stringify({
+      groups: [
+        { members: [0, 1], title: "同事件甲", attention: "strong", reason: "发布", angles: [{ platform: "gzh", angle: "深度" }], appGap: "对比工具" },
+        { members: Array.from({ length: 58 }, (_, k) => k + 2), title: "其余线索", attention: "none", reason: "无注意力" },
+      ],
+    });
+    const shard2 = JSON.stringify({ groups: [{ members: [0], title: "同事件甲（B源）", attention: "strong", reason: "发布" }] });
+    const merge = JSON.stringify({ merges: [{ keep: "g0", drop: ["g2"], title: "同事件甲" }] });
+    const { runner, calls } = runnerOf({ shard: [shard1, shard2], merge: [merge] });
+    const record = await runTriage(db!, PLAN, "job-x", candidates, new AbortController().signal, runner);
+    assert.equal(calls(), 3, "2 分片 + 1 合并");
+    assert.equal(record.shards, 2);
+    assert.equal(record.calls, 3);
+    assert.equal(record.tokens, 500, "2×200（分片）+1×100（合并）");
+    assert.equal(record.merges, 1);
+    const main = record.groups.find((g) => g.title === "同事件甲")!;
+    assert.ok(main, "合并后的主组存在");
+    assert.deepEqual(main.memberUrls.slice().sort(), [candidates[0].url, candidates[1].url, candidates[60].url].sort(), "跨片成员并集（第二片首条 a/60）");
+    assert.equal(main.attention, "strong");
+    assert.deepEqual(main.angles, [{ platform: "gzh", angle: "深度" }]);
+    assert.equal(main.appGap, "对比工具");
+    assert.equal(main.id, groupIdOf("job-x", main.memberUrls), "组 id 确定性");
+    // 重跑同输入 → 同组 id（幂等）
+    const { runner: runner2 } = runnerOf({ shard: [shard1, shard2], merge: [merge] });
+    const again = await runTriage(db!, PLAN, "job-x", candidates, new AbortController().signal, runner2);
+    assert.deepEqual(again.groups.map((g) => g.id).sort(), record.groups.map((g) => g.id).sort(), "组 id 幂等");
+    // 候选不足
+    await assert.rejects(() => runTriage(db!, PLAN, "job-y", candidates.slice(0, 3), new AbortController().signal, runnerOf({}).runner), /不足/);
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+// ---- triageTick：显式请求、失败标注、补跑、off 闸 ----
+function setupTickDb(dir: string) {
+  const db = new Store(dir);
+  db.put("plans", PLAN.id, PLAN);
+  const candidates = Array.from({ length: 12 }, (_, i) => cand(i, "s1"));
+  const record: DiscoveryRecord = { jobId: "job-t1", at: new Date().toISOString(), planName: PLAN.name, candidates, sources: [{ sourceId: "s1", sourceName: "S1", status: "ok", raw: 12, matched: 12, selected: 0 }], limit: 6, mode: "analysis" };
+  db.put("discovery", record.jobId, record);
+  db.put("config", "aiPolicy", { triage: "cheap", outline: "off", draft: "off", aiWriter: "external" });
+  return { db, record };
+}
+const SHARD_OK = JSON.stringify({ groups: [{ members: [0, 1, 2], title: "强事件", attention: "strong", reason: "大发布", angles: [{ platform: "tiebuhao", angle: "一图速览" }], appGap: "监控面板" }, ...Array.from({ length: 3 }, (_, k) => ({ members: [3 + k], title: "单条" + k, attention: "potential", reason: "次级" }))] });
+
+test("tick：显式请求消费（jobId 定向）；成功后组落库+名额重分配；失败标注待语义初筛且可补跑", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-tick-"));
+  let db: Store | undefined;
+  try {
+    ({ db } = setupTickDb(dir));
+    // 失败：runner 抛错 → 候选标注 待语义初筛 + meta fail
+    requestTriage(db!, "job-t1");
+    const bad = runnerOf({ fail: true });
+    await triageTick(db!, bad.runner);
+    const failed = db!.get<DiscoveryRecord>("discovery", "job-t1")!;
+    assert.equal(db!.get<any>("meta", "triage-request"), undefined, "请求消费后清除");
+    assert.ok(db!.get<any>("meta", "triage-fail:job-t1"), "失败标记");
+    assert.ok(failed.candidates.some((c) => c.reason.includes("待语义初筛")), "候选标注待语义初筛");
+    assert.equal(db!.get<any>("candidate-groups", "tg-job-t1"), undefined);
+    // 补跑成功：auto 路径（无显式请求，aiPolicy.triage=cheap）
+    const good = runnerOf({ shard: [SHARD_OK, SHARD_OK] }); // 多余的第二份不会被消费
+    await triageTick(db!, good.runner);
+    const triageRecord = db!.get<TriageRecord>("candidate-groups", "tg-job-t1");
+    assert.ok(triageRecord, "归组记录落库");
+    assert.ok(!db!.get<any>("meta", "triage-fail:job-t1"), "成功后清失败标记");
+    const updated = db!.get<DiscoveryRecord>("discovery", "job-t1")!;
+    assert.equal(updated.candidates.filter((c) => c.status === "selected").length, 6, "limit=6 名额重分配");
+    const strong = updated.candidates.filter((c) => c.groupId && c.attention === "strong");
+    assert.ok(strong.length >= 3, "强注意力组入选");
+    assert.ok(strong.every((c) => c.reason.includes("强事件")), "reason 带组名");
+    assert.ok(updated.candidates.every((c) => !c.reason.includes("待语义初筛")), "补跑成功覆盖失败标注");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+test("tick：aiPolicy.triage=off 不自动补跑；auto 日上限 3 次", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-off-"));
+  let db: Store | undefined;
+  try {
+    ({ db } = setupTickDb(dir));
+    db!.put("config", "aiPolicy", { triage: "off", outline: "off", draft: "off", aiWriter: "external" });
+    await triageTick(db!, runnerOf({ shard: [SHARD_OK] }).runner);
+    assert.equal(db!.get<any>("candidate-groups", "tg-job-t1"), undefined, "off 不补跑");
+    // 显式请求仍可跑（off 只关自动）
+    requestTriage(db!, "job-t1");
+    await triageTick(db!, runnerOf({ shard: [SHARD_OK] }).runner);
+    assert.ok(db!.get<any>("candidate-groups", "tg-job-t1"), "显式请求绕过 off");
+    // auto 日上限
+    db!.put("config", "aiPolicy", { triage: "cheap", outline: "off", draft: "off", aiWriter: "external" });
+    db!.del("candidate-groups", "tg-job-t1");
+    db!.put("meta", "triage-auto:" + new Date().toISOString().slice(0, 10), { runs: 3 });
+    await triageTick(db!, runnerOf({ shard: [SHARD_OK] }).runner);
+    assert.equal(db!.get<any>("candidate-groups", "tg-job-t1"), undefined, "日上限内不再自动跑");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+// ---- 机会引擎组卡（R9-6⑤⑥）----
+test("generateFromGroups：双线卡（内容线每角度一张+app 卡）、互挂 relatedIds、幂等、none 不出卡、老批次不回捞", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-opp-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    const groups: TriageGroup[] = [
+      group("grp-aaa", "strong", ["https://a/1", "https://b/1"], {
+        title: "大模型发布", reason: "重要发布", representativeUrl: "https://a/1", sources: ["百度", "微博"],
+        angles: [{ platform: "gzh", angle: "深度解读" }, { platform: "tiebuhao", angle: "一图看懂" }], appGap: "做一个模型对比工具",
+      }),
+      group("grp-bbb", "none", ["https://c/1"], { title: "体育赛事", reason: "体育无关", representativeUrl: "https://c/1", sources: ["抖音"] }),
+    ];
+    const record: TriageRecord = { jobId: "j1", planName: "热词与内容机会", day: "2026-10-16", at: new Date().toISOString(), groups, shards: 2, calls: 3, tokens: 600, merges: 0 };
+    db.put("candidate-groups", "tg-j1", record);
+    const old: TriageRecord = { ...record, jobId: "j0", at: new Date(Date.now() - 5 * 86400000).toISOString(), groups: [group("grp-old", "strong", ["https://old/1"], { angles: [{ platform: "gzh", angle: "老角度" }] })] };
+    db.put("candidate-groups", "tg-j0", old);
+    const first = generateOpportunities(db!, { source: "agent" });
+    assert.equal(first.created, 3, "2 内容卡 + 1 应用卡（none 组与老批次不出）");
+    const byKey = (k: string) => db!.get<any>("opportunities", "opp-" + hash(k).slice(0, 20));
+    const gzh = byKey("site:grp:grp-aaa:gzh");
+    const tbh = byKey("site:grp:grp-aaa:tiebuhao");
+    const app = byKey("app:grp:grp-aaa");
+    assert.ok(gzh && tbh && app, "三张卡按 dedupeKey 落库");
+    assert.equal(gzh.platform, "gzh");
+    assert.equal(gzh.verdict, "可以试试", "strong → 可以试试");
+    assert.match(gzh.verdictReason, /注意力 强（百度\/微博）/);
+    assert.deepEqual(gzh.relatedIds, [app.id], "内容卡挂应用卡");
+    assert.deepEqual(app.relatedIds, [gzh.id, tbh.id], "应用卡挂两张内容卡");
+    assert.equal(app.kind, "app");
+    assert.equal(app.form, "web");
+    assert.ok(app.verifyPlan[0].includes("对比工具"), "appGap 进验证计划首条");
+    assert.equal(app.url, "https://a/1", "代表条目 url");
+    // 幂等：重跑不重出
+    const second = generateOpportunities(db!, { source: "agent" });
+    assert.equal(second.created, 0, "重跑零新增");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
+// ---- 开关与 schema ----
+test("triageEnabledOf：trends 缺省开、他类缺省关、显式 enabled 优先；全局 off 一票否决", () => {
+  const global = { triage: "cheap" };
+  assert.equal(triageEnabledOf({ kind: "trends" }, global), true);
+  assert.equal(triageEnabledOf({ kind: "editorial" }, global), false);
+  assert.equal(triageEnabledOf({ kind: "editorial", aiPolicy: { enabled: true } }, global), true);
+  assert.equal(triageEnabledOf({ kind: "trends", aiPolicy: { enabled: false } }, global), false);
+  assert.equal(triageEnabledOf({ kind: "trends" }, { triage: "off" }), false);
+  assert.equal(triageEnabledOf({ kind: "trends" }, null), false, "未配置全局=off");
+});
+
+test("planSchema 接受 aiPolicy 块（R9-6②），拒绝非法粒度", () => {
+  const parsed = planSchema.parse({ ...PLAN, aiPolicy: { enabled: true, attentionCriteria: "出海工具优先", groupGranularity: "fine" } });
+  assert.equal(parsed.aiPolicy?.groupGranularity, "fine");
+  assert.throws(() => planSchema.parse({ ...PLAN, aiPolicy: { groupGranularity: "medium" } }));
+});
+
+test("triagePoolOf：filtered 不进初筛池（省 token 且口径与名额一致）", () => {
+  const pool = triagePoolOf([cand(0), { ...cand(1), status: "filtered" }, cand(2)]);
+  assert.equal(pool.length, 2);
+  assert.equal(pool.length >= MIN_CANDIDATES, false);
+});

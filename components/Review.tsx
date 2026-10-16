@@ -443,10 +443,10 @@ export function Review() {
 
       <details className="fold-card review-form-fold">
         <summary><h2 style={{ display: "inline", margin: 0 }}>内置 AI 参与开关（aiPolicy）</h2></summary>
-        <p className="muted">off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。</p>
+        <p className="muted">off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。triage = 采集批次的语义初筛（R9-6：AI 归类 + 注意力判级 + 双线草案，名额按组分配），off 时回退来源均衡分配。</p>
         {aiPolicy && (
           <div className="toolbar">
-            <Field label="初筛 / 打标 / 聚合分类">
+            <Field label="语义初筛（归类+判级）">
               <Select aria-label="triage 档位" value={aiPolicy.triage} onChange={(e) => void saveAiPolicy({ ...aiPolicy, triage: e.target.value })}>
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
               </Select>
@@ -463,7 +463,7 @@ export function Review() {
             </Field>
             <Field label="写作方">
               <Select aria-label="aiWriter 档位" value={aiPolicy.aiWriter} onChange={(e) => void saveAiPolicy({ ...aiPolicy, aiWriter: e.target.value })}>
-                {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["builtin", "external", "both"].map((v) => <option key={v} value={v}>{v}</option>)}
               </Select>
             </Field>
           </div>

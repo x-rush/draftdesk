@@ -272,10 +272,10 @@ export function Workbench() {
               {view === "discover" && data && (
                 <nav className="discovery-modes" aria-label="每日发现视图">
                   <button className={ws.discoveryMode === "queue" ? "active" : ""} aria-current={ws.discoveryMode === "queue" ? "page" : undefined} onClick={() => ws.setDiscoveryMode("queue")}>选题待拍</button>
-                  {(data.config.consumerMode || "external") === "builtin" && <>
-                    <button className={ws.discoveryMode === "results" ? "active" : ""} onClick={() => ws.setDiscoveryMode("results")}>分析结果</button>
-                    <button className={ws.discoveryMode === "watch" ? "active" : ""} onClick={() => ws.setDiscoveryMode("watch")}>本轮待观察{data.discovery ? ` ${data.discovery.candidates.filter((c) => c.status === "watch").length}` : ""}</button>
-                  </>}
+                  {/* 语义初筛（R9-6）属初筛，external 模式照跑——待观察两模式都可见；分析结果仍 builtin 专属 */}
+                  <button className={ws.discoveryMode === "watch" ? "active" : ""} onClick={() => ws.setDiscoveryMode("watch")}>本轮待观察{data.discovery ? ` ${data.discovery.candidates.filter((c) => c.status === "watch").length}` : ""}</button>
+                  {(data.config.consumerMode || "external") === "builtin" &&
+                    <button className={ws.discoveryMode === "results" ? "active" : ""} onClick={() => ws.setDiscoveryMode("results")}>分析结果</button>}
                   <button className={ws.discoveryMode === "coverage" ? "active" : ""} onClick={() => ws.setDiscoveryMode("coverage")}>来源覆盖</button>
                 </nav>
               )}
