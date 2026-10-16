@@ -508,6 +508,8 @@ export async function collect(
     onProgress("AI 语义初筛：归类与注意力判级");
     try {
       triage = await runTriage(db, plan, jobId, triagePool, signal);
+      // 落库 candidate-groups（组卡引擎 generateFromGroups 的读源；缺失会被补跑机制视为未初筛而重跑）
+      db.put("candidate-groups", "tg-" + jobId, triage);
     } catch (e) {
       if (signal.aborted) throw e;
       markTriageFailed(db, { jobId, at: now(), planName: plan.name, candidates, sources: coverage, limit: plan.maxEvidence, mode }, e);

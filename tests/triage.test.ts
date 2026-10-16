@@ -92,6 +92,26 @@ test("解析：非法判级净化为 none、越界编号丢弃、漏标编号兜
   assert.equal(drafts[2].attention, "none", "漏标编号兜底为无注意力");
 });
 
+test("解析抢救：畸形组丢弃（缺 members/title/attention）由兜底接住；全部无效抛错", () => {
+  const shard = [cand(0), cand(1), cand(2), cand(3)];
+  const plan = { ...PLAN };
+  // 畸形组（members/title/attention 缺失）混在合法组里：合法组照收，畸形组丢弃
+  const drafts = parseShardOutput(JSON.stringify({
+    groups: [
+      { members: [0], title: "合法组", attention: "strong", reason: "ok" },
+      { members: [1] },
+      { title: "没有成员", attention: "potential" },
+      { members: [2], title: "没有判级" },
+      { id: 3, summary: "完全另一种键名" },
+    ],
+  }), shard, plan);
+  assert.equal(drafts.filter((d) => d.title === "合法组").length, 1, "合法组保留");
+  assert.equal(drafts.some((d) => d.title === "没有成员" || d.title === "没有判级"), false, "畸形组被丢弃");
+  assert.ok(drafts.every((d) => d.members.every((m) => m.url !== shard[3].url) || d.title.includes(shard[3].title.slice(0, 6))), "被丢弃组的成员走未标注兜底");
+  // 全部无效 → 抛错（触发上层第二次尝试）
+  assert.throws(() => parseShardOutput(JSON.stringify({ groups: [{ members: [0] }, { title: "x", attention: "strong" }] }), shard, plan), /没有.*有效组|无效/);
+});
+
 // ---- 片间合并 ----
 test("合并：跨片同事件并组、成员并集、判级取强、非法引用跳过", () => {
   const a = { title: "事件A", attention: "potential" as Attention, reason: "次级", members: [cand(0), cand(1)], angles: [], };

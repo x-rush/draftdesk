@@ -110,19 +110,21 @@ export function shardCandidates(candidates: DiscoveryCandidate[]): DiscoveryCand
 }
 
 // ---- 模型输出解析 ----
+// 抢救式：字段缺失/类型的组丢弃（覆盖兜底给其成员补单条组），不因个别畸形组废弃整片；
+// 只/groups 本身缺失或全部无效才算失败（交由上层双尝试→批次失败补跑）。
 const shardOutputSchema = z.object({
   groups: z
     .array(
       z.object({
-        members: z.array(z.number()).max(400),
-        title: z.string().max(80),
-        attention: z.string(),
+        members: z.array(z.number()).max(400).optional(),
+        title: z.string().max(80).optional(),
+        attention: z.string().max(30).optional(),
         reason: z.string().max(300).optional(),
         angles: z.array(z.object({ platform: z.string().max(30), angle: z.string().max(150) })).max(8).optional(),
         appGap: z.string().max(300).optional(),
       }),
     )
-    .max(120),
+    .max(200),
 });
 const mergeOutputSchema = z.object({
   merges: z
@@ -150,9 +152,13 @@ export function parseShardOutput(text: string, shard: DiscoveryCandidate[], plan
   const platforms = new Set<string>(plan.platformAffinity?.length ? plan.platformAffinity : ANGLE_PLATFORMS);
   const drafts: GroupDraft[] = [];
   const covered = new Set<number>();
+  let dropped = 0;
   for (const g of parsed.groups) {
-    const members = [...new Set(g.members.map((n) => Math.trunc(Number(n))))].filter((i) => Number.isInteger(i) && i >= 0 && i < shard.length && !covered.has(i));
-    if (!members.length) continue;
+    const members = g.members ? [...new Set(g.members.map((n) => Math.trunc(Number(n))))].filter((i) => Number.isInteger(i) && i >= 0 && i < shard.length && !covered.has(i)) : [];
+    if (!members.length || !g.title || !g.attention) {
+      dropped++;
+      continue;
+    }
     for (const i of members) covered.add(i);
     const angles = (g.angles || [])
       .filter((a) => platforms.has(a.platform))
@@ -168,7 +174,9 @@ export function parseShardOutput(text: string, shard: DiscoveryCandidate[], plan
       ...(g.appGap?.trim() ? { appGap: g.appGap.trim().slice(0, 160) } : {}),
     });
   }
-  // 覆盖兜底：AI 漏标的编号自成一组（无注意力，留池），保证全量覆盖
+  if (dropped) console.warn(`[triage] 分片抢救：丢弃 ${dropped} 个畸形组（成员由未标注兜底接住），保留 ${drafts.length} 个有效组`);
+  if (!drafts.length) throw new AppError("分片输出没有任何有效组（全部畸形或为空）");
+  // 覆盖兜底：AI 漏标/被丢弃的编号自成一组（无注意力，留池），保证全量覆盖
   for (const [i, c] of shard.entries()) {
     if (!covered.has(i)) drafts.push({ title: c.title.slice(0, 30), attention: "none", reason: "AI 未标注，按无注意力留池", members: [c], angles: [] });
   }
