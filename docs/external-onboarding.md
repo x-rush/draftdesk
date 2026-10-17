@@ -66,3 +66,26 @@
 - OpenClaw 与 Hermes 均通过真实容器网络访问 SearXNG 和工作台；两者各执行了至少一次真实搜索，并分别用受信宿主机适配器提交 1 条官方来源证据，获得 `pending-review` 回执。两份样本均无草稿，也没有被工作台自动分析或公开。
 - OpenClaw 复用主会话使首次任务超时，改为新会话与一次搜索后完成；Hermes 单次命令拦截脚本写入，改为输出 JSON 给宿主机。日期只有年月日时省略 `publishedAt`，不伪造时分秒。SearXNG 在此配置下只负责搜索，不提供正文提取。
 - 已启用本机资讯、热词和应用三个每日策略，分别于北京时间 01:00、01:15、01:30 开始；当晚启用不会回补当日已经错过的时段。三项最大预留合计 395000 token，低于当前每日 600000 上限。第一次真实自动产出及长期稳定性仍待后续运行观察。
+
+## 源接入指引（R10.6）
+
+### AIHOT 全家桶（四类数据面）
+
+| 数据面 | 源 id | 端点 | 更新节奏 |
+|---|---|---|---|
+| 精选流 | `aihot` | https://aihot.news/feed.xml | 滚动精选 |
+| 产品动态 | `aihot-products` | https://aihot.news/feed/products.xml | 滚动 |
+| 热点事件榜 | `aihot-hot` | https://aihot.news/api/v1/hot-topics（JSON，官方接口白名单） | 事件级聚合，~10 事件/日 |
+| 日报 | `aihot-daily` | https://aihot.news/feed/daily.xml | 每日 08:00，保留 30 期 |
+
+热点事件榜为 JSON 官方接口，照 bilibili/weibo 先例走精确 URL 白名单（core/routes/sources.ts）+ 专用解析器（core/hotlists.ts `parseAihotHotTopics`）；事件候选 url 指向 story 来龙去脉时间线，signalCount 作热度。
+
+### RSSHub 内网源（compose 自带 rsshub，零端口暴露）
+
+新源接入流程：①容器内实测路由（`docker exec draftdesk-app-1 node -e "fetch('http://rsshub:1200/<路由>')..."`，看状态码与条数）→ ②通的写进 defaults（`url: http://rsshub:1200/<路由>`，type=rss）并经 POST /sources 落库 → ③不通的建源但 enabled=false，note 记录原因+日期。先例：36kr-newsflashes / huxiu-moment（200 接入）、jiqizhixin / sina-tech（404 记录未启用）。safeRead 仅放行 `http://rsshub:1200` 精确组合。
+
+### 源接入「三必须」验收清单（老大 2026-10-18 定，缺一不发版）
+
+1. **必须有 UI 可查看**——组视角/发现页能看到该源候选（来源覆盖行 raw>0、候选列表可见）；
+2. **必须参与初筛分类**——collectAll 批内联 triage 覆盖该源候选（组记录含其成员）；
+3. **必须判价值并标记状态和分类**——候选带 attention+reason+组归属；判 none 的组进归档区可查（GET /triage/archive）。

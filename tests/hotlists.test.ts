@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch} from "../core/hotlists";
+import {parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,parseAihotHotTopics} from "../core/hotlists";
 import {metricComparison,type MetricSnapshot} from "../core/history";
 import {defaultPlans,defaultSources} from "../core/defaults";
 
@@ -98,4 +98,20 @@ test("微博官方热搜接口：word 缺失回退 note，广告位跳过，热�
  assert.match(items[1].url,/s\.weibo\.com\/weibo\?q=%23/);
  assert.deepEqual(items[0].acquisition,{method:"platform",provider:"微博官方接口",platform:"微博"});
  assert.throws(()=>parseWeiboHotSearch({ok:0},"2026-09-29T10:00:00.000Z"),/格式异常/);
+});
+
+// R10.6-②：AIHOT 热点事件榜解析（实测合同：items[].links.story 来龙去脉 + signalCount）
+test("parseAihotHotTopics：事件级候选带 story 链接与信号数热度，缺链接条目丢弃", () => {
+  const sample = { count: 3, items: [
+    { rank: 1, title: "DeepSeek 发布 V4.1-Flash", links: { aihot: "https://aihot.news/items/a", story: "https://aihot.virxact.com/story/x", original: "https://deepseek.com/x" }, sourceCount: 14, signalCount: 27, participantCount: 41, sourceNames: ["X：A", "X：B", "The Decoder"] },
+    { rank: 2, title: "无链接事件", links: {}, sourceCount: 2, signalCount: 3 },
+    { rank: 3, title: "只有 original", links: { original: "https://example.com/o" }, sourceCount: 5, signalCount: 8 },
+  ] };
+  const out = parseAihotHotTopics(sample, "2026-10-18T00:00:00Z");
+  assert.equal(out.length, 2, "缺链接条目丢弃");
+  assert.equal(out[0].url, "https://aihot.virxact.com/story/x", "story 来龙去脉链接优先");
+  assert.equal(out[0].metric?.value, "27");
+  assert.match(out[0].excerpt, /14 个来源/);
+  assert.equal(out[1].url, "https://example.com/o", "story 缺失回落 original");
+  assert.equal(out[0].sourceType, "trend");
 });

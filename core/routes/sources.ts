@@ -18,7 +18,7 @@ export const routes: RouteDef[] = [
       const source = sourceSchema.parse(await readBody());
       if (source.type === "rss" && !source.url)
         throw new AppError("RSS 需要来源地址");
-      if (source.type === "hotlist" && !["https://top.baidu.com/board?tab=realtime", "https://s.weibo.com/top/summary?cate=realtimehot", "https://github.com/trending", "https://hacker-news.firebaseio.com/v0/topstories.json"].includes(source.url || ""))
+      if (source.type === "hotlist" && !["https://top.baidu.com/board?tab=realtime", "https://s.weibo.com/top/summary?cate=realtimehot", "https://github.com/trending", "https://hacker-news.firebaseio.com/v0/topstories.json", "https://aihot.news/api/v1/hot-topics"].includes(source.url || ""))
         throw new AppError("官方热榜入口不在允许列表中");
       if (source.type === "aggregated" && !["bilibili", "weibo", "zhihu", "douyin", "kuaishou", "toutiao", "tieba", "juejin"].includes(source.query || ""))
         throw new AppError("聚合热榜仅支持已列出的平台路由");

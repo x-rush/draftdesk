@@ -14,6 +14,8 @@ export const defaultSources: Source[] = [
   {id:"huxiu-moment",name:"虎嗅时刻",type:"rss",url:"http://rsshub:1200/huxiu/moment",sourceType:"media",enabled:true,note:"RSSHub 路由（R10.5 容器实测 200，20 条/日）；RSS 已下线经自部署 RSSHub 复活。"},
   {id:"jiqizhixin-rsshub",name:"机器之心（RSSHub）",type:"rss",url:"http://rsshub:1200/jiqizhixin",sourceType:"media",enabled:false,note:"未启用：RSSHub 路由 404（2026-10-17 容器实测，路由疑似上游移除）；恢复时先实测再置 enabled。"},
   {id:"sina-tech-rsshub",name:"新浪科技（RSSHub）",type:"rss",url:"http://rsshub:1200/sina/tech",sourceType:"media",enabled:false,note:"未启用：RSSHub 新浪科技路由 404（2026-10-17 容器实测，多变体均无）；恢复时先实测再置 enabled。"},
+  {id:"aihot-daily",name:"AIHOT 日报",type:"rss",url:"https://aihot.news/feed/daily.xml",sourceType:"media",enabled:true,note:"AIHOT 每日 08:00 精编日报，保留 30 期（R10.6-② 实测 200，30 条/日）；与主 feed 精选流互补不重复。"},
+  {id:"aihot-hot",name:"AIHOT 热点事件榜",type:"hotlist",url:"https://aihot.news/api/v1/hot-topics",sourceType:"trend",enabled:true,note:"事件级聚合：跨源来源数/信号数/参与者+来龙去脉 story 链接（R10.6-② 实测 200，10 事件/日）；照 bilibili/weibo 官方接口白名单先例接入。"},
   {id:"qbitai",name:"量子位",type:"rss",url:"https://www.qbitai.com/feed",sourceType:"media",enabled:true,note:"AI 垂类媒体（R10.4-① 容器实测 200，RSS 10 条/日）；重要结论优先找官方原文。"},
   {id:"ifanr",name:"爱范儿",type:"rss",url:"https://www.ifanr.com/feed",sourceType:"media",enabled:true,note:"科技媒体，消费数码向（R10.4-① 容器实测 200，RSS 20 条/日）。"},
   {id:"solidot",name:"Solidot",type:"rss",url:"https://www.solidot.org/index.rss",sourceType:"media",enabled:true,note:"科技社区老牌，开源/极客向（R10.4-① 容器实测 200，RSS 20 条/日）。"},

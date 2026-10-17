@@ -185,3 +185,27 @@ export function parseHnAlgolia(raw:unknown,collectedAt:string):EvidenceInput[]{
   if(!items.length)throw new AppError("HN Algolia 未解析到条目。");
   return items;
 }
+
+// AIHOT 热点事件榜（R10.6-②，官方 JSON 实测 2026-10-18）：
+// {count, items:[{rank,id,title,source:{name},links:{aihot,original,story},sourceCount,signalCount,participantCount,sourceNames[]}]}
+// 事件级聚合——url 用 story（来龙去脉时间线），excerpt 带跨源来源样本，signalCount 作热度 metric。
+export function parseAihotHotTopics(data: unknown, collectedAt: string): EvidenceInput[] {
+  const items = Array.isArray((data as any)?.items) ? (data as any).items : [];
+  return items.slice(0, 30).map((it: any): EvidenceInput => {
+    const links = it?.links || {};
+    const url = String(links.story || links.original || links.aihot || "");
+    if (!/^https:\/\//.test(url)) return null as unknown as EvidenceInput;
+    const sourceNames: string[] = Array.isArray(it.sourceNames) ? it.sourceNames.map(String) : [];
+    return {
+      title: String(it.title || "AIHOT 热点事件").slice(0, 300),
+      url,
+      excerpt: `AIHOT 事件级聚合：${it.sourceCount ?? 0} 个来源 · ${it.signalCount ?? 0} 条信号 · ${it.participantCount ?? 0} 位参与者。来源样本：${sourceNames.slice(0, 5).join("；")}${sourceNames.length > 5 ? ` 等 ${sourceNames.length} 个` : ""}。来龙去脉见 story 链接。`.slice(0, 2000),
+      collectedAt,
+      sourceType: "trend",
+      region: "中国",
+      language: "zh",
+      contentLevel: "headline",
+      metric: { name: "AIHOT 信号数", value: String(it.signalCount ?? 0), unit: "signals", period: collectedAt, cadence: "instant" },
+    };
+  }).filter(Boolean);
+}

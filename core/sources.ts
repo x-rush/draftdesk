@@ -6,10 +6,11 @@ import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
 import {relevanceReason,type DiscoveryCandidate,type CandidateStatus,type SourceCoverage,type DiscoveryRecord} from "./discovery";
 import { applyTriageResult, applyTriageToCandidates, markTriageFailed, runTriage, triageEnabledOf, triagePoolOf } from "./triage";
-import { parseHnAlgolia, parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform } from "./hotlists";
+import { parseHnAlgolia, parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,parseAihotHotTopics,type AggregatePlatform } from "./hotlists";
 // 官方公开 JSON 接口（允许列表以精确 URL 匹配，配置来源时不可自填）：
 const BILIBILI_POPULAR_URL="https://api.bilibili.com/x/web-interface/popular";
 const WEIBO_HOTSEARCH_URL="https://weibo.com/ajax/side/hotSearch";
+const AIHOT_HOT_TOPICS_URL="https://aihot.news/api/v1/hot-topics";
 // 这些接口的 CDN 对 node:https 的 TLS 握手不友好（实测超时），undici fetch 可通；
 // URL 均为上方常量白名单，不接受用户输入，无 SSRF 面。
 // 实测本机到 api.bilibili.com 的链路存在波动（约 1/6 成功率），网络级失败做有限重试，
@@ -60,6 +61,7 @@ export async function readHotspotSource(source:Source,signal:AbortSignal):Promis
   if(source.url==="https://github.com/trending")return parseGithubTrending(await safeRead(source.url,signal),now());
   if(source.url===BILIBILI_POPULAR_URL)return parseBilibiliPopular(await apiJsonRead(source.url,"https://www.bilibili.com/",signal),now());
   if(source.url===WEIBO_HOTSEARCH_URL)return parseWeiboHotSearch(await apiJsonRead(source.url,"https://weibo.com/",signal),now());
+  if(source.url===AIHOT_HOT_TOPICS_URL)return parseAihotHotTopics(await apiJsonRead(source.url,"https://aihot.news/",signal),now());
   if(source.url==="https://hacker-news.firebaseio.com/v0/topstories.json")return (await collectHackerNews(signal)).items;
   throw new AppError("热榜入口尚未核验或不在允许列表中。");
 }
@@ -409,6 +411,7 @@ export async function readSourceEvidence(s: Source, lookbackDays: number, signal
     } else if (s.url === "https://github.com/trending") items = parseGithubTrending(await safeRead(s.url, signal), now());
     else if (s.url === BILIBILI_POPULAR_URL) items = parseBilibiliPopular(await apiJsonRead(s.url, "https://www.bilibili.com/", signal), now());
     else if (s.url === WEIBO_HOTSEARCH_URL) items = parseWeiboHotSearch(await apiJsonRead(s.url, "https://weibo.com/", signal), now());
+    else if (s.url === AIHOT_HOT_TOPICS_URL) items = parseAihotHotTopics(await apiJsonRead(s.url, "https://aihot.news/", signal), now());
     else if (s.url === "https://hn.algolia.com/api/v1/search?tags=front_page") {
       items = parseHnAlgolia(await apiJsonRead(s.url, "https://news.ycombinator.com/", signal), now());
     } else if (s.url === "https://hacker-news.firebaseio.com/v0/topstories.json") {
