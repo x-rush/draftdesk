@@ -56,20 +56,15 @@ const nav = [
   ["skills", "研究 Skills", Leaf],
   ["settings", "模型与设置", Settings2],
 ] as const;
+// 菜单顺序（老大 2026-10-17 定）：审查打板第一 → 初筛素材 → 创作活动/讨论 → 设置（含数据源）→ 高级
 const navGroups = [
-  { label: "发现与创作", ids: ["discover", "hotspots", "chat"] },
-  { label: "机会观察", ids: ["trends", "ideas", "activities", "decisions"] },
-  { label: "研究与设置", ids: ["plans", "sources", "runs", "connections", "skills", "settings"] },
-] as const;
-// R10 第4段：导航按四段流水线重组（①采集→②初筛→③消费→④审查台；设置收次级，双导航体系收敛为一套）
-const externalNavGroups = [
-  { label: "① 采集", ids: ["sources"] },
-  { label: "② 初筛（组卡/机会）", ids: ["hotspots", "trends", "ideas"] },
-  { label: "③ 消费（大纲/草稿）", ids: ["chat", "activities"] },
-  { label: "④ 审查台（拍板）", ids: ["discover", "decisions"] },
-  { label: "设置", ids: ["plans", "connections", "settings"] },
+  { label: "审查", ids: ["discover", "decisions"] },
+  { label: "初筛素材", ids: ["hotspots", "trends", "ideas"] },
+  { label: "创作", ids: ["activities", "chat"] },
+  { label: "设置", ids: ["plans", "sources", "connections", "settings"] },
   { label: "高级（方法论/运行）", ids: ["skills", "runs"], collapsed: true },
 ] as const;
+const externalNavGroups = navGroups;
 const headings: Record<string, [string, string]> = {
   discover: [
     "找到值得写，也值得做的事",
