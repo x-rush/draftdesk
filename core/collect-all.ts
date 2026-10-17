@@ -12,7 +12,7 @@ import { now } from "./store";
 import type { Source } from "./schema";
 import type { DiscoveryCandidate, DiscoveryRecord, SourceCoverage } from "./discovery";
 import { readSourceEvidence, candidateFromItem } from "./sources";
-import { runTriage, applyTriageResult, triagePoolOf, defaultTriageRunner, markTriageFailed, COLLECT_ALL_PLAN_NAME, defaultTriagePlan, type TriageRunner, type TriageRecord } from "./triage";
+import { runTriage, applyTriageResult, archiveNoneGroups, triagePoolOf, defaultTriageRunner, markTriageFailed, COLLECT_ALL_PLAN_NAME, defaultTriagePlan, type TriageRunner, type TriageRecord } from "./triage";
 import { shanghaiDay } from "./model-metrics";
 
 export const COLLECT_ALL_LIMIT = 300;
@@ -46,59 +46,6 @@ function heatOf(c: DiscoveryCandidate): number {
 function recencyOf(c: DiscoveryCandidate): number {
   const t = Date.parse(c.publishedAt || c.observedAt || "");
   return Number.isFinite(t) ? t : 0;
-}
-
-// none 组归档（第2段价值分流）：判无注意力的组写归档队列（可查可恢复），
-// 成员候选置 filtered（reason 注明归档）——「没有价值的需要归档」是老大的明示动作。
-export function archiveNoneGroups(db: Store, jobId: string, triage: TriageRecord): { archived: number; candidates: number } {
-  const noneGroups = triage.groups.filter((g) => g.attention === "none");
-  if (!noneGroups.length) return { archived: 0, candidates: 0 };
-  db.put("triage-archive", "ta-" + jobId, {
-    jobId,
-    day: triage.day,
-    at: now(),
-    groups: noneGroups.map((g) => ({ id: g.id, title: g.title, reason: g.reason, memberUrls: g.memberUrls, sources: g.sources })),
-  });
-  const archivedUrls = new Set(noneGroups.flatMap((g) => g.memberUrls));
-  const record = db.get<DiscoveryRecord>("discovery", jobId);
-  let touched = 0;
-  if (record) {
-    for (const c of record.candidates || []) {
-      if (c.status === "filtered") continue;
-      if (archivedUrls.has(c.url) && c.attention === "none") {
-        c.status = "filtered";
-        c.reason = `已归档（AI 判无注意力：组「${c.reason.includes("组「") ? c.reason.split("组「")[1]?.split("」")[0] ?? "" : ""}」）；可经 POST /triage/restore 恢复`;
-        touched++;
-      }
-    }
-    db.put("discovery", jobId, record);
-  }
-  return { archived: noneGroups.length, candidates: touched };
-}
-
-// 恢复归档（审查台/外部 Agent 用）：按批次（可限组）把归档成员放回 watch 池
-export function restoreArchived(db: Store, jobId: string, groupId?: string): { restored: number } {
-  const archive = db.get<any>("triage-archive", "ta-" + jobId);
-  const record = db.get<DiscoveryRecord>("discovery", jobId);
-  if (!archive || !record) return { restored: 0 };
-  const groups = groupId ? archive.groups.filter((g: any) => g.id === groupId) : archive.groups;
-  const urls = new Set<string>(groups.flatMap((g: any) => g.memberUrls || []));
-  let restored = 0;
-  for (const c of record.candidates || []) {
-    if (urls.has(c.url) && c.status === "filtered" && c.reason?.includes("已归档")) {
-      c.status = "watch";
-      c.reason = "归档恢复（人工捞起）";
-      restored++;
-    }
-  }
-  db.put("discovery", jobId, record);
-  // R10.2③：按组恢复不删整批归档——移除已恢复组，组空才删记录（其余组保持可恢复）
-  if (restored) {
-    const remaining = (archive.groups || []).filter((g: any) => !groups.includes(g));
-    if (remaining.length) db.put("triage-archive", "ta-" + jobId, { ...archive, groups: remaining });
-    else db.del("triage-archive", "ta-" + jobId);
-  }
-  return { restored };
 }
 
 type SourceReader = typeof readSourceEvidence;

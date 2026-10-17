@@ -66,7 +66,7 @@ export const routes: RouteDef[] = [
     pattern: "triage/restore",
     handler: async ({ db, readBody }) => {
       const parsed = z.object({ jobId: z.string().min(1).max(64), groupId: z.string().max(40).optional() }).strict().parse(await readBody());
-      const { restoreArchived } = await import("../collect-all");
+      const { restoreArchived } = await import("../triage");
       const r = restoreArchived(db, parsed.jobId, parsed.groupId);
       return json({ ok: true, ...r, ...(r.restored ? {} : { note: "无匹配归档记录或成员已不在归档态" }) });
     },

@@ -9,7 +9,8 @@ import path from "node:path";
 const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-r10-"));
 process.env.DRAFTDESK_DATA_DIR = dir;
 const { store } = await import("../core/store");
-const { collectAllTick, archiveNoneGroups, restoreArchived } = await import("../core/collect-all");
+const { collectAllTick } = await import("../core/collect-all");
+const { archiveNoneGroups, restoreArchived, triageTick } = await import("../core/triage");
 const { COLLECT_ALL_PLAN_NAME } = await import("../core/triage");
 const { triageEnabledOf, ANGLE_PLATFORMS } = await import("../core/triage");
 const { generateOpportunities } = await import("../core/opportunity");
@@ -103,6 +104,42 @@ test("triage 默认全开（全 kind）；角度平台 8 值（xhs-video 后置�
   assert.equal(triageEnabledOf({ kind: "editorial", aiPolicy: { enabled: false } }, { triage: "cheap" }), false, "计划可显式退出");
   assert.equal(triageEnabledOf({ kind: "trends" }, { triage: "off" }), false, "总闸 off 一票否决");
   assert.deepEqual([...ANGLE_PLATFORMS], ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"]);
+});
+
+// ---- R10.2 追加：补跑路径完成初筛后同样归档（实测 134 组 none 109 未进 triage-archive 的修复）----
+test("补跑完成→归档存在：triageTick 成功路径产出 none 组进 triage-archive，成员置 filtered", async () => {
+  const db = store();
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const jobId = "collectall-" + day;
+  db.del("meta", "collect-all-done:" + day);
+  db.del("discovery", jobId);
+  db.del("meta", "triage-fail:" + jobId);
+  db.del("candidate-groups", "tg-" + jobId);
+  db.put("sources", "s-t", src("s-t", "补跑源"));
+  const items = Array.from({ length: 12 }, (_, i) => ({ title: `补跑${i}`, url: `https://t/${i}`, excerpt: "x", collectedAt: new Date().toISOString(), sourceType: "media", region: "全球", language: "zh", contentLevel: "headline" as const }));
+  await collectAllTick(db, (async () => { throw new Error("首跑失败留痕"); }) as any, (async () => ({ items, warnings: [] })) as any);
+  assert.ok(db.get("meta", "triage-fail:" + jobId), "首跑失败已留痕");
+  // 补跑：3 个 strong + 2 个 none（成员各 2 条）
+  const runner = (async () => ({
+    text: JSON.stringify({ groups: [
+      { members: [0, 1], title: "强组", attention: "strong", reason: "强信号" },
+      { members: [2, 3], title: "潜组", attention: "potential", reason: "次级" },
+      { members: [4, 5], title: "噪音组甲", attention: "none", reason: "纯娱乐" },
+      { members: [6, 7], title: "噪音组乙", attention: "none", reason: "时政" },
+      { members: [8], title: "单条丙", attention: "potential", reason: "x" },
+      { members: [9], title: "单条丁", attention: "none", reason: "y" },
+      { members: [10, 11], title: "强组二", attention: "strong", reason: "z" },
+    ] }),
+    usage: 10,
+  })) as any;
+  await triageTick(db, runner);
+  const archive = db.get<any>("triage-archive", "ta-" + jobId);
+  assert.ok(archive, "补跑完成后归档存在");
+  assert.equal(archive.groups.length, 3, "三个 none 组进归档");
+  const rec = db.get<any>("discovery", jobId);
+  assert.equal(rec.candidates.find((c: any) => c.url === items[4].url).status, "filtered", "none 成员置 filtered");
+  assert.equal(rec.candidates.find((c: any) => c.url === items[0].url).status, "selected", "strong 成员照常入选");
+  assert.ok(!db.get("meta", "triage-fail:" + jobId), "失败标记清除");
 });
 
 // ---- R10.2① 守护：平台目录与 schema 不再漂移（旧测试只断言 ANGLE_PLATFORMS，五值平台漏网教训）----
