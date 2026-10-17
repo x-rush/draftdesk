@@ -11,7 +11,30 @@ import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
 
 const by = (ctx: RouteContext) => `agent:${ctx.connection!.name}`;
 
+import { writeAgentOpportunity } from "../opportunity";
+
 export const routes: RouteDef[] = [
+  {
+    // R10.7 P0-5：外部 Agent 机会卡写口（suggest scope）——初筛 appGap 由内置自动转卡，
+    // Agent 主分析产出的深挖卡（form 六值+monetization）经此写回。
+    methods: ["PUT", "POST"],
+    pattern: "agent/opportunities",
+    scope: "suggest",
+    methodGuardFirst: true,
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({
+        title: z.string().min(1).max(120),
+        oneLiner: z.string().min(1).max(300),
+        form: z.string().max(30).optional(),
+        monetization: z.string().max(60).optional(),
+        signals: z.array(z.enum(["complaint", "newtech", "news", "trend"])).max(4).optional(),
+        url: z.string().max(2048).optional(),
+        term: z.string().max(120).optional(),
+        verifyPlan: z.array(z.string().max(300)).max(4).optional(),
+      }).strict().parse(await readBody());
+      return json(writeAgentOpportunity(db, parsed));
+    },
+  },
   {
     // PUT /agent/decisions/:id/draft（及更深路径，path[3]==="draft" 即命中）——写草稿正文，不能改 decision
     methods: ["PUT"],

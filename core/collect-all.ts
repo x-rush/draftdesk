@@ -63,14 +63,16 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
   for (const s of sources) {
     try {
       const { items, warnings } = await reader(s, 7, AbortSignal.timeout(120000));
+      let sameDayCount = 0; // P0-3：每源独立计数（原用跨源累计 candidates.length，覆盖页显示失真）
       for (const [index, item] of items.entries()) {
         if (seenUrls.has(item.url)) continue;
         seenUrls.add(item.url);
         const ts = item.publishedAt || item.collectedAt;
         const sameDay = isSameShanghaiDay(ts) || (s.type === "rss" && Number.isFinite(Date.parse(ts || "")) && Date.now() - Date.parse(ts!) < 24 * 3600000);
+        if (sameDay) sameDayCount++;
         candidates.push(candidateFromItem(item, s.id, s.name, index, sameDay ? "watch" : "filtered", sameDay ? "当日数据，进入语义初筛" : "非当日数据"));
       }
-      coverage.push({ sourceId: s.id, sourceName: s.name, status: "ok", raw: items.length, matched: candidates.length, selected: 0 });
+      coverage.push({ sourceId: s.id, sourceName: s.name, status: "ok", raw: items.length, matched: sameDayCount, selected: 0 });
       for (const w of warnings) console.warn("[collect-all]", w);
     } catch (e) {
       coverage.push({ sourceId: s.id, sourceName: s.name, status: "failed", raw: 0, matched: 0, selected: 0, error: e instanceof Error ? e.message : "读取失败" });
@@ -117,7 +119,19 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
         const triage = await runTriage(db, defaultTriagePlan(), jobId, pool, new AbortController().signal, runner);
         applyTriageResult(db, record, triage);
         const archived = archiveNoneGroups(db, jobId, triage);
+        // P0-3：初筛后回填每源 selected（判级=入模），覆盖页入模率不再恒 0
+        const judgedBySource = new Map<string, number>();
+        for (const c of record.candidates) if (c.attention) judgedBySource.set(c.sourceId, (judgedBySource.get(c.sourceId) || 0) + 1);
+        const live = db.get<DiscoveryRecord>("discovery", jobId);
+        if (live) {
+          for (const cov of live.sources) cov.selected = judgedBySource.get(cov.sourceId) || 0;
+          db.put("discovery", jobId, live);
+        }
         console.log(`[collect-all] 语义初筛：${triage.groups.length} 组（强 ${triage.groups.filter((g) => g.attention === "strong").length}/潜 ${triage.groups.filter((g) => g.attention === "potential").length}），归档 ${archived.archived} 组（${archived.candidates} 条）`);
+        // R10.7 P0-5：appGap 自动转卡不受 consumerMode 门控（初筛属采集侧——外部模式也出卡）
+        const { generateOpportunities } = await import("./opportunity");
+        const gen = generateOpportunities(db, { source: "auto" });
+        if (gen.created) console.log(`[collect-all] 机会卡自动生成：新增 ${gen.created} / 合并 ${gen.merged}`);
       }
     } catch (e) {
       // R10.2②：失败留痕与 collect() 同款——triage-fail 键 + 候选「待语义初筛」标注（tick 补跑机制凭此发现）

@@ -6,13 +6,15 @@
 // 初筛联动（§1⑥）：watch 池 TTL（引用≥2 晋升 / 超 14 天未引用降级）+
 // plan.platformAffinity 平台适配（实测/教程→笔记线、深度/分析→长文线）二次精筛 watch 池。
 import type { Store } from "./store";
+import { AppError } from "./errors";
 import { hash, now } from "./store";
 import { urlKey } from "./hotspots";
 import { judgeVerdict, platformOf } from "./seen-judge";
 import { valueScoreOf } from "./seo-gate";
 import { termId } from "./seen-terms";
 import { ATTENTION_LABELS, type TriageRecord } from "./triage";
-import { FORM_MONETIZATION, type OpportunityForm } from "./platforms";
+import { FORM_MONETIZATION, FORM_KEYS, normalizeForm } from "./platforms";
+import type { OpportunityForm } from "./platforms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
 export type OpportunityKind = "site" | "app";
@@ -336,6 +338,59 @@ function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counte
 // 双线互挂 relatedIds（id 由 dedupeKey 确定性派生，可先算后写）。组 id 幂等：重复 generate 不重出卡。
 // 跨日重复接受存在（当日整理当日数据，AI 不背历史组记忆），小拾整理时人工注明。
 export const TRIAGE_GROUPS_LOOKBACK_DAYS = 3;
+// 批量落卡（R10.7：单组转卡口与 Agent 写口共用 upsert 面）
+export function upsertOpportunityDrafts(db: Store, drafts: Draft[], source: "auto" | "agent") {
+  const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
+  for (const d of drafts) upsert(db, { ...d, source }, counters);
+  return { created: counters.created, merged: counters.merged };
+}
+
+// 单组出卡草稿（R10.7 P0-2/P0-5）：generateFromGroups 与「转机会卡」写口共用——
+// 内容线每角度一张 + appGap 应用卡，relatedIds 互挂（id 由 dedupeKey 确定性预计算）。
+export function groupOpportunityDrafts(g: NonNullable<TriageRecord["groups"][number]>, source: "auto" | "agent" = "agent") {
+  const angles = (g.angles || []).filter((a) => a?.platform && a?.angle).slice(0, 3);
+  const appId = g.appGap ? "opp-" + hash(`app:grp:${g.id}`).slice(0, 20) : undefined;
+  const contentIds = angles.map((a) => "opp-" + hash(`site:grp:${g.id}:${a.platform}`).slice(0, 20));
+  const verdictReason = `注意力 ${ATTENTION_LABELS[g.attention]}（${(g.sources || []).join("/") || "AI 语义初筛"}）：${g.reason}`.slice(0, 160);
+  const drafts: Draft[] = angles.map((a) => ({
+    dedupeKey: `site:grp:${g.id}:${a.platform}`, kind: "site", signals: ["news"],
+    evidenceIds: [], url: g.representativeUrl, title: g.title.slice(0, 120),
+    oneLiner: `${PLATFORM_LABELS[a.platform] || a.platform}角度（AI 语义初筛）：${a.angle.slice(0, 100)}`,
+    form: undefined,
+    verdict: g.attention === "strong" ? "可以试试" : "待验证",
+    verdictReason, verifyPlan: VERIFY.site(g.title), platform: a.platform, source,
+    ...(appId ? { relatedIds: [appId] } : {}),
+  }));
+  if (g.appGap && appId) {
+    drafts.push({
+      dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
+      evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
+      oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
+      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
+      verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
+      ...(contentIds.length ? { relatedIds: contentIds } : {}),
+    });
+  }
+  return drafts;
+}
+
+// 外部 Agent 机会卡写口（R10.7 P0-5）：suggest 令牌直达 upsert（form 走严格六值归一）
+export function writeAgentOpportunity(db: Store, draft: { title: string; oneLiner: string; form?: unknown; monetization?: string; signals?: unknown[]; url?: string; term?: string; verifyPlan?: string[] }) {
+  const form = draft.form !== undefined ? normalizeForm(draft.form) : undefined;
+  if (draft.form !== undefined && form === undefined) throw new AppError(`未知产品形态；允许值：${FORM_KEYS.join(", ")}`, 400);
+  const signals = (Array.isArray(draft.signals) ? draft.signals : ["news"]).filter((x): x is OpportunitySignal => ["complaint", "newtech", "news", "trend"].includes(String(x)));
+  const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
+  upsert(db, {
+    dedupeKey: `agent:${hash(String(draft.title) + "|" + String(draft.url || draft.term || "")).slice(0, 24)}`,
+    kind: form === "site-group" ? "site" : "app", signals: signals.length ? signals : ["news"],
+    evidenceIds: [], url: draft.url, term: draft.term, title: draft.title.slice(0, 120),
+    oneLiner: draft.oneLiner.slice(0, 300), form, monetization: draft.monetization?.slice(0, 60),
+    verdict: "待验证", verdictReason: "外部 Agent 写入（未经工作台规则验证）",
+    verifyPlan: draft.verifyPlan?.slice(0, 4) || [], source: "agent",
+  }, counters);
+  return { ok: true, created: counters.created, merged: counters.merged };
+}
+
 function generateFromGroups(db: Store, source: "auto" | "agent", counters: Counters) {
   const cutoff = Date.now() - TRIAGE_GROUPS_LOOKBACK_DAYS * 86400000;
   for (const record of db.list<TriageRecord>("candidate-groups")) {

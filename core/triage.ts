@@ -536,6 +536,9 @@ export async function triageTick(db: Store, runner: TriageRunner = defaultTriage
     applyTriageResult(db, target, record);
     // R10.2 追加：补跑路径与内联路径同款归档（判 none 组进 triage-archive，不静默留池）
     const archived = archiveNoneGroups(db, target.jobId, record);
+    // R10.7 P0-5：补跑路径同样自动转卡（不受 consumerMode 门控）
+    const { generateOpportunities } = await import("./opportunity");
+    generateOpportunities(db, { source: "auto" });
     console.log(`[triage] ${target.planName} 批 ${target.jobId.slice(0, 8)}：${record.groups.length} 组（强 ${record.groups.filter((g) => g.attention === "strong").length}/潜 ${record.groups.filter((g) => g.attention === "potential").length}）${archived.archived ? `，归档 ${archived.archived} 组（${archived.candidates} 条）` : ""}，${record.shards} 片 ${record.calls} 调用 ${record.tokens} tokens${explicit ? "（显式请求）" : ""}`);
   } catch (error) {
     markTriageFailed(db, target, error);

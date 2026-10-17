@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
+import { AppError } from "../store";
 import { generateOpportunities, SIGNAL_LABELS, KIND_LABELS } from "../opportunity";
 import { FORM_LABELS } from "../platforms";
 
@@ -23,6 +24,23 @@ export const routes: RouteDef[] = [
         ? "四信号源扫完没有新机会（已有卡片覆盖或素材不足）——watch 池与词库有新料后再试。"
         : `新增 ${run.created} 张机会卡${run.merged ? `、合并 ${run.merged} 张既有卡信号` : ""}。`;
       return json({ ok: true, ...run, note });
+    },
+  },
+  {
+    // R10.7 P0-2：单组转机会卡（UI 组卡按钮；drafts 与 generateFromGroups 同源）
+    methods: ["POST"],
+    pattern: "opportunities/from-group",
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({ jobId: z.string().min(1).max(64), groupId: z.string().min(1).max(40) }).strict().parse(await readBody());
+      const record = db.get<any>("candidate-groups", "tg-" + parsed.jobId);
+      const group = record && (record.groups || []).find((g: any) => g.id === parsed.groupId);
+      if (!group) throw new AppError("组不存在（批次未初筛或组已恢复）。", 404);
+      const { groupOpportunityDrafts } = await import("../opportunity");
+      const drafts = groupOpportunityDrafts(group);
+      if (!drafts.length) throw new AppError("该组无角度且无 appGap，无可出的卡。", 400);
+      const { upsertOpportunityDrafts } = await import("../opportunity");
+      const r = upsertOpportunityDrafts(db, drafts, "agent");
+      return json({ ok: true, ...r, note: `出 ${drafts.length} 张（内容线 ${drafts.filter(d => d.kind === "site").length} + 应用 ${drafts.filter(d => d.kind === "app").length}）。` });
     },
   },
   {
