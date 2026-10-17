@@ -142,6 +142,18 @@ test("补跑完成→归档存在：triageTick 成功路径产出 none 组进 tr
   assert.ok(!db.get("meta", "triage-fail:" + jobId), "失败标记清除");
 });
 
+// ---- R10.4-① 补源守护 ----
+test("defaultSources 含三个实测源（qbitai/ifanr/solidot），enabled 进 collectAll", async () => {
+  const { defaultSources } = await import("../core/defaults");
+  for (const id of ["qbitai", "ifanr", "solidot"]) {
+    const src = defaultSources.find((s: any) => s.id === id);
+    assert.ok(src, `${id} 在默认源`);
+    assert.equal(src.enabled, true);
+    assert.equal(src.type, "rss");
+    assert.ok(src.url?.startsWith("https://"));
+  }
+});
+
 // ---- R10.2① 守护：平台目录与 schema 不再漂移（旧测试只断言 ANGLE_PLATFORMS，五值平台漏网教训）----
 test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集；ANGLE_PLATFORMS ⊆ PLATFORM_KEYS；9 值识别", async () => {
   const { PLATFORM_KEYS, normalizePlatform } = await import("../core/platforms");

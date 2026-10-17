@@ -10,6 +10,9 @@ export const defaultConfig: Config = {
 export const defaultSources: Source[] = [
   {id:"openai-official",name:"OpenAI 官方更新",type:"rss",url:"https://openai.com/news/rss.xml",officialDomains:["help.openai.com","platform.openai.com"],sourceType:"official",enabled:true,note:"官方产品声明；用户体验和效果仍需独立验证。"},
   {id:"google-ai-official",name:"Google AI 官方更新",type:"rss",url:"https://blog.google/innovation-and-ai/technology/ai/rss/",officialDomains:["docs.cloud.google.com","support.google.com","workspaceupdates.googleblog.com"],sourceType:"official",enabled:true,note:"官方 AI 产品更新；用内容筛选词排除无关产业新闻。"},
+  {id:"qbitai",name:"量子位",type:"rss",url:"https://www.qbitai.com/feed",sourceType:"media",enabled:true,note:"AI 垂类媒体（R10.4-① 容器实测 200，RSS 10 条/日）；重要结论优先找官方原文。"},
+  {id:"ifanr",name:"爱范儿",type:"rss",url:"https://www.ifanr.com/feed",sourceType:"media",enabled:true,note:"科技媒体，消费数码向（R10.4-① 容器实测 200，RSS 20 条/日）。"},
+  {id:"solidot",name:"Solidot",type:"rss",url:"https://www.solidot.org/index.rss",sourceType:"media",enabled:true,note:"科技社区老牌，开源/极客向（R10.4-① 容器实测 200，RSS 20 条/日）。"},
   {id:"simon-practice",name:"Simon Willison 实践文章",type:"rss",url:"https://simonwillison.net/atom/entries/",sourceType:"other",enabled:true,note:"作者实践与作品线索，不能代替厂商定价和功能公告。"},
   {id:"v2ex-problems",name:"V2EX 技术讨论",type:"rss",url:"https://www.v2ex.com/feed/tab/tech.xml",sourceType:"community",enabled:true,note:"公开求助和使用反馈；包含推广与个体意见，需核对原文，不代表普遍市场。"},
   {
