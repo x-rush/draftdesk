@@ -76,14 +76,26 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
       coverage.push({ sourceId: s.id, sourceName: s.name, status: "failed", raw: 0, matched: 0, selected: 0, error: e instanceof Error ? e.message : "读取失败" });
     }
   }
-  // 当日精简闸：超上限按「当日新 > 热度 > 源序」保留前 N
+  // 当日精简闸：超上限按「当日新 > 热度 > 源序」保留前 N。
+  // 热度做同源归一排名（R10.6 修正）：原始热度值跨源量纲不可比——百度热搜「百万」
+  // 会碾压 aihot 信号数「65」，小而精的事件源永远进不了池。每源内部按热度排名折算
+  // 0..1（第一名≈1），跨源公平竞争。
   const watch = candidates.filter((c) => c.status === "watch");
+  const heatRank = new Map<string, number>();
+  {
+    const bySource = new Map<string, DiscoveryCandidate[]>();
+    for (const c of watch) { const l = bySource.get(c.sourceId) || []; l.push(c); bySource.set(c.sourceId, l); }
+    for (const list of bySource.values()) {
+      list.sort((a, b) => heatOf(b) - heatOf(a));
+      list.forEach((c, idx) => heatRank.set(c.url, list.length > 1 ? (list.length - idx) / list.length : 1));
+    }
+  }
   let trimmed = 0;
   if (watch.length > COLLECT_ALL_LIMIT) {
     const keep = new Set(
       watch
         .map((c, i) => ({ c, i }))
-        .sort((a, b) => recencyOf(b.c) - recencyOf(a.c) || heatOf(b.c) - heatOf(a.c) || a.i - b.i)
+        .sort((a, b) => recencyOf(b.c) - recencyOf(a.c) || (heatRank.get(b.c.url) ?? 0) - (heatRank.get(a.c.url) ?? 0) || heatOf(b.c) - heatOf(a.c) || a.i - b.i)
         .slice(0, COLLECT_ALL_LIMIT)
         .map((x) => x.c.url),
     );
