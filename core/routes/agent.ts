@@ -42,6 +42,23 @@ export const routes: RouteDef[] = [
     },
   },
   {
+    // R10 第3段：消费回执——外部 Agent 每次跑完 ping；审查台显示「外部已消费 N 条/最后运行」，
+    // 超 24h 未跑提醒（给老大的运维信号，不触发内置补稿——消费二选一，互斥不动）。
+    methods: ["POST"],
+    pattern: "agent/consume-report",
+    scope: "consume",
+    methodGuardFirst: true,
+    handler: async ({ db, connection, readBody }) => {
+      const parsed = z.object({
+        consumed: z.number().int().min(0).max(10000),
+        note: z.string().max(300).optional(),
+      }).strict().parse(await readBody());
+      const at = new Date().toISOString();
+      db.put("meta", "agent-consume-report", { at, by: `agent:${connection!.name}`, consumed: parsed.consumed, ...(parsed.note ? { note: parsed.note } : {}) });
+      return json({ ok: true, at, staleAfter: new Date(Date.parse(at) + 24 * 3600000).toISOString() });
+    },
+  },
+  {
     // 建议多源并存：外部 Agent 只写建议，不直接改 decision（§12.1 分权）
     methods: ["POST", "PATCH"],
     pattern: "agent/suggestions",

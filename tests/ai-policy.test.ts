@@ -28,10 +28,10 @@ after(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("aiPolicy 种子默认全 off + external（需求 §15.3 作者倾向），可经 API 修改", async () => {
+test("aiPolicy 种子：R10 起语义初筛默认 cheap（其余 off）+ external，可经 API 修改", async () => {
   const db = store();
   assert.deepEqual(db.get<any>("config", "aiPolicy"), defaultAiPolicy);
-  assert.equal(defaultAiPolicy.triage, "off");
+  assert.equal(defaultAiPolicy.triage, "cheap", "R10 第2段：初筛默认开");
   assert.equal(defaultAiPolicy.outline, "off");
   assert.equal(defaultAiPolicy.draft, "off");
   assert.equal(defaultAiPolicy.aiWriter, "external");
@@ -79,7 +79,7 @@ test("aiPolicy.triage=off：活动初筛软跳过，不调用模型不报错", a
   const db = store();
   // consumerMode=external 时优先于 aiPolicy（直接软跳过）；本测试验证 builtin 模式下的 aiPolicy.triage 路径
   db.put("config", "consumerMode", "builtin");
-  // 默认即 off
+  db.put("config", "aiPolicy", { ...defaultAiPolicy, triage: "off" }); // R10 默认 cheap，显式置 off 验证关闭路径
   const batches = db.list<any>("activity-batches");
   if (!batches.length) {
     db.put("activity-batches", "b-off", { id: "b-off", receivedAt: new Date().toISOString(), bundle: { platform: "哔哩哔哩", items: [{ title: "活动", url: "https://www.bilibili.com/x" }] } });

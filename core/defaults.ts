@@ -193,7 +193,8 @@ export const defaultPersona = {
 // 开关是「谁来干」的开关，不是「干不干」的开关——triage=off 时聚合/簇/大纲由外部 Agent 经
 // /api/v1/agent/clusters|outlines 写回。默认值 = 需求文档 §15.3 作者倾向（未收到用户反馳前按文档执行），UI 可改。
 export const defaultAiPolicy = {
-  triage: "off" as const,
+  // R10 第2段：语义初筛默认开（cheap）——采集批默认走归类+判级+双线草案；off 显式关闭
+  triage: "cheap" as const,
   outline: "off" as const,
   draft: "off" as const,
   aiWriter: "external" as const,

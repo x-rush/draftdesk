@@ -20,6 +20,7 @@ import { outlineCategoryTick } from "../core/outline-categorize";
 import { outlineDraftTick, ensureTiebuhaoClones } from "../core/outline-draft";
 import { requestModel } from "../core/model";
 import { budgetAuditTick } from "../core/budget-audit";
+import { collectAllTick } from "../core/collect-all";
 import { runJanitor } from "../core/janitor";
 
 const g = globalThis as unknown as { __draftdeskWorker?: { stopping: boolean } };
@@ -34,6 +35,8 @@ export function startWorkerLoop(db: Store) {
     while (!state.stopping) {
       try {
         db.put("meta", "worker", { heartbeat: now(), pid: process.pid });
+        // R10 第1段：每日 01:00（上海）全量采集落盘 + 内联语义初筛（自带日闸）
+        await collectAllTick(db);
         scheduleTick(db);
         seenTermsTick(db, requestModel);
         // 判定吞吐扩容（第五轮 §5）：relevance 回填判定日多批（积压 7112 → 48h <2000 的反推口径）

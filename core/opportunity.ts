@@ -18,17 +18,27 @@ export type OpportunityKind = "site" | "app";
 export type OpportunityVerdict = "推荐" | "可以试试" | "不值得做" | "待验证";
 // 产品形态四值（第七轮批2 W7-5）：web=Web 应用 / app=App / miniprogram=小程序 / tool=工具站。
 // 内容线机会卡（平台适配）无产品形态，form 缺省。
-export type OpportunityForm = "web" | "app" | "miniprogram" | "tool";
-export const FORM_LABELS: Record<OpportunityForm, string> = { web: "Web 应用", app: "App 应用", miniprogram: "小程序", tool: "工具站" };
-// 存量自由文本 → 枚举归一（迁移与读时兜底共用）；「内容页」类无产品形态 → undefined。
+// R10 第3段：产品形态扩六值，带默认变现口径（monetization 字段）
+export type OpportunityForm = "web-app" | "site-group" | "mobile-app" | "mini-program" | "tool" | "open-source";
+export const FORM_LABELS: Record<OpportunityForm, string> = {
+  "web-app": "Web 应用", "site-group": "站群", "mobile-app": "移动 App", "mini-program": "小程序",
+  tool: "工具站", "open-source": "开源引流",
+};
+export const FORM_MONETIZATION: Record<OpportunityForm, string> = {
+  "web-app": "订阅/买断", "site-group": "展示广告/联盟", "mobile-app": "订阅/内购",
+  "mini-program": "广告/增值服务", tool: "广告/付费功能", "open-source": "引流/赞助",
+};
+// 存量值归一（迁移与读时兜底共用）：旧四值 web/app/miniprogram/tool 归入新六值；「内容页」类无产品形态 → undefined。
 export function normalizeForm(value: unknown): OpportunityForm | undefined {
-  if (value === "web" || value === "app" || value === "miniprogram" || value === "tool") return value;
+  if (value === "web-app" || value === "site-group" || value === "mobile-app" || value === "mini-program" || value === "tool" || value === "open-source") return value;
   if (typeof value !== "string") return undefined;
   const s = value.toLowerCase();
-  if (/小程序|miniprogram/.test(s)) return "miniprogram";
-  if (/web|网页/.test(s)) return "web";
+  if (/站群|site.?group/.test(s)) return "site-group";
+  if (/小程序|miniprogram/.test(s)) return "mini-program";
+  if (/开源引流|open.?source/.test(s)) return "open-source";
   if (/工具站|工具页/.test(s)) return "tool";
-  if (/\bapp\b|应用|客户端/.test(s)) return "app";
+  if (/\bweb\b|网页|独立站/.test(s)) return "web-app";
+  if (/\bapp\b|应用|客户端/.test(s)) return "mobile-app";
   return undefined;
 }
 export const SIGNAL_LABELS: Record<OpportunitySignal, string> = {
@@ -38,7 +48,7 @@ export const SIGNAL_LABELS: Record<OpportunitySignal, string> = {
   trend: "热词趋势",
 };
 export const KIND_LABELS: Record<OpportunityKind, string> = { site: "站群/内容页", app: "应用" };
-export const PLATFORM_LABELS: Record<string, string> = { gzh: "公众号", tiebuhao: "贴图号", "xhs-note": "小红书笔记", "xhs-video": "小红书视频", threads: "Threads" };
+export const PLATFORM_LABELS: Record<string, string> = { gzh: "公众号", tiebuhao: "贴图号", "xhs-note": "小红书笔记", "xhs-video": "小红书视频（后置）", threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" };
 
 export type Opportunity = {
   id: string;
@@ -53,6 +63,8 @@ export type Opportunity = {
   title: string;
   oneLiner: string;
   form?: OpportunityForm;
+  // 变现口径（R10 六值配套；缺省按 FORM_MONETIZATION 推导）
+  monetization?: string;
   // 哥飞三指标 + 综合价值分（月搜×CPC÷KD，W7-3）；valueUnverified=无新鲜指标（降级候选）
   seoMetrics?: { monthlySearch: number; kd: number; cpc: number; valueScore: number };
   valueUnverified?: boolean;
@@ -76,6 +88,11 @@ export const PLATFORM_FIT: Record<string, RegExp> = {
   tiebuhao: /突发|热搜|更新|发布|盘点|几件事|一次看完|快讯|速览|图解|一图|时间线/i,
   "xhs-note": /实测|教程|攻略|清单|避坑|手把手|指南|上手|合集/i,
   threads: /出海|海外|全球|GitHub|HN|HackerNews|开源|英文/i,
+  // R10 第2段新增四平台（图文形态）：X=英文短评、LinkedIn=职场专业向、FB/IG=图文分享向
+  x: /出海|海外|全球|launch|release|open.?source|GitHub|HN|英文|AI tool/i,
+  facebook: /实用|分享|盘点|生活|技巧|how to|tips/i,
+  instagram: /视觉|图片|设计|灵感|gallery|design|aesthetic/i,
+  linkedin: /职场|专业|行业|career|enterprise|B2B|效率|团队/i,
 };
 // R9-3③：一条 watch 候选可命中多平台——返回全部命中平台（每平台一张机会卡），
 // 不再 find 第一个即止；顺序跟随 affinity 传入序。
@@ -199,7 +216,7 @@ function generateFromComplaints(db: Store, source: "auto" | "agent", counters: C
     upsert(db, {
       dedupeKey: `app:idea:${a.id}`, kind: "app", signals: ["complaint"], evidenceIds: a.evidenceIds || [],
       title: a.title, oneLiner: a.details?.trigger || String(a.summary || "").slice(0, 160),
-      form: "web", verdict: a.quality === "ready" ? "可以试试" : "待验证",
+      form: "web-app", verdict: a.quality === "ready" ? "可以试试" : "待验证",
       verdictReason: a.quality === "ready" ? "质量审核通过的应用机会" : "待验证：证据或审核未齐",
       verifyPlan: a.details?.experiment ? [a.details.experiment] : VERIFY.app(a.title),
       source,
@@ -220,7 +237,7 @@ function generateFromComplaints(db: Store, source: "auto" | "agent", counters: C
         upsert(db, {
           dedupeKey: `app:ev:${hash(k).slice(0, 24)}`, kind: "app", signals: ["complaint"],
           evidenceIds: ev ? [ev.id] : [], url: c.url, title: c.title.slice(0, 120),
-          oneLiner: c.reason || "符合策略的已选证据候选", form: "web",
+          oneLiner: c.reason || "符合策略的已选证据候选", form: "web-app",
           verdict: "待验证", verdictReason: "候选证据待人工复核需求真伪",
           verifyPlan: VERIFY.app(c.title.slice(0, 60)), source,
         }, counters);
@@ -257,7 +274,7 @@ function generateFromNewtech(db: Store, source: "auto" | "agent", counters: Coun
       dedupeKey: `app:evlist:${(a.evidenceIds || []).slice().sort().join(",") || a.id}`,
       kind: "app", signals: ["newtech"], evidenceIds: a.evidenceIds || [],
       title: a.title, oneLiner: `「${(changed || a.title).slice(0, 80)}」上线后的配套缺口推演（${GAP_FORMS}，按适用做减法）`,
-      form: "web", verdict: "待验证",
+      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
       verdictReason: "缺口为规则推演，未经需求验证",
       verifyPlan: VERIFY.app((changed || a.title).slice(0, 40)), source,
     }, counters);
@@ -284,7 +301,7 @@ function generateFromNews(db: Store, source: "auto" | "agent", counters: Counter
     upsert(db, {
       dedupeKey: `app:ev:${e.id}`, kind: "app", signals: ["news"], evidenceIds: [e.id],
       title: e.title.slice(0, 120), oneLiner: `官方新品：「${e.title.slice(0, 80)}」→ 配套缺口推演（${GAP_FORMS}）`,
-      form: "web", verdict: "待验证",
+      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
       verdictReason: "官方发布推演缺口，未经需求验证",
       verifyPlan: VERIFY.app(e.title.slice(0, 40)), source,
     }, counters);
@@ -308,7 +325,7 @@ function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counte
       upsert(db, {
         dedupeKey: `site:term:${t.id}`, kind: "site", signals: ["trend"], term: t.term,
         evidenceIds: [], title: t.term,
-        oneLiner: `蓝海词：${reason}，四大静态平台零竞争站`, form: "tool",
+        oneLiner: `蓝海词：${reason}，静态平台零竞争站`, form: "site-group", monetization: FORM_MONETIZATION["site-group"],
         verdict: "推荐", verdictReason: reason, verifyPlan: VERIFY.site(t.term), source,
       }, counters);
     }
@@ -317,7 +334,7 @@ function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counte
         dedupeKey: `app:term:${t.id}`, kind: "app", signals: ["trend"], term: t.term,
         evidenceIds: [], title: t.term,
         oneLiner: `工具意图词（${t.intent === "comparison" ? "对比/替代" : "价格/商业"}）观测 ${t.observations} 次`,
-        form: "tool", verdict: "可以试试", verdictReason: `relevance=strong 且 intent=${t.intent}，需求形状偏工具`,
+        form: "tool", monetization: FORM_MONETIZATION.tool, verdict: "可以试试", verdictReason: `relevance=strong 且 intent=${t.intent}，需求形状偏工具`,
         verifyPlan: VERIFY.app(t.term), source,
       }, counters);
     }
@@ -326,7 +343,7 @@ function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counte
         dedupeKey: `app:altterm:${t.id}`, kind: "app", signals: ["complaint"], term: t.term,
         evidenceIds: [], title: t.term,
         oneLiner: `替代缺口词：「${t.term}」的搜索=对现有方案不满（alternative 词根探针产出）`,
-        form: "web", verdict: "待验证",
+        form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
         verdictReason: "alternative 搜索=替代缺口信号，待核验被替代方与缺口真伪",
         verifyPlan: VERIFY.app(t.term), source,
       }, counters);
@@ -365,12 +382,31 @@ function generateFromGroups(db: Store, source: "auto" | "agent", counters: Count
           dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
           evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
           oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
-          form: "web", verdict: "待验证",
+          form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
           verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
           ...(contentIds.length ? { relatedIds: contentIds } : {}),
         }, counters);
       }
     }
+  }
+}
+
+// g. 新站复刻（R10 第3段）：site-launches 中动机=商业/痛点 且 HN 热度达标或撞词的新站
+// → 「复刻已验证」机会卡（别人已上线并拿到曝光的形态，比纯推演风险低一档）。
+export function generateFromLaunches(db: Store, source: "auto" | "agent", counters: Counters) {
+  for (const l of db.list<any>("site-launches")) {
+    if (!l.host || (l.motive !== "business" && l.motive !== "pain")) continue;
+    const hnScore = Number(l.hnScore) || 0;
+    const clashed = (l.clashTerms || []).length > 0;
+    if (hnScore < 50 && !clashed) continue;
+    upsert(db, {
+      dedupeKey: `launch:${l.host}`, kind: "app", signals: ["newtech"],
+      evidenceIds: [], url: l.siteUrl || l.sourceUrl, title: String(l.titleZh || l.title || l.host).slice(0, 120),
+      oneLiner: `复刻已验证：${l.motive === "business" ? "商业动机" : "痛点动机"}新站${hnScore ? `（HN ${hnScore} 分）` : ""}${clashed ? "，核心词命中我们热词库" : ""}——形态已被市场验证，复刻风险低于纯推演`,
+      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "可以试试",
+      verdictReason: `新站六类判定=${l.motive}${l.motiveSource === "quote" ? "（作者原话）" : "（推测）"}${hnScore ? ` + HN ${hnScore}` : ""}${clashed ? ` + 撞词 ${l.clashTerms.slice(0, 3).join("/")}` : ""}`,
+      verifyPlan: [`${l.host} 的形态与获客路径一周观察`, ...VERIFY.app(String(l.titleZh || l.host))].slice(0, 4), source,
+    }, counters);
   }
 }
 
@@ -384,6 +420,7 @@ export function generateOpportunities(db: Store, opts: { source?: "auto" | "agen
   generateFromTrend(db, source, counters);
   generateFromSiteCandidates(db, source, counters);
   generateFromGroups(db, source, counters);
+  generateFromLaunches(db, source, counters);
   return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal };
 }
 
@@ -431,7 +468,7 @@ function generateFromSiteCandidates(db: Store, source: "auto" | "agent", counter
       dedupeKey: `site:cand:${termId(String(t.term))}`, kind: "site", signals: ["trend"], term: String(t.term),
       evidenceIds: [], title: String(t.term),
       oneLiner: `站群候选词（siteCandidate 标注）：${[t.siteType, ...(Array.isArray(t.sources) ? t.sources : [])].filter(Boolean).join(" · ") || "站群门槛达标"}`,
-      form: "tool", verdict: "待验证",
+      form: "site-group", monetization: FORM_MONETIZATION["site-group"], verdict: "待验证",
       verdictReason: String(t.siteRationale || "siteCandidate 标注（站群门槛达标）").slice(0, 110),
       verifyPlan: VERIFY.site(String(t.term)), source,
       ...(fresh ? { seoMetrics: { monthlySearch: t.monthlySearch, kd: t.kd, cpc: t.cpc, valueScore: score! }, valueUnverified: undefined } : { valueUnverified: true, seoMetrics: undefined }),

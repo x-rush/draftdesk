@@ -9,12 +9,26 @@ import { AppError, hash, now } from "./store";
 import type { DiscoveryCandidate, DiscoveryRecord } from "./discovery";
 import type { Plan } from "./schema";
 import { shanghaiDay } from "./model-metrics";
+
+// 全量采集批兜底（从 collect-all.ts 内联常量，避免 collect-all → triage → collect-all 循环依赖）
+const COLLECT_ALL_PLAN_NAME = "全量采集";
+function defaultTriagePlan() {
+  return {
+    id: "collect-all", name: COLLECT_ALL_PLAN_NAME, kind: "trends" as const,
+    goal: "追踪 AI/科技领域热点与创作者工具机会，为多平台内容选题与独立开发应用机会提供素材",
+    audience: "AI 从业者与独立开发者", keywords: [], excludeKeywords: [], includeDomains: [], sourceIds: [],
+    lookbackDays: 7, maxEvidence: 300, maxQueries: 0, maxItems: 8, maxModelCalls: 12, maxTokens: 2000000,
+    scheduleEnabled: false, dailyTime: "01:00", publishPolicy: "manual" as const,
+    platformAffinity: ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"],
+  };
+}
 import type { ModelMessage } from "./model";
 
 export type Attention = "strong" | "potential" | "none";
 export const ATTENTION_LABELS: Record<Attention, string> = { strong: "强", potential: "潜力", none: "无" };
 // 内容角度只落这四个内容平台（五平台里 xhs-video 后置、无内容角度位）
-export const ANGLE_PLATFORMS = ["gzh", "tiebuhao", "xhs-note", "threads"] as const;
+// R10：内容角度平台扩 8 值（xhs-video 视频后置，不进角度草案）
+export const ANGLE_PLATFORMS = ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"] as const;
 
 export type TriageGroup = {
   id: string;
@@ -44,7 +58,8 @@ export type TriageRecord = {
 export type PlanTriagePolicy = { enabled?: boolean; attentionCriteria?: string; groupGranularity?: "coarse" | "fine" };
 export function triageEnabledOf(plan: Pick<Plan, "kind"> & { aiPolicy?: PlanTriagePolicy }, globalAiPolicy: { triage?: string } | null | undefined): boolean {
   if ((globalAiPolicy?.triage ?? "off") === "off") return false;
-  return plan.aiPolicy?.enabled ?? plan.kind === "trends";
+  // R10 第2段：初筛默认全开（不再只 trends）——计划可用 aiPolicy.enabled=false 显式退出
+  return plan.aiPolicy?.enabled ?? true;
 }
 function granularityText(policy: PlanTriagePolicy | undefined): string {
   return policy?.groupGranularity === "fine"
@@ -417,7 +432,7 @@ function pickTriageTarget(db: Store, jobId?: string): DiscoveryRecord | undefine
   const plans = new Map(db.list<any>("plans").map((p) => [p.name, p]));
   return eligible
     .filter((r) => {
-      const plan = plans.get(r.planName);
+      const plan = plans.get(r.planName) ?? (r.planName === COLLECT_ALL_PLAN_NAME ? defaultTriagePlan() : undefined);
       return plan && triageEnabledOf(plan, db.get<any>("config", "aiPolicy"));
     })
     .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
@@ -452,7 +467,7 @@ export async function triageTick(db: Store, runner: TriageRunner = defaultTriage
     db.put("meta", "triage-auto:" + day, { at: now(), runs: (auto?.runs ?? 0) + 1 });
   }
   if (!target) return;
-  const plan = db.list<Plan>("plans").find((p) => p.name === target!.planName);
+  const plan = db.list<Plan>("plans").find((p) => p.name === target!.planName) ?? (target!.planName === COLLECT_ALL_PLAN_NAME ? (defaultTriagePlan() as unknown as Plan) : undefined);
   if (!plan) return;
   try {
     // tick 侧一次性 controller：补跑不随任何 HTTP 请求断连中止

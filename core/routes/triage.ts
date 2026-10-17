@@ -50,6 +50,28 @@ export const routes: RouteDef[] = [
     },
   },
   {
+    // R10 第2段：归档队列（判无注意力的组）可查可恢复——「没有价值的需要归档」的明示动作留痕
+    methods: ["GET"],
+    pattern: "triage/archive",
+    handler: ({ db, query }) => {
+      const jobId = query.get("jobId") || "";
+      const rows = jobId
+        ? db.list<any>("triage-archive").filter((r) => r.jobId === jobId)
+        : db.list<any>("triage-archive").sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 14);
+      return json({ items: rows.map((r) => ({ jobId: r.jobId, day: r.day, at: r.at, groups: (r.groups || []).map((g: any) => ({ id: g.id, title: g.title, reason: g.reason, members: (g.memberUrls || []).length })) })), total: db.list<any>("triage-archive").length });
+    },
+  },
+  {
+    methods: ["POST"],
+    pattern: "triage/restore",
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({ jobId: z.string().min(1).max(64), groupId: z.string().max(40).optional() }).strict().parse(await readBody());
+      const { restoreArchived } = await import("../collect-all");
+      const r = restoreArchived(db, parsed.jobId, parsed.groupId);
+      return json({ ok: true, ...r, ...(r.restored ? {} : { note: "无匹配归档记录或成员已不在归档态" }) });
+    },
+  },
+  {
     methods: ["GET"],
     pattern: "triage/status",
     handler: ({ db, query }) => {

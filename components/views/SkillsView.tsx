@@ -28,6 +28,10 @@ export function SkillsView({ ws }: { ws: Workspace }) {
 
   return (
     <>
+      {/* R10 第4段：定位说明——方法论手册（内外部 AI 消费），入口在「高级」层级 */}
+      <p className="dash-label" style={{ marginTop: 0 }}>
+        <span className="dash-label-sub">方法论手册：内置与外部 AI 共用的研究/判定口径（Skill 包版本化）。本页是展示与核对入口，改判定标尺在「模型与设置 · 人设/aiPolicy」。</span>
+      </p>
       {/* ① 统计条 */}
       <div className="stat-strip">
         <div className="stat-card accent"><strong>{skills.length}</strong><span><Puzzle size={13} /> 研究 Skills</span><small>包版本 v1.1 · 参考资料随任务加载并记录版本</small></div>

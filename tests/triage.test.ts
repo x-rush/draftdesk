@@ -383,7 +383,7 @@ test("generateFromGroups：双线卡（内容线每角度一张+app 卡）、互
     assert.deepEqual(gzh.relatedIds, [app.id], "内容卡挂应用卡");
     assert.deepEqual(app.relatedIds, [gzh.id, tbh.id], "应用卡挂两张内容卡");
     assert.equal(app.kind, "app");
-    assert.equal(app.form, "web");
+    assert.equal(app.form, "web-app", "R10 六值");
     assert.ok(app.verifyPlan[0].includes("对比工具"), "appGap 进验证计划首条");
     assert.equal(app.url, "https://a/1", "代表条目 url");
     // 幂等：重跑不重出
@@ -396,10 +396,10 @@ test("generateFromGroups：双线卡（内容线每角度一张+app 卡）、互
 });
 
 // ---- 开关与 schema ----
-test("triageEnabledOf：trends 缺省开、他类缺省关、显式 enabled 优先；全局 off 一票否决", () => {
+test("triageEnabledOf：R10 默认全开（全 kind）、计划可显式退出；全局 off 一票否决", () => {
   const global = { triage: "cheap" };
   assert.equal(triageEnabledOf({ kind: "trends" }, global), true);
-  assert.equal(triageEnabledOf({ kind: "editorial" }, global), false);
+  assert.equal(triageEnabledOf({ kind: "editorial" }, global), true, "R10：非 trends 默认也开");
   assert.equal(triageEnabledOf({ kind: "editorial", aiPolicy: { enabled: true } }, global), true);
   assert.equal(triageEnabledOf({ kind: "trends", aiPolicy: { enabled: false } }, global), false);
   assert.equal(triageEnabledOf({ kind: "trends" }, { triage: "off" }), false);

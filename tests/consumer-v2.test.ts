@@ -116,7 +116,8 @@ test("② consumerMode：默认 external，janitor 跳过，triage 软跳过，�
   assert.ok(db.get("consumption", "hotspots:https://old.example.org/jan"), "builtin 模式应自动消费旧条目");
   // 恢复 external（本实例目标状态）
   db.put("config", "consumerMode", "external");
-  // triage：external → 软跳过
+  // triage：本用例验证 consumerMode 门（R10 默认 cheap，显式置 off 隔离默认值变化）
+  db.put("config", "aiPolicy", { ...(db.get<any>("config", "aiPolicy") || {}), triage: "off" });
   db.put("activity-batches", "b-tri", { id: "b-tri", receivedAt: new Date().toISOString(), bundle: { platform: "哔哩哔哩", items: [{ title: "活动", url: "https://www.bilibili.com/x" }] } });
   const triage = await request("activity-triage", { batchIds: ["b-tri"], keywords: ["AI"] });
   const triageBody = await triage.json();

@@ -115,7 +115,8 @@ test("② consumerMode：默认 external；janitor/triage 双双停用；builtin
   const r2 = runJanitor(db);
   assert.equal(r2!.hotspots, 1, "builtin 模式回收旧条目");
   assert.ok(db.get("consumption", "hotspots:https://old.example.org/v3"));
-  // triage：external → 软跳过
+  // triage：本用例验证 consumerMode 门（R10 默认 cheap，显式置 off 隔离默认值变化）
+  db.put("config", "aiPolicy", { ...(db.get<any>("config", "aiPolicy") || {}), triage: "off" });
   db.put("activity-batches", "b-v3", { id: "b-v3", receivedAt: new Date().toISOString(), bundle: { platform: "哔哩哔哩", items: [{ title: "活动", url: "https://www.bilibili.com/x" }] } });
   const { body: triage } = await jsonReq("activity-triage", { batchIds: ["b-v3"], keywords: ["AI"] });
   assert.equal(triage.skipped, true);

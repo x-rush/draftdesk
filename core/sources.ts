@@ -381,6 +381,51 @@ export async function searchWeb(db: Store, plan: Plan, query: string, signal: Ab
 export function candidateFromItem(item:EvidenceInput,sourceId:string,sourceName:string,index:number,status:CandidateStatus,reason:string){
   return {url:item.url,title:item.title,sourceId,sourceName,status,reason,observedAt:item.collectedAt,rank:index+1,region:item.region,metric:item.metric,publishedAt:item.publishedAt,mediaType:item.mediaType,coverUrl:item.coverUrl,author:item.author};
 }
+// 非 web 源统一读取器（R10 第1段）：rss/trends/hotlist/aggregated/suggest/github 的分发
+// 从 collect() 原地抽出，collectAllTick 全量采集与计划采集共用同一读取面（30+ 解析器零改动）。
+// web 类型是"查询执行器"而非内容源（依赖计划的关键词编排），不在全量采集范围。
+export async function readSourceEvidence(s: Source, lookbackDays: number, signal: AbortSignal): Promise<{ items: EvidenceInput[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  let items: EvidenceInput[] = [];
+  if (s.type === "rss" || s.type === "trends") {
+    const address = s.type === "trends" ? `https://trends.google.com/trending/rss?geo=${s.region || "US"}` : s.url;
+    if (!address) throw new AppError("缺少来源地址。");
+    items = parseFeed(await safeRead(address, signal), s);
+  } else if (s.type === "hotlist") {
+    if (s.url === "https://top.baidu.com/board?tab=realtime") {
+      items = parseBaiduHotlist(await safeRead(s.url, signal), now());
+    } else if (s.url === "https://s.weibo.com/top/summary?cate=realtimehot") {
+      try { items = parseWeiboHotlist(await safeRead(s.url, signal), now()); }
+      catch { items = await readAggregatedHotlist("weibo", signal); warnings.push(`${s.name}：官方入口失败，已用 DailyHotApi 聚合榜单补充；请核对原平台链接。`); }
+    } else if (s.url === "https://github.com/trending") items = parseGithubTrending(await safeRead(s.url, signal), now());
+    else if (s.url === BILIBILI_POPULAR_URL) items = parseBilibiliPopular(await apiJsonRead(s.url, "https://www.bilibili.com/", signal), now());
+    else if (s.url === WEIBO_HOTSEARCH_URL) items = parseWeiboHotSearch(await apiJsonRead(s.url, "https://weibo.com/", signal), now());
+    else if (s.url === "https://hn.algolia.com/api/v1/search?tags=front_page") {
+      items = parseHnAlgolia(await apiJsonRead(s.url, "https://news.ycombinator.com/", signal), now());
+    } else if (s.url === "https://hacker-news.firebaseio.com/v0/topstories.json") {
+      const result = await collectHackerNews(signal); items = result.items;
+      if (result.failures) warnings.push(`${s.name}：${result.failures} 条详情读取失败；已保留成功条目。`);
+    } else throw new AppError("热榜入口尚未核验或不在允许列表中。");
+  } else if (s.type === "aggregated") {
+    if (!s.query || !isAggregatePlatform(s.query)) throw new AppError("不支持的聚合榜单路由。");
+    items = await readAggregatedHotlist(s.query, signal);
+  } else if (s.type === "suggest") {
+    items = await readSuggestSource(s, signal);
+  } else if (s.type === "github") {
+    const q = (s.query || "topic:ai") + ` pushed:>=${new Date(Date.now() - lookbackDays * 86400000).toISOString().slice(0, 10)}`;
+    const result = JSON.parse(await safeRead("https://api.github.com/search/repositories?" + new URLSearchParams({ q, sort: "updated", order: "desc", per_page: "10" }), signal));
+    items = (result.items || []).slice(0, 10).map((r: any) => ({
+      title: String(r.full_name).slice(0, 300), url: r.html_url,
+      excerpt: String(r.description || "未提供说明").slice(0, 5000), collectedAt: now(),
+      sourceType: "repository" as const, region: "全球", language: r.language || "未知", contentLevel: "excerpt" as const,
+      metric: { name: "GitHub Stars 累计值", value: String(r.stargazers_count), unit: "stars", period: now(), cadence: "instant" as const },
+    }));
+  } else {
+    throw new AppError("web 搜索源依赖计划编排，不参与统一读取。");
+  }
+  return { items, warnings };
+}
+
 export async function collect(
   db: Store,
   plan: Plan,
@@ -402,74 +447,7 @@ export async function collect(
     onProgress(`读取 ${s.name}`);
     try {
       let items: EvidenceInput[] = [];
-      if (s.type === "rss" || s.type === "trends") {
-        const address =
-          s.type === "trends"
-            ? `https://trends.google.com/trending/rss?geo=${s.region || "US"}`
-            : s.url;
-        if (!address) throw new AppError("缺少来源地址。");
-        items = parseFeed(await safeRead(address, signal), s);
-      } else if(s.type === "hotlist"){
-        if(s.url === "https://top.baidu.com/board?tab=realtime"){
-          try{items=parseBaiduHotlist(await safeRead(s.url,signal),now());}
-          catch(error){signal.throwIfAborted();throw error;}
-        }
-        else if(s.url === "https://s.weibo.com/top/summary?cate=realtimehot"){
-          try{items=parseWeiboHotlist(await safeRead(s.url,signal),now());}
-          catch{items=await readAggregatedHotlist("weibo",signal);warnings.push(`${s.name}：官方入口失败，已用 DailyHotApi 聚合榜单补充；请核对原平台链接。`);}
-        }
-        else if(s.url === "https://github.com/trending") items=parseGithubTrending(await safeRead(s.url,signal),now());
-        else if(s.url === BILIBILI_POPULAR_URL) items=parseBilibiliPopular(await apiJsonRead(s.url,"https://www.bilibili.com/",signal),now());
-        else if(s.url === WEIBO_HOTSEARCH_URL) items=parseWeiboHotSearch(await apiJsonRead(s.url,"https://weibo.com/",signal),now());
-        else if(s.url === "https://hn.algolia.com/api/v1/search?tags=front_page"){
-          items=parseHnAlgolia(await apiJsonRead(s.url,"https://news.ycombinator.com/",signal),now());
-        }
-        else if(s.url === "https://hacker-news.firebaseio.com/v0/topstories.json"){
-          const result=await collectHackerNews(signal);items=result.items;
-          if(result.failures)warnings.push(`${s.name}：${result.failures} 条详情读取失败；已保留成功条目。`);
-        }
-        else throw new AppError("热榜入口尚未核验或不在允许列表中。");
-      } else if(s.type==="aggregated"){
-        if(!s.query||!isAggregatePlatform(s.query))throw new AppError("不支持的聚合榜单路由。");
-        items=await readAggregatedHotlist(s.query,signal);
-      } else if(s.type==="suggest"){
-        items=await readSuggestSource(s,signal);
-      } else if (s.type === "github") {
-        const q =
-          (s.query || "topic:ai") +
-          ` pushed:>=${new Date(Date.now() - plan.lookbackDays * 86400000).toISOString().slice(0, 10)}`;
-        const result = JSON.parse(
-          await safeRead(
-            "https://api.github.com/search/repositories?" +
-              new URLSearchParams({
-                q,
-                sort: "updated",
-                order: "desc",
-                per_page: "10",
-              }),
-            signal,
-          ),
-        );
-        items = (result.items || [])
-          .slice(0, 10)
-          .map((r: any) => ({
-            title: String(r.full_name).slice(0, 300),
-            url: r.html_url,
-            excerpt: String(r.description || "未提供说明").slice(0, 5000),
-            collectedAt: now(),
-            sourceType: "repository",
-            region: "全球",
-            language: r.language || "未知",
-            contentLevel: "excerpt",
-            metric: {
-              name: "GitHub Stars 累计值",
-              value: String(r.stargazers_count),
-              unit: "stars",
-              period: now(),
-              cadence: "instant",
-            },
-          }));
-      } else {
+      if (s.type === "web") {
         const key = db.config().tavilyKey;
         if (!key) throw new AppError("未配置 Tavily Key。");
         // Reserve up to two queries from the original budget for targeted verification.
@@ -481,6 +459,10 @@ export async function collect(
           onProgress(`专项搜索：${item.purpose} · ${item.query}`);
           items.push(...await searchWeb(db, plan, item.query, signal, s.sourceType));
         }
+      } else {
+        const read = await readSourceEvidence(s, plan.lookbackDays, signal);
+        items = read.items;
+        warnings.push(...read.warnings);
       }
       const filtered:EvidenceInput[]=[];
       for(const [index,item] of items.entries()){

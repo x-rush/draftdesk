@@ -60,12 +60,21 @@ export const routes: RouteDef[] = [
           fourSources[sid] = cov ? (latest.candidates || []).filter((c: any) => c.sourceId === sid).length : 0;
         }
       }
+      // R10 第3段：外部消费回执（超 24h 未跑标记 stale——运维提醒信号，不触发内置补稿）
+      const report = db.get<any>("meta", "agent-consume-report");
+      const externalConsumption = report
+        ? { at: report.at, by: report.by, consumed: report.consumed ?? 0, stale: Date.now() - Date.parse(report.at) > 24 * 3600000 }
+        : null;
+      // R10 第1段：今日全量采集批次概况
+      const collectAll = db.get<any>("meta", "collect-all-done:" + new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date()));
       return json({
         generatedAt: now(),
         pendingOutlines: outlinesPending,
         pendingDecisions: decisionsPending,
         todayChecks: { total: checks.length, terms: checks },
         fourSources,
+        collectAll: collectAll ? { sources: collectAll.sources, raw: collectAll.raw, trimmed: collectAll.trimmed ?? 0 } : null,
+        externalConsumption,
       });
     },
   },

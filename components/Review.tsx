@@ -51,6 +51,8 @@ export function Review() {
   const [aiPolicy, setAiPolicy] = useState<any>(null);
   const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "公众号", contentType: "长文", title: "" });
   const [clusters, setClusters] = useState<any[]>([]);
+  // R10 第4段：今日总览（四段流水线一屏看全）+ 外部消费回执（超 24h 未跑提醒）
+  const [today, setToday] = useState<any>(null);
   // 布局专项④：否决原因选择器仅在点了「否决」后展开；筛选器收进弹出面板
   const [reasonOpen, setReasonOpen] = useState<Set<string>>(new Set());
   const [rowReason, setRowReason] = useState<Record<string, string>>({});
@@ -73,6 +75,7 @@ export function Review() {
         setPersona(p);
         setPersonaText(p ? JSON.stringify(p, null, 2) : "");
         setAiPolicy(await api<any>("aiPolicy"));
+        setToday(await api<any>("summary/today").catch(() => null));
       } catch (e) { setError(formatApiError(e)); }
     })();
   }, []);
@@ -208,6 +211,20 @@ export function Review() {
     <div>
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
+
+      {/* ⓪ 今日总览（R10 四段流水线）：采集 → 初筛 → 待拍 → 大纲/机会；外部消费回执 */}
+      {today && (
+        <div className="stat-strip" style={{ marginBottom: 8 }} aria-label="今日总览">
+          <div className="stat-card"><strong>{today.collectAll?.raw ?? "—"}</strong><span>采集（{today.collectAll?.sources ?? "—"} 源{today.collectAll?.trimmed ? `，精简 ${today.collectAll.trimmed}` : ""}）</span></div>
+          <div className="stat-card"><strong>{today.pendingOutlines + today.pendingDecisions}</strong><span>待拍（大纲 {today.pendingOutlines} · 决策 {today.pendingDecisions}）</span></div>
+          <div className="stat-card"><strong>{today.todayChecks?.total ?? 0}</strong><span>今日待查词（哥飞手动）</span></div>
+          <div className={"stat-card" + (today.externalConsumption?.stale ? " accent" : "")}>
+            <strong>{today.externalConsumption ? today.externalConsumption.consumed : "—"}</strong>
+            <span>外部消费{today.externalConsumption ? `（${String(today.externalConsumption.by || "").replace("agent:", "")} · ${new Date(today.externalConsumption.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}）` : "（无回执）"}</span>
+            {today.externalConsumption?.stale && <small>⚠️ 超 24h 未跑——检查外部 Agent 调度</small>}
+          </div>
+        </div>
+      )}
 
       {/* ① 统计条（点击切状态档） */}
       <div className="stat-strip">

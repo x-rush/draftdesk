@@ -415,7 +415,40 @@ export const migrations: Migration[] = [
       if (normalized || cleared) console.log(`[migration] opportunity-form-v1：form 归一 ${normalized} 张、清空 ${cleared} 张（内容线卡无产品形态）`);
     },
   },
+  {
+    // R10 第1/3段：①计划定时采集让位给 collectAllTick（sourceIds 退化为分析期过滤条件，
+    // 计划保留、调度关停——活动计划本就无服务器定时不受影响）；②机会卡 form 旧四值归入六值。
+    id: "r10-pipeline-v1",
+    run: ({ kv }) => {
+      let disabled = 0;
+      for (const p of kv.list<any>("plans")) {
+        if (p.kind !== "activities" && p.scheduleEnabled) {
+          kv.put("plans", p.id, { ...p, scheduleEnabled: false });
+          disabled++;
+        }
+      }
+      if (disabled) console.log(`[migration] r10-pipeline-v1：${disabled} 个计划的定时采集关停（collectAllTick 01:00 全量接管）`);
+      let migrated = 0;
+      for (const op of kv.list<any>("opportunities")) {
+        if (op.form === undefined) continue;
+        const next = normalizeFormValue(op.form);
+        if (next !== op.form) {
+          kv.put("opportunities", String(op.id), { ...op, form: next, updatedAt: now() });
+          migrated++;
+        }
+      }
+      if (migrated) console.log(`[migration] r10-pipeline-v1：机会卡 form 六值归一 ${migrated} 张`);
+    },
+  },
 ];
+// r10-pipeline-v1 用：旧四值 → 新六值（与 opportunity.normalizeForm 同口径的本地拷贝，避免迁移期循环依赖）
+function normalizeFormValue(value: unknown): "web-app" | "site-group" | "mobile-app" | "mini-program" | "tool" | "open-source" | undefined {
+  const map: Record<string, "web-app" | "site-group" | "mobile-app" | "mini-program" | "tool" | "open-source"> = {
+    web: "web-app", app: "mobile-app", miniprogram: "mini-program", tool: "tool",
+    "web-app": "web-app", "site-group": "site-group", "mobile-app": "mobile-app", "mini-program": "mini-program",
+  };
+  return map[String(value)];
+}
 
 export function runMigrations(ctx: MigrationCtx) {
   // 挂载期保险丝（存储保险丝批 8）：有 pending 迁移（建索引/结构变更=大写入）时，

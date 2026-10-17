@@ -61,11 +61,14 @@ const navGroups = [
   { label: "机会观察", ids: ["trends", "ideas", "activities", "decisions"] },
   { label: "研究与设置", ids: ["plans", "sources", "runs", "connections", "skills", "settings"] },
 ] as const;
+// R10 第4段：导航按四段流水线重组（①采集→②初筛→③消费→④审查台；设置收次级，双导航体系收敛为一套）
 const externalNavGroups = [
-  { label: "选题", ids: ["discover", "decisions"] },
-  { label: "素材", ids: ["hotspots", "trends", "ideas", "chat", "activities"] },
-  { label: "设置", ids: ["plans", "sources", "connections", "settings"] },
-  { label: "内置功能", ids: ["skills", "runs"], collapsed: true },
+  { label: "① 采集", ids: ["sources"] },
+  { label: "② 初筛（组卡/机会）", ids: ["hotspots", "trends", "ideas"] },
+  { label: "③ 消费（大纲/草稿）", ids: ["chat", "activities"] },
+  { label: "④ 审查台（拍板）", ids: ["discover", "decisions"] },
+  { label: "设置", ids: ["plans", "connections", "settings"] },
+  { label: "高级（方法论/运行）", ids: ["skills", "runs"], collapsed: true },
 ] as const;
 const headings: Record<string, [string, string]> = {
   discover: [
@@ -351,7 +354,7 @@ export function Workbench() {
         />
       )}{" "}
       <div className="bottom-tabs">
-        <button className={view === "discover" ? "active" : ""} onClick={() => navigate("discover")}>选题</button>
+        <button className={view === "discover" ? "active" : ""} onClick={() => navigate("discover")}>审查台</button>
         <button className={["hotspots","trends","ideas","chat","activities"].includes(view) ? "active" : ""} onClick={() => navigate("hotspots")}>素材</button>
         <button className={["plans","sources","connections","settings"].includes(view) ? "active" : ""} onClick={() => navigate("settings")}>设置</button>
         <button onClick={() => setMobile(!mobile)}>更多</button>

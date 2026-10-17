@@ -204,19 +204,21 @@ test("siteGateAutoMark 无数据源：保持批1 降级出标（免费路径不�
 
 // ---- W7-5 form 形态字段 ----
 
-test("normalizeForm：存量自由文案归一四枚举；内容线卡清空", () => {
-  assert.equal(normalizeForm("web"), "web");
-  assert.equal(normalizeForm("web 工具"), "web");
-  assert.equal(normalizeForm("web 工具（额度监控 / 状态页 / 迁移工具 / 格式转换 择一）"), "web");
+test("normalizeForm：R10 六值（旧四值归入 web-app/mobile-app/site-group 等）；内容线卡清空", () => {
+  assert.equal(normalizeForm("web"), "web-app");
+  assert.equal(normalizeForm("web 工具"), "web-app");
+  assert.equal(normalizeForm("web 工具（额度监控 / 状态页 / 迁移工具 / 格式转换 择一）"), "web-app");
   assert.equal(normalizeForm("内容页 / 工具页"), "tool");
   assert.equal(normalizeForm("工具站"), "tool");
-  assert.equal(normalizeForm("微信小程序"), "miniprogram");
-  assert.equal(normalizeForm("移动 App"), "app");
+  assert.equal(normalizeForm("微信小程序"), "mini-program");
+  assert.equal(normalizeForm("移动 App"), "mobile-app");
+  assert.equal(normalizeForm("站群"), "site-group");
+  assert.equal(normalizeForm("开源引流"), "open-source");
   assert.equal(normalizeForm("公众号 内容页"), undefined, "内容线卡无产品形态");
   assert.equal(normalizeForm(undefined), undefined);
 });
 
-test("站群卡：form=tool；无新鲜指标打 valueUnverified；哥飞指标新鲜带 seoMetrics+价值分", () => {
+test("站群卡：form=site-group（R10 六值）；无新鲜指标打 valueUnverified；哥飞指标新鲜带 seoMetrics+价值分", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-b2form-"));
   let db: Store | undefined;
   try {
@@ -228,12 +230,12 @@ test("站群卡：form=tool；无新鲜指标打 valueUnverified；哥飞指标�
     generateOpportunities(db, { source: "agent" });
     const plain = db.list<any>("opportunities").find((o) => o.term === "无指标词");
     assert.ok(plain, "无指标词出卡");
-    assert.equal(plain.form, "tool");
+    assert.equal(plain.form, "site-group");
     assert.equal(plain.valueUnverified, true);
     assert.equal(plain.seoMetrics, undefined);
     const rich = db.list<any>("opportunities").find((o) => o.term === "有指标词");
     assert.ok(rich, "有指标词出卡");
-    assert.equal(rich.form, "tool");
+    assert.equal(rich.form, "site-group");
     assert.equal(rich.valueUnverified, undefined, "有指标无未验证徽章");
     assert.equal(rich.seoMetrics?.valueScore, Math.round(2000 * 0.4 / 20 * 10) / 10, "价值分 = 40");
     assert.equal(rich.seoMetrics?.monthlySearch, 2000);
@@ -260,7 +262,7 @@ test("迁移 opportunity-form-v1：存量 form 文案归一枚举/清空；已�
     const m = migrations.find((x) => x.id === "opportunity-form-v1");
     assert.ok(m, "迁移已注册");
     m!.run({ kv: db.kv as any, directory: dir });
-    assert.equal(db.get<any>("opportunities", "opp-web").form, "web");
+    assert.equal(db.get<any>("opportunities", "opp-web").form, "web-app", "R10：v1 归一走 normalizeForm 新六值口径");
     assert.equal(db.get<any>("opportunities", "opp-tool").form, "tool");
     assert.equal(db.get<any>("opportunities", "opp-content").form, undefined, "内容线卡清空");
     assert.equal(db.get<any>("opportunities", "opp-enum").form, "tool", "枚举幂等");

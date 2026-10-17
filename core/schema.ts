@@ -98,7 +98,7 @@ export const artifactSchema = z.discriminatedUnion("kind", [
         platforms: z
           .array(
             z.object({
-              name: z.enum(["公众号", "小红书", "其他"]),
+              name: z.enum(["公众号", "小红书", "其他", "gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"]),
               titles: z.array(z.string().max(120)).min(1).max(3),
               hook: text,
               structure: z.array(text).min(2).max(12),
@@ -349,7 +349,8 @@ export const planSchema = z
     // 源绑定矩阵（第五轮 §1⑦）：上限从 12→24（五轮）→32（R9-2 并入四聚合源）
     sourceIds: z.array(id).min(1).max(32),
     // 平台适配（第五轮 §1⑥b；R9-3① tiehao→tiebuhao 枚举修复，扩四平台）：机会引擎二次精筛 watch 池的平台权重标签
-    platformAffinity: z.array(z.enum(["gzh", "tiebuhao", "xhs-note", "threads"])).max(4).optional(),
+    // R10 第2段：平台扩 9 值（+x/facebook/instagram/linkedin 图文；xhs-video 视频后置占位）
+    platformAffinity: z.array(z.enum(["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"])).max(9).optional(),
     // 语义初筛策略（R9-6②）：enabled 缺省=trends 类计划开、其余关；档位总开关在 config.aiPolicy.triage。
     aiPolicy: z.object({
       enabled: z.boolean().optional(),

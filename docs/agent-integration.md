@@ -173,6 +173,16 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - **哥飞分工（第七轮批4 v3.1 手动优先，覆盖旧口径）**：外部 Agent **直连哥飞永久移除**——哥飞 API 调用唯一出口=工作台内置 tick（token 在 settings，用户自填）。外部 Agent 为**只读消费方**：读词库指标/机会卡/标杆站页面（GET /agent/benchmark-pages）/外链来源站（GET /agent/link-prospects）做分析与意图交叉验证（哥飞权威 vs 内置标注，冲突标 intent-conflict 留人工）。付费接口自动调用由用户在 settings 授权勾选（autoMetrics/autoCollect，默认关=纯手动模式）；手动数据经「站点发现页手动回传框」或 POST /api/v1/seo-terms/manual 落库（✋manual-gephei 权重最高）。判定方法论共用 skills/seo-methodology/SKILL.md（工作台内置，与内置判定同源）。
 - **哥飞余额语义（实测）**：`GET /api/v1/me` 返回 `apiAvailable`（开放 API 可用，工作台自动调用只扣这部分）/`wallet.daySpent/dayCap`（日上限）/`gift`（每日赠送 500，仅限网站内使用，API 不扣）。响应归一已按真实合同校准（2026-10-14 实测：data.keywords 为 map；volume 值含 avg/avgCpc；difficulty 值为纯数字）。
 
+## R10 四段流水线（2026-10-17 终版，外部 Agent 必读）
+
+**① 全量采集（01:00 上海，collectAllTick）**：全部 enabled 内容源一次采集落盘（discovery 批次 jobId=`collectall-{日}`，planName=「全量采集」）。当日双闸（非当日 filtered；RSS 24h fallback）+ 超 300 按「当日新>热度」精简 + 跨源 URL 去重。计划的 sourceIds 退化为分析期过滤条件（定时采集已迁移关停）。web 搜索源不在全量采集范围（它是查询执行器，仍由计划/补证路径驱动）。
+
+**② 语义初筛（采集完自动）**：默认全开（config.aiPolicy.triage=cheap；计划可 aiPolicy.enabled=false 退出）。判 none 的组进**归档队列**（`GET /triage/archive` 可查；`POST /triage/restore {jobId,groupId?}` 可恢复）——成员置 filtered（reason 注明归档），不再静默留池。平台角度扩 8 值：+x/facebook/instagram/linkedin（schema/platformAffinity 9 值，xhs-video 视频后置）。
+
+**③ 最后分析与消费（互斥，二选一）**：consumerMode 语义不变——external=外部 Agent（小拾）完成分析与消费，builtin=内置 AI。**每次跑完 ping `POST /agent/consume-report`（consume scope，body `{consumed:N, note?}`）**；审查台今日总览显示回执，超 24h 未跑标黄提醒（运维信号，不触发内置补稿）。机会引擎新增：新站复刻卡（site-launches motive=business/pain 且 HN≥50 或撞词 →「复刻已验证」）、form 扩六值（web-app/site-group/mobile-app/mini-program/tool/open-source，带 monetization 变现口径）。
+
+**④ 审查台（唯一拍板口）**：导航四环节（采集→初筛→消费→审查台）；今日总览卡（采集 N→待拍 N→待查词→外部消费回执）。SkillsView 定位=方法论手册（高级层级）。
+
 ## 语义初筛（R9-6：归类 + 注意力判级 + 双线草案）
 
 采集批次入库后，内置 AI 对**规则放行的存活池**做一次语义初筛（分片 cheap 调用 + 片间合并），产出三件事：
