@@ -10,6 +10,10 @@ export const defaultConfig: Config = {
 export const defaultSources: Source[] = [
   {id:"openai-official",name:"OpenAI 官方更新",type:"rss",url:"https://openai.com/news/rss.xml",officialDomains:["help.openai.com","platform.openai.com"],sourceType:"official",enabled:true,note:"官方产品声明；用户体验和效果仍需独立验证。"},
   {id:"google-ai-official",name:"Google AI 官方更新",type:"rss",url:"https://blog.google/innovation-and-ai/technology/ai/rss/",officialDomains:["docs.cloud.google.com","support.google.com","workspaceupdates.googleblog.com"],sourceType:"official",enabled:true,note:"官方 AI 产品更新；用内容筛选词排除无关产业新闻。"},
+  {id:"36kr-newsflashes",name:"36氪快讯",type:"rss",url:"http://rsshub:1200/36kr/newsflashes",sourceType:"media",enabled:true,note:"RSSHub 路由（R10.5 容器实测 200，20 条/日）；RSS 已下线经自部署 RSSHub 复活。"},
+  {id:"huxiu-moment",name:"虎嗅时刻",type:"rss",url:"http://rsshub:1200/huxiu/moment",sourceType:"media",enabled:true,note:"RSSHub 路由（R10.5 容器实测 200，20 条/日）；RSS 已下线经自部署 RSSHub 复活。"},
+  {id:"jiqizhixin-rsshub",name:"机器之心（RSSHub）",type:"rss",url:"http://rsshub:1200/jiqizhixin",sourceType:"media",enabled:false,note:"未启用：RSSHub 路由 404（2026-10-17 容器实测，路由疑似上游移除）；恢复时先实测再置 enabled。"},
+  {id:"sina-tech-rsshub",name:"新浪科技（RSSHub）",type:"rss",url:"http://rsshub:1200/sina/tech",sourceType:"media",enabled:false,note:"未启用：RSSHub 新浪科技路由 404（2026-10-17 容器实测，多变体均无）；恢复时先实测再置 enabled。"},
   {id:"qbitai",name:"量子位",type:"rss",url:"https://www.qbitai.com/feed",sourceType:"media",enabled:true,note:"AI 垂类媒体（R10.4-① 容器实测 200，RSS 10 条/日）；重要结论优先找官方原文。"},
   {id:"ifanr",name:"爱范儿",type:"rss",url:"https://www.ifanr.com/feed",sourceType:"media",enabled:true,note:"科技媒体，消费数码向（R10.4-① 容器实测 200，RSS 20 条/日）。"},
   {id:"solidot",name:"Solidot",type:"rss",url:"https://www.solidot.org/index.rss",sourceType:"media",enabled:true,note:"科技社区老牌，开源/极客向（R10.4-① 容器实测 200，RSS 20 条/日）。"},

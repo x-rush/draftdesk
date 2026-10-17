@@ -142,6 +142,19 @@ test("补跑完成→归档存在：triageTick 成功路径产出 none 组进 tr
   assert.ok(!db.get("meta", "triage-fail:" + jobId), "失败标记清除");
 });
 
+// ---- R10.5 safeRead 内网白名单 ----
+test("safeRead：http://rsshub:1200 白名单放行（同 host 错端口/https 伪装其他内网仍拒）", async () => {
+  const { safeRead } = await import("../core/sources");
+  const orig = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("<rss>ok</rss>", { status: 200 })) as typeof fetch;
+    const text = await safeRead("http://rsshub:1200/36kr/newsflashes");
+    assert.match(text, /ok/);
+    await assert.rejects(() => safeRead("http://rsshub:8080/x"), /HTTPS/, "错端口不放行");
+    await assert.rejects(() => safeRead("http://evil.internal:1200/x"), /HTTPS/, "仅 rsshub 主机放行");
+  } finally { globalThis.fetch = orig; }
+});
+
 // ---- R10.4-① 补源守护 ----
 test("defaultSources 含三个实测源（qbitai/ifanr/solidot），enabled 进 collectAll", async () => {
   const { defaultSources } = await import("../core/defaults");

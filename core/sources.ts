@@ -137,6 +137,15 @@ const BROWSER_HEADERS = {
 
 export async function safeRead(value: string, signal?: AbortSignal, headers?: Record<string, string>) {
   const u = new URL(value);
+  // RSSHub 内网白名单（R10.5）：http://rsshub:1200 是 compose 固定内部服务（与 dailyhot 同级信任），
+  // 不走公网校验；仅此 host/port 组合放行，其余仍必须是公网 HTTPS。
+  if (u.protocol === "http:" && u.hostname === "rsshub" && u.port === "1200" && !u.username && !u.password) {
+    const response = await fetch(u.href, { signal: AbortSignal.any([signal ?? AbortSignal.timeout(20000), AbortSignal.timeout(20000)]), headers: { "User-Agent": "DraftDesk/2.0 evidence-workbench", ...(headers || {}) } });
+    if (!response.ok) throw new AppError(`来源返回 HTTP ${response.status}。`);
+    const text = await response.text();
+    if (text.length > 2 * 1024 * 1024) throw new AppError("来源正文超过 2 MB。");
+    return text;
+  }
   if (u.protocol !== "https:" || u.username || u.password || u.port)
     throw new AppError("采集地址必须是无凭据、标准端口的 HTTPS。");
   const addresses = await resolve4(u.hostname);

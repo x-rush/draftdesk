@@ -45,6 +45,20 @@ services:
     # 不占宿主端口。镜像按 sha256 digest 固定，升级需显式改这里。
     image: imsyy/dailyhot-api@sha256:748fc79d29a422f512018e8a58ef1a0e20306dd6254637933960573fa37b1e5e
     restart: unless-stopped
+  rsshub:
+    # RSSHub（R10.5）：复活已下线 RSS 的四死源（机器之心/36氪/虎嗅/新浪科技）。
+    # 仅项目内网消费（工作台经 http://rsshub:1200/<路由>），零端口暴露，与 dailyhot/searxng 同款。
+    image: diygod/rsshub:latest
+    restart: unless-stopped
+    environment:
+      CACHE_TYPE: redis
+      REDIS_URL: redis://rsshub-redis:6379/
+    depends_on:
+      - rsshub-redis
+  rsshub-redis:
+    # RSSHub 缓存（无持久化需求，重启重建即可）；同样零端口暴露。
+    image: redis:alpine
+    restart: unless-stopped
   searxng:
     # 本地元搜索：网页搜索「SearXNG 补位」后端（模型与设置里可选），零成本零密钥。
     # 仅项目内网消费（工作台写死 http://searxng:8080），不占宿主端口；
