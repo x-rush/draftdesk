@@ -59,8 +59,9 @@ const nav = [
 // 菜单顺序（老大 2026-10-17 定）：审查打板第一 → 初筛素材 → 创作活动/讨论 → 设置（含数据源）→ 高级
 const navGroups = [
   { label: "审查", ids: ["discover", "decisions"] },
-  { label: "初筛素材", ids: ["hotspots", "trends", "ideas"] },
-  { label: "创作", ids: ["activities", "chat"] },
+  // 素材池：全部采集面——热点/热词/机会来自内容源，创作活动来自四平台官方活动采集（同属采集数据）
+  { label: "素材池", ids: ["hotspots", "trends", "ideas", "activities"] },
+  { label: "研究讨论", ids: ["chat"] },
   { label: "设置", ids: ["plans", "sources", "connections", "settings"] },
   { label: "高级（方法论/运行）", ids: ["skills", "runs"], collapsed: true },
 ] as const;
