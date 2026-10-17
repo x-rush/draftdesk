@@ -67,13 +67,13 @@ export const topic: Extract<ArtifactDraft, { kind: "topic" }> = {
     materialChecklist: ["实际操作截图", "当前套餐价格"],
     platforms: [
       {
-        name: "公众号",
+        name: "gzh",
         titles: ["别只看摘要：核对一份会议纪要的三个问题"],
         hook: "纪要写得流畅，任务却仍无人认领。",
         structure: ["展示样例", "演示核对流程", "列出限制与检查清单"],
       },
       {
-        name: "小红书",
+        name: "xhs-note",
         titles: ["AI 会议纪要，先核对这三项"],
         hook: "保存这张核对清单，下次开会后试一次。",
         structure: ["封面问题", "负责人检查", "截止日期检查", "限制与样例"],

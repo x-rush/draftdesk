@@ -10,16 +10,16 @@ import type { DiscoveryCandidate, DiscoveryRecord } from "./discovery";
 import type { Plan } from "./schema";
 import { shanghaiDay } from "./model-metrics";
 
-// 全量采集批兜底（从 collect-all.ts 内联常量，避免 collect-all → triage → collect-all 循环依赖）
-const COLLECT_ALL_PLAN_NAME = "全量采集";
-function defaultTriagePlan() {
+// 全量采集批的初筛伪计划（唯一定义在此；collect-all.ts 经 import 复用——triage 不反向 import collect-all，无环）
+export const COLLECT_ALL_PLAN_NAME = "全量采集";
+export function defaultTriagePlan() {
   return {
     id: "collect-all", name: COLLECT_ALL_PLAN_NAME, kind: "trends" as const,
     goal: "追踪 AI/科技领域热点与创作者工具机会，为多平台内容选题与独立开发应用机会提供素材",
     audience: "AI 从业者与独立开发者", keywords: [], excludeKeywords: [], includeDomains: [], sourceIds: [],
     lookbackDays: 7, maxEvidence: 300, maxQueries: 0, maxItems: 8, maxModelCalls: 12, maxTokens: 2000000,
     scheduleEnabled: false, dailyTime: "01:00", publishPolicy: "manual" as const,
-    platformAffinity: ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"],
+    platformAffinity: ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"] as ("gzh" | "tiebuhao" | "xhs-note" | "threads" | "x" | "facebook" | "instagram" | "linkedin")[],
   };
 }
 import type { ModelMessage } from "./model";

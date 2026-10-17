@@ -28,18 +28,9 @@ export const FORM_MONETIZATION: Record<OpportunityForm, string> = {
   "web-app": "订阅/买断", "site-group": "展示广告/联盟", "mobile-app": "订阅/内购",
   "mini-program": "广告/增值服务", tool: "广告/付费功能", "open-source": "引流/赞助",
 };
-// 存量值归一（迁移与读时兜底共用）：旧四值 web/app/miniprogram/tool 归入新六值；「内容页」类无产品形态 → undefined。
+// 严格六值（总纲：不做旧值映射/自由文本兼容——旧数据归档备查，新数据从新结构开始）。
 export function normalizeForm(value: unknown): OpportunityForm | undefined {
-  if (value === "web-app" || value === "site-group" || value === "mobile-app" || value === "mini-program" || value === "tool" || value === "open-source") return value;
-  if (typeof value !== "string") return undefined;
-  const s = value.toLowerCase();
-  if (/站群|site.?group/.test(s)) return "site-group";
-  if (/小程序|miniprogram/.test(s)) return "mini-program";
-  if (/开源引流|open.?source/.test(s)) return "open-source";
-  if (/工具站|工具页/.test(s)) return "tool";
-  if (/\bweb\b|网页|独立站/.test(s)) return "web-app";
-  if (/\bapp\b|应用|客户端/.test(s)) return "mobile-app";
-  return undefined;
+  return value === "web-app" || value === "site-group" || value === "mobile-app" || value === "mini-program" || value === "tool" || value === "open-source" ? value : undefined;
 }
 export const SIGNAL_LABELS: Record<OpportunitySignal, string> = {
   complaint: "用户抱怨",

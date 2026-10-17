@@ -12,10 +12,9 @@ import { now } from "./store";
 import type { Source } from "./schema";
 import type { DiscoveryCandidate, DiscoveryRecord, SourceCoverage } from "./discovery";
 import { readSourceEvidence, candidateFromItem } from "./sources";
-import { runTriage, applyTriageResult, triagePoolOf, defaultTriageRunner, type TriageRunner, type TriageRecord } from "./triage";
+import { runTriage, applyTriageResult, triagePoolOf, defaultTriageRunner, COLLECT_ALL_PLAN_NAME, defaultTriagePlan, type TriageRunner, type TriageRecord } from "./triage";
 import { shanghaiDay } from "./model-metrics";
 
-export const COLLECT_ALL_PLAN_NAME = "全量采集";
 export const COLLECT_ALL_LIMIT = 300;
 
 export function collectAllJobId(day: string = shanghaiDay()): string {
@@ -161,16 +160,4 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
       console.error("[collect-all] 语义初筛失败（tick 补跑机制接管）：", e instanceof Error ? e.message : e);
     }
   }
-}
-
-// 全量采集批次的初筛用伪计划：目标对齐工作台定位，平台角度开放全部内容平台（xhs-video 视频后置不进角度）
-export function defaultTriagePlan() {
-  return {
-    id: "collect-all", name: COLLECT_ALL_PLAN_NAME, kind: "trends" as const,
-    goal: "追踪 AI/科技领域热点与创作者工具机会，为多平台内容选题与独立开发应用机会提供素材",
-    audience: "AI 从业者与独立开发者", keywords: [], excludeKeywords: [], includeDomains: [], sourceIds: [],
-    lookbackDays: 7, maxEvidence: COLLECT_ALL_LIMIT, maxQueries: 0, maxItems: 8, maxModelCalls: 12, maxTokens: 2000000,
-    scheduleEnabled: false, dailyTime: "01:00", publishPolicy: "manual" as const,
-    platformAffinity: ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"] as ("gzh" | "tiebuhao" | "xhs-note" | "threads" | "x" | "facebook" | "instagram" | "linkedin")[],
-  };
 }

@@ -331,6 +331,7 @@ test("词表来源层过滤（W7-10①）：origin=gephei/normal 下推 SQL", ()
 
 // ---- 迁移登记核对 ----
 
-test("批3 无新迁移但既有迁移不受影响（回归）", () => {
-  assert.ok(migrations.find((m) => m.id === "opportunity-form-v1"), "批2 迁移仍在");
+test("总纲：数据迁移已清除——迁移表不含 opportunity-form-v1 / r10-pipeline-v1（旧数据归档备查，不做变换）", () => {
+  assert.ok(!migrations.find((m) => m.id === "opportunity-form-v1"), "form 归一迁移已随总纲移除");
+  assert.ok(!migrations.find((m) => m.id === "r10-pipeline-v1"), "R10 调度关停迁移已随总纲移除");
 });

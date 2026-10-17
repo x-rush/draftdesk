@@ -204,20 +204,11 @@ test("siteGateAutoMark 无数据源：保持批1 降级出标（免费路径不�
 
 // ---- W7-5 form 形态字段 ----
 
-test("normalizeForm：R10 六值（旧四值归入 web-app/mobile-app/site-group 等）；内容线卡清空", () => {
-  assert.equal(normalizeForm("web"), "web-app");
-  assert.equal(normalizeForm("web 工具"), "web-app");
-  assert.equal(normalizeForm("web 工具（额度监控 / 状态页 / 迁移工具 / 格式转换 择一）"), "web-app");
-  assert.equal(normalizeForm("内容页 / 工具页"), "tool");
-  assert.equal(normalizeForm("工具站"), "tool");
-  assert.equal(normalizeForm("微信小程序"), "mini-program");
-  assert.equal(normalizeForm("移动 App"), "mobile-app");
-  assert.equal(normalizeForm("站群"), "site-group");
-  assert.equal(normalizeForm("开源引流"), "open-source");
-  assert.equal(normalizeForm("公众号 内容页"), undefined, "内容线卡无产品形态");
+test("normalizeForm：严格六值（总纲：无旧值映射、无自由文本解析）", () => {
+  for (const v of ["web-app", "site-group", "mobile-app", "mini-program", "tool", "open-source"]) assert.equal(normalizeForm(v), v);
+  for (const legacy of ["web", "app", "miniprogram", "工具站", "微信小程序", "web 工具", "公众号 内容页"]) assert.equal(normalizeForm(legacy), undefined, `旧值/自由文本 ${legacy} 不再归一`);
   assert.equal(normalizeForm(undefined), undefined);
 });
-
 test("站群卡：form=site-group（R10 六值）；无新鲜指标打 valueUnverified；哥飞指标新鲜带 seoMetrics+价值分", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-b2form-"));
   let db: Store | undefined;
@@ -245,32 +236,3 @@ test("站群卡：form=site-group（R10 六值）；无新鲜指标打 valueUnve
   }
 });
 
-test("迁移 opportunity-form-v1：存量 form 文案归一枚举/清空；已是枚举的幂等跳过", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-b2mig-"));
-  let db: Store | undefined;
-  try {
-    db = new Store(dir);
-    const mk = (id: string, form: string | undefined) => db!.put("opportunities", id, {
-      id, dedupeKey: "k:" + id, kind: "app", signals: ["news"], evidenceIds: [], title: id, oneLiner: "",
-      form, verdict: "待验证", verdictReason: "", verifyPlan: [], source: "auto",
-      createdAt: "2026-10-14T00:00:00Z", updatedAt: "2026-10-14T00:00:00Z",
-    });
-    mk("opp-web", "web 工具");
-    mk("opp-tool", "内容页 / 工具页");
-    mk("opp-content", "公众号 内容页");
-    mk("opp-enum", "tool");
-    const m = migrations.find((x) => x.id === "opportunity-form-v1");
-    assert.ok(m, "迁移已注册");
-    m!.run({ kv: db.kv as any, directory: dir });
-    assert.equal(db.get<any>("opportunities", "opp-web").form, "web-app", "R10：v1 归一走 normalizeForm 新六值口径");
-    assert.equal(db.get<any>("opportunities", "opp-tool").form, "tool");
-    assert.equal(db.get<any>("opportunities", "opp-content").form, undefined, "内容线卡清空");
-    assert.equal(db.get<any>("opportunities", "opp-enum").form, "tool", "枚举幂等");
-    // 幂等重跑不再变化
-    m!.run({ kv: db.kv as any, directory: dir });
-    assert.equal(db.get<any>("opportunities", "opp-content").form, undefined);
-  } finally {
-    db?.close();
-    cleanup(dir);
-  }
-});

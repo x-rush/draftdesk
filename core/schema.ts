@@ -98,7 +98,7 @@ export const artifactSchema = z.discriminatedUnion("kind", [
         platforms: z
           .array(
             z.object({
-              name: z.enum(["公众号", "小红书", "其他", "gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"]),
+              name: z.enum(["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"]),
               titles: z.array(z.string().max(120)).min(1).max(3),
               hook: text,
               structure: z.array(text).min(2).max(12),

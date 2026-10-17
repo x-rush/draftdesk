@@ -9,7 +9,8 @@ import path from "node:path";
 const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-r10-"));
 process.env.DRAFTDESK_DATA_DIR = dir;
 const { store } = await import("../core/store");
-const { collectAllTick, archiveNoneGroups, restoreArchived, COLLECT_ALL_PLAN_NAME } = await import("../core/collect-all");
+const { collectAllTick, archiveNoneGroups, restoreArchived } = await import("../core/collect-all");
+const { COLLECT_ALL_PLAN_NAME } = await import("../core/triage");
 const { triageEnabledOf, ANGLE_PLATFORMS } = await import("../core/triage");
 const { generateOpportunities, normalizeForm, FORM_LABELS, FORM_MONETIZATION } = await import("../core/opportunity");
 const { handle } = await import("../core/http");
@@ -104,11 +105,10 @@ test("triage 默认全开（全 kind）；角度平台 8 值（xhs-video 后置�
 });
 
 // ---- 第3段 ----
-test("form 六值：旧值归一新值直通；标签与变现口径齐全", () => {
-  assert.equal(normalizeForm("web"), "web-app");
-  assert.equal(normalizeForm("app"), "mobile-app");
-  assert.equal(normalizeForm("miniprogram"), "mini-program");
-  assert.equal(normalizeForm("开源引流"), "open-source");
+test("form 严格六值（总纲：无旧值映射）；标签与变现口径齐全", () => {
+  assert.equal(normalizeForm("web"), undefined, "总纲：旧值不映射");
+  assert.equal(normalizeForm("app"), undefined);
+  assert.equal(normalizeForm("工具站"), undefined, "自由文本不再解析");
   assert.equal(normalizeForm("web-app"), "web-app");
   assert.equal(Object.keys(FORM_LABELS).length, 6);
   assert.ok(Object.keys(FORM_MONETIZATION).every((k) => FORM_MONETIZATION[k as keyof typeof FORM_MONETIZATION].length > 0));
