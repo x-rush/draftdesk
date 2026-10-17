@@ -5,7 +5,7 @@ import type { EvidenceInput, Plan, Source } from "./schema";
 import { AppError, now, Store } from "./store";
 import { queryPlan, rankEvidence } from "./research-policy";
 import {relevanceReason,type DiscoveryCandidate,type CandidateStatus,type SourceCoverage,type DiscoveryRecord} from "./discovery";
-import { applyTriageToCandidates, markTriageFailed, runTriage, triageEnabledOf, triagePoolOf } from "./triage";
+import { applyTriageResult, applyTriageToCandidates, markTriageFailed, runTriage, triageEnabledOf, triagePoolOf } from "./triage";
 import { parseHnAlgolia, parseBaiduHotlist,parseWeiboHotlist,parseGithubTrending,parseHackerNewsStory,isAggregatePlatform,parseAggregateHotlist,parseBilibiliPopular,parseWeiboHotSearch,type AggregatePlatform } from "./hotlists";
 // 官方公开 JSON 接口（允许列表以精确 URL 匹配，配置来源时不可自填）：
 const BILIBILI_POPULAR_URL="https://api.bilibili.com/x/web-interface/popular";
@@ -524,16 +524,19 @@ export async function collect(
         .filter((e): e is EvidenceInput => !!e)
     : balancedEvidence(groups, limit);
   if(jobId){
-    if(!triage){
+    for(const cov of coverage)cov.selected=candidates.filter(c=>c.sourceId===cov.sourceId&&c.status==="selected").length;
+    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit,mode};
+    if(triage){
+      // R9-7③：统一写回（组落库+候选判级+清失败标记），与补跑路径共用同一函数
+      applyTriageResult(db, record, triage);
+    } else {
       const pending=new Set(unique.map(e=>e.url));
       for(const candidate of candidates){
         if(candidate.status!=="watch"||!pending.has(candidate.url))continue;
         candidate.status="selected";candidate.reason=mode==="preview"?"已保留为采集预览证据，尚未进入 AI":"已进入本轮 AI 分析";pending.delete(candidate.url);
       }
+      db.put("discovery",jobId,record);
     }
-    for(const cov of coverage)cov.selected=candidates.filter(c=>c.sourceId===cov.sourceId&&c.status==="selected").length;
-    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit:plan.maxEvidence-reserveEvidence,mode};
-    db.put("discovery",jobId,record);
     const cutoff=Date.now()-14*86400000;
     for(const old of db.list<DiscoveryRecord>("discovery"))if(Date.parse(old.at)<cutoff)db.db.prepare("DELETE FROM documents WHERE collection=? AND id=?").run("discovery",old.jobId);
   }

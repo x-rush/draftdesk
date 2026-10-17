@@ -301,6 +301,10 @@ export function normalizeRationale(value: unknown): string | undefined {
 // 500<积压≤2000 → 3 批/日（早/午/晚，间隔 ≥4h）；≤500 → 1 批/日。
 // 完成键记「批次号 + 游标」而非当日一次；首日第一批仍随提取跑（新词当轮拿到 relevance）。
 const BACKFILL_LIMIT = 200;
+// 子批拆分（R9-7②）：单批 200 词的输出合同在 qwen 上连续三日撞 240s 超时（judged 0）——
+// 拆 50 词/子批串行调用，单子批输出短一个量级；超时/中止/预算类失败终止本批剩余子批
+//（模型整体慢时连打徒耗），解析类失败继续下一子批；失败归因进 done 键与日志，不再静默全废。
+const BACKFILL_SUBBATCH = 50;
 const BACKFILL_MID_BATCHES = 3;
 const BACKFILL_HEAVY_BATCHES = 16;
 const BACKFILL_MID_GAP_MS = 4 * 60 * 60000;
@@ -315,28 +319,44 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, BACKFILL_LIMIT);
   if (!pending.length) return 0;
-  const prompt = buildRelevanceRubric(db) +
+  const rubric = buildRelevanceRubric(db) +
     "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent，并用不超过 40 字说明判据（命中哪条标准）。" +
-    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong","demandIntent":"tool","rationale":"命中 strong 的模型发布正例"}]。不要输出其他文字。\n\n' +
-    pending.map((t, i) => (i + 1) + ". " + t.term).join("\n");
-  const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
-  const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
-  if (!Array.isArray(parsed)) return 0;
-  // 只认 pending 集合内的词：模型回显清单外的词（含 archived）一律忽略
-  const pendingIds = new Set(pending.map((t) => String(t.id)));
+    '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong","demandIntent":"tool","rationale":"命中 strong 的模型发布正例"}]。不要输出其他文字。';
+  const subbatches: (typeof pending)[] = [];
+  for (let i = 0; i < pending.length; i += BACKFILL_SUBBATCH) subbatches.push(pending.slice(i, i + BACKFILL_SUBBATCH));
   let judged = 0;
-  for (const item of parsed) {
-    if (!item || typeof item?.term !== "string") continue;
-    if (!pendingIds.has(termId(item.term))) continue;
-    // redLine 硬规则（§2.6②）：命中红线词强制 off（LLM 判 strong/weak 也压掉）
-    const redlined = redLineMatch(db, item.term);
-    const relevance = redlined ? "off" as PersonaRelevance : normalizeRelevance(item?.relevance);
-    if (!relevance) continue;
-    // demandIntent（第七轮 W7-1）：只在 strong 落库（tool 型词直通站群候选池）
-    const demandIntent = relevance === "strong" ? normalizeDemandIntent(item?.demandIntent) : undefined;
-    const rationale = normalizeRationale(item?.rationale);
-    if (judgeSeenTerm(db, item.term, relevance, { demandIntent, rationale })) judged++;
+  const failures: string[] = [];
+  for (const [index, sub] of subbatches.entries()) {
+    const prompt = rubric + "\n\n" + sub.map((t, i) => (i + 1) + ". " + t.term).join("\n");
+    try {
+      const result = await runModel(db, [{ role: "user", content: prompt }], { signal: AbortSignal.timeout(240000), plan: "cheap" });
+      const parsed = JSON.parse(result.text.replace(/^```json\s*/i, "").replace(/```$/, "").trim());
+      if (!Array.isArray(parsed)) throw new Error("输出不是 JSON 数组");
+      // 只认子批集合内的词：模型回显清单外的词（含 archived）一律忽略
+      const pendingIds = new Set(sub.map((t) => String(t.id)));
+      for (const item of parsed) {
+        if (!item || typeof item?.term !== "string") continue;
+        if (!pendingIds.has(termId(item.term))) continue;
+        // redLine 硬规则（§2.6②）：命中红线词强制 off（LLM 判 strong/weak 也压掉）
+        const redlined = redLineMatch(db, item.term);
+        const relevance = redlined ? "off" as PersonaRelevance : normalizeRelevance(item?.relevance);
+        if (!relevance) continue;
+        // demandIntent（第七轮 W7-1）：只在 strong 落库（tool 型词直通站群候选池）
+        const demandIntent = relevance === "strong" ? normalizeDemandIntent(item?.demandIntent) : undefined;
+        const rationale = normalizeRationale(item?.rationale);
+        if (judgeSeenTerm(db, item.term, relevance, { demandIntent, rationale })) judged++;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`子批${index + 1}/${subbatches.length}: ${message.slice(0, 120)}`);
+      // 超时/中止/预算不足 = 模型或额度整体性异常，本批剩余子批不再连打（下批闸 90min/4h 后重试）
+      if (/timeout|aborted|中止|预算不足|百炼请求失败/i.test(message)) break;
+    }
   }
+  if (failures.length && judged === 0)
+    throw new Error(`${failures.length}/${subbatches.length} 子批失败：${failures.join("；")}`);
+  if (failures.length)
+    console.warn(`[judge-backfill] 部分子批失败（已判 ${judged}）：${failures.join("；").slice(0, 300)}`);
   return judged;
 }
 

@@ -19,6 +19,7 @@ import { infoReflowTick } from "../core/info-reflow";
 import { outlineCategoryTick } from "../core/outline-categorize";
 import { outlineDraftTick, ensureTiebuhaoClones } from "../core/outline-draft";
 import { requestModel } from "../core/model";
+import { budgetAuditTick } from "../core/budget-audit";
 import { runJanitor } from "../core/janitor";
 
 const g = globalThis as unknown as { __draftdeskWorker?: { stopping: boolean } };
@@ -64,6 +65,8 @@ export function startWorkerLoop(db: Store) {
         // 机会引擎（第五轮）：watch 池 TTL 是初筛的一部分（不受 consumerMode 影响）；
         // 机会自动生成仅 builtin 模式（external 由外部 Agent 经 /opportunities/generate 触发）。
         watchTtlTick(db);
+        // 预算自检（R9-7①）：每小时对账当日预留 vs 台账实耗，泄漏回收+告警（自带小时闸）
+        budgetAuditTick(db);
         // 语义初筛补跑（R9-6）：失败批次重试 + POST /triage/generate 显式请求消费；
         // 正常批次在 collect 内联跑，tick 只兜底（初筛，不受 consumerMode 门控）。
         await triageTick(db);

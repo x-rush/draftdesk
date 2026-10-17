@@ -255,6 +255,48 @@ function setupTickDb(dir: string) {
 }
 const SHARD_OK = JSON.stringify({ groups: [{ members: [0, 1, 2], title: "强事件", attention: "strong", reason: "大发布", angles: [{ platform: "tiebuhao", angle: "一图速览" }], appGap: "监控面板" }, ...Array.from({ length: 3 }, (_, k) => ({ members: [3 + k], title: "单条" + k, attention: "potential", reason: "次级" }))] });
 
+// ---- 内容审查切分隔离（R9-7③ 实弹根因：data_inspection_failed 整片 400）----
+test("runTriage：审查拦截片自动对半切分隔离，最细粒度仍拦则弃片降级（成员走未标注兜底）", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-blocked-"));
+  let db: Store | undefined;
+  try {
+    db = new Store(dir);
+    // 64 条 → 2 片（60+4）；第一片被审查拦（两次尝试都 400），递归 60→30+30→15 放行；第二片直接放行
+    const candidates = [...Array.from({ length: 60 }, (_, i) => cand(i, "a")), ...Array.from({ length: 4 }, (_, i) => cand(i, "b"))];
+    const blocked = "百炼请求失败（HTTP 400）；data_inspection_failed";
+    let calls = 0;
+    const runner: TriageRunner = async (_db, messages, opts) => {
+      calls++;
+      opts.signal.throwIfAborted();
+      const items = JSON.parse(messages[1].content as string);
+      // 第一片（完整 60 与左半 30）拦截；15 条及以下放行；第二片（b 源 4 条）放行
+      if (items.length >= 30 && items[0].t === "候选标题0") throw new Error(blocked);
+      return { text: JSON.stringify({ groups: [{ members: items.map((x: any) => x.i), title: "组" + items.length, attention: "potential", reason: "ok" }] }), usage: 10 };
+    };
+    const record = await runTriage(db!, PLAN, "job-b", candidates, new AbortController().signal, runner);
+    assert.ok(calls >= 8, `切分发生了多次调用（实际 ${calls}）`);
+    assert.equal(record.shards, 2);
+    assert.equal(record.groups.length, 4, "切分后的四段子批各自成组");
+    // 最细粒度（<16 条）仍拦：整批候选全部走未标注兜底单条
+    let calls2 = 0;
+    const alwaysBlocked: TriageRunner = async (_db, _m, opts) => {
+      calls2++;
+      opts.signal.throwIfAborted();
+      throw new Error(blocked);
+    };
+    const record2 = await runTriage(db!, PLAN, "job-b2", candidates, new AbortController().signal, alwaysBlocked);
+    assert.equal(record2.groups.length, 0, "全片被拦全弃片：无组产出");
+    assert.ok(calls2 >= 14, `细粒度穷尽后弃片（实际调用 ${calls2}）`);
+    // 弃片候选在名额分配层兜底：未分组 → attention none → 留池，永不占 selected
+    const winners = applyTriageToCandidates(candidates, record2.groups, 6);
+    assert.equal(winners.length, 0, "弃片批零入选");
+    assert.ok(candidates.every((c) => c.attention === "none" && c.status === "watch"), "弃片候选全部留池待人工捞起");
+  } finally {
+    db?.close();
+    cleanup(dir);
+  }
+});
+
 test("tick：显式请求消费（jobId 定向）；成功后组落库+名额重分配；失败标注待语义初筛且可补跑", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-tick-"));
   let db: Store | undefined;

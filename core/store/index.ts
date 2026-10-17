@@ -133,6 +133,12 @@ export class Store {
   settleReservation(day: string, reservation: number, usage: number, jobId?: string) {
     return this._budget.settleReservation(day, reservation, usage, jobId);
   }
+  releaseReservation(day: string, reservation: number, jobId?: string) {
+    return this._budget.releaseReservation(day, reservation, jobId);
+  }
+  rescueReserved(day: string, target: number) {
+    return this._budget.rescueReserved(day, target);
+  }
   config() {
     const c = this.get<Config>("config", "main")!;
     return {

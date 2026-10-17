@@ -76,90 +76,102 @@ export async function requestModel(
   const configuredTimeout = Number(process.env.DRAFTDESK_MODEL_TIMEOUT_MS || 300000);
   const modelTimeoutMs = Number.isInteger(configuredTimeout) && configuredTimeout >= 1000 && configuredTimeout <= 900000
     ? configuredTimeout : 300000;
-  const response = await (options.fetch || fetch)(
-    cfg.baseUrl.replace(/\/$/, "") + "/chat/completions",
-    {
-      method: "POST",
-      signal: AbortSignal.any([options.signal, AbortSignal.timeout(modelTimeoutMs)]),
-      headers: {
-        "content-type": "application/json",
-        Authorization: `Bearer ${cfg.apiKey}`,
+  // R9-7①：成功才结算；失败/中止/超时全额退预留——否则日内余量被挂死预留挤占
+  //（2026-10-16 停电连锁根因：中断调用保留全额 reserved，当日 AI tick 全部预算不足）。
+  try {
+    const response = await (options.fetch || fetch)(
+      cfg.baseUrl.replace(/\/$/, "") + "/chat/completions",
+      {
+        method: "POST",
+        signal: AbortSignal.any([options.signal, AbortSignal.timeout(modelTimeoutMs)]),
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: options.model || cfg.model,
+          messages,
+          max_tokens: outputTokens,
+          // 分类/结构化任务可收紧采样（语义初筛 0.2）；缺省不传走模型默认，零行为外溢
+          ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+          ...(qwenFlash ? { thinking_budget: thinkingBudget, preserve_thinking: false } : {}),
+          stream: !!options.onText,
+          ...(options.json ? { response_format: { type: "json_object" } } : {}),
+          ...(options.onText ? { stream_options: { include_usage: true } } : {}),
+        }),
       },
-      body: JSON.stringify({
-        model: options.model || cfg.model,
-        messages,
-        max_tokens: outputTokens,
-        // 分类/结构化任务可收紧采样（语义初筛 0.2）；缺省不传走模型默认，零行为外溢
-        ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-        ...(qwenFlash ? { thinking_budget: thinkingBudget, preserve_thinking: false } : {}),
-        stream: !!options.onText,
-        ...(options.json ? { response_format: { type: "json_object" } } : {}),
-        ...(options.onText ? { stream_options: { include_usage: true } } : {}),
-      }),
-    },
-  );
-  if (!response.ok)
-    throw new AppError(
-      `百炼请求失败（HTTP ${response.status}）；请检查模型权限、额度与地址。`,
-      502,
     );
-  let output = "",
-    usage = 0;
-  if (options.onText) {
-    if (!response.body) throw new AppError("模型未返回流式正文。", 502);
-    const reader = response.body.getReader(),
-      decoder = new TextDecoder();
-    let pending = "",
-      done = false,
-      size = 0;
-    try {
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        size += chunk.value.length;
-        if (size > 3 * 1024 * 1024) throw new AppError("模型响应过大。");
-        pending += decoder.decode(chunk.value, { stream: true });
-        let index;
-        while ((index = pending.indexOf("\n")) >= 0) {
-          const line = pending.slice(0, index).trim();
-          pending = pending.slice(index + 1);
-          if (!line.startsWith("data:")) continue;
-          const raw = line.slice(5).trim();
-          if (raw === "[DONE]") {
-            done = true;
-            continue;
+    if (!response.ok)
+      throw new AppError(
+        `百炼请求失败（HTTP ${response.status}）；请检查模型权限、额度与地址。`,
+        502,
+      );
+    let output = "",
+      usage = 0;
+    if (options.onText) {
+      if (!response.body) throw new AppError("模型未返回流式正文。", 502);
+      const reader = response.body.getReader(),
+        decoder = new TextDecoder();
+      let pending = "",
+        done = false,
+        size = 0;
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          size += chunk.value.length;
+          if (size > 3 * 1024 * 1024) throw new AppError("模型响应过大。");
+          pending += decoder.decode(chunk.value, { stream: true });
+          let index;
+          while ((index = pending.indexOf("\n")) >= 0) {
+            const line = pending.slice(0, index).trim();
+            pending = pending.slice(index + 1);
+            if (!line.startsWith("data:")) continue;
+            const raw = line.slice(5).trim();
+            if (raw === "[DONE]") {
+              done = true;
+              continue;
+            }
+            if (!raw) continue;
+            const event = JSON.parse(raw);
+            if (event.error) throw new AppError("模型流式回复发生错误。");
+            const delta = event.choices?.[0]?.delta?.content;
+            if (typeof delta === "string") {
+              output += delta;
+              options.onText(delta);
+            }
+            usage = event.usage?.total_tokens || usage;
           }
-          if (!raw) continue;
-          const event = JSON.parse(raw);
-          if (event.error) throw new AppError("模型流式回复发生错误。");
-          const delta = event.choices?.[0]?.delta?.content;
-          if (typeof delta === "string") {
-            output += delta;
-            options.onText(delta);
-          }
-          usage = event.usage?.total_tokens || usage;
         }
+        if (!done) throw new AppError("模型连接中断，正文可能不完整。", 502);
+      } finally {
+        await reader.cancel().catch(() => {});
       }
-      if (!done) throw new AppError("模型连接中断，正文可能不完整。", 502);
-    } finally {
-      await reader.cancel().catch(() => {});
+    } else {
+      const raw = await response.text();
+      if (raw.length > 3 * 1024 * 1024) throw new AppError("模型响应过大。");
+      const value = JSON.parse(raw);
+      output = value.choices?.[0]?.message?.content || "";
+      usage = value.usage?.total_tokens || 0;
     }
-  } else {
-    const raw = await response.text();
-    if (raw.length > 3 * 1024 * 1024) throw new AppError("模型响应过大。");
-    const value = JSON.parse(raw);
-    output = value.choices?.[0]?.message?.content || "";
-    usage = value.usage?.total_tokens || 0;
+    db.settleReservation(reservationDay,reservation,usage,options.jobId);
+    // 成本纪律批 7：每次成功调用进台账（cheap=判断/分类，full=产出/默认）
+    recordModelMetrics(db, options.plan === "cheap" ? "cheap" : "full", usage);
+    if (!output.trim())
+      throw new AppError(
+        "模型没有输出正文，可能思考额度不足或返回格式不兼容。",
+        502,
+      );
+    return { text: output, usage, reservation };
+  } catch (error) {
+    if (signalAlreadySettled(error)) throw error;
+    db.releaseReservation(reservationDay, reservation, options.jobId);
+    throw error;
   }
-  db.settleReservation(reservationDay,reservation,usage,options.jobId);
-  // 成本纪律批 7：每次成功调用进台账（cheap=判断/分类，full=产出/默认）
-  recordModelMetrics(db, options.plan === "cheap" ? "cheap" : "full", usage);
-  if (!output.trim())
-    throw new AppError(
-      "模型没有输出正文，可能思考额度不足或返回格式不兼容。",
-      502,
-    );
-  return { text: output, usage, reservation };
+}
+// 空正文报错发生在结算之后（usage 已计），不重复退预留
+function signalAlreadySettled(error: unknown): boolean {
+  return error instanceof AppError && error.message.includes("模型没有输出正文");
 }
 // ---- 结构修复提示词（纯函数，便于守护测试）----
 // 把已给模型看的 JSON Schema 渲染成逐字段缩进清单：类型、必填标记(*)、枚举逐字值。

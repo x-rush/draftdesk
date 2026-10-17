@@ -264,6 +264,15 @@ export function mergeInputOf(drafts: GroupDraft[]) {
     sources: [...new Set(d.members.map((m) => m.sourceName))].slice(0, 3),
   }));
 }
+// 片级可隔离失败（R9-7③ 实弹）：上游内容审查（候选标题被回显撞输出审查 → 400）与
+// 片级超时/中止（同一片的病态内容在不同退化模式下 400 或挂死）——两者都是"这片数据有问题"，
+// 应对相同：自动对半切分隔离坏候选（递归至最细粒度），最细仍失败的子片弃掉降级（成员走未标注兜底）。
+// 预算不足/取消不在此列——那是批次级状态，必须向上抛。
+function isShardIsolatable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /data_inspection_failed|inappropriate|百炼请求失败（HTTP 400）|aborted due to timeout|aborted|ECONNRESET/i.test(message)
+    && !/预算不足/.test(message);
+}
 export async function runTriage(
   db: Store,
   plan: Plan,
@@ -280,23 +289,40 @@ export async function runTriage(
   const drafts: GroupDraft[] = [];
   let tokens = 0;
   let calls = 0;
-  for (const [si, shard] of shards.entries()) {
+  const runShard = async (shard: DiscoveryCandidate[], depth: number): Promise<GroupDraft[]> => {
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const res = await runner(db, triageShardMessages(plan, shard), { signal, tier, maxOutputTokens: 6000, temperature });
         tokens += res.usage ?? 0;
         calls++;
-        drafts.push(...parseShardOutput(res.text, shard, plan));
-        lastError = null;
-        break;
+        return parseShardOutput(res.text, shard, plan);
       } catch (error) {
         if (signal.aborted) throw error;
         lastError = error;
       }
     }
-    if (lastError)
-      throw new AppError(`语义初筛分片 ${si + 1}/${shards.length} 失败：${lastError instanceof Error ? lastError.message : String(lastError)}`);
+    // 内容审查永不废批：能切则切（隔离坏标题），不能切则弃片降级（成员走未标注兜底）
+    if (isShardIsolatable(lastError)) {
+      if (shard.length >= 16 && depth < 2) {
+        const mid = Math.ceil(shard.length / 2);
+        console.warn(`[triage] ${shard.length} 条分片被上游内容审查拦截，对半切分隔离（深度 ${depth + 1}）`);
+        const left = await runShard(shard.slice(0, mid), depth + 1);
+        const right = await runShard(shard.slice(mid), depth + 1);
+        return [...left, ...right];
+      }
+      console.warn(`[triage] 细分片 ${shard.length} 条仍被内容审查拦截，弃片降级（成员走未标注兜底）：${lastError instanceof Error ? lastError.message.slice(0, 120) : lastError}`);
+      return [];
+    }
+    throw new AppError(`语义初筛分片失败：${lastError instanceof Error ? lastError.message : String(lastError)}`);
+  };
+  for (const [si, shard] of shards.entries()) {
+    try {
+      drafts.push(...await runShard(shard, 0));
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw new AppError(`语义初筛分片 ${si + 1}/${shards.length} 失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   let merges = 0;
   if (drafts.length > 1 && shards.length > 1) {
@@ -396,6 +422,16 @@ function pickTriageTarget(db: Store, jobId?: string): DiscoveryRecord | undefine
     })
     .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
 }
+// ---- 初筛结果统一写回（R9-7③）：内联与补跑共用同一函数，灭双路径分叉 ----
+// 组落库 / 候选写回（判级+组归属+reason）/ 清失败标记三件事同生共死——
+// 分叉的历史教训：内联路径漏落库（143237c 修复）导致组卡引擎读不到、补跑机制整批重跑。
+export function applyTriageResult(db: Store, record: DiscoveryRecord, triage: TriageRecord) {
+  db.put("candidate-groups", "tg-" + record.jobId, triage);
+  applyTriageToCandidates(record.candidates, triage.groups, record.limit ?? 6);
+  db.put("discovery", record.jobId, record);
+  db.del("meta", "triage-fail:" + record.jobId);
+}
+
 const AUTO_RUNS_PER_DAY = 3;
 export async function triageTick(db: Store, runner: TriageRunner = defaultTriageRunner): Promise<void> {
   const request = db.get<{ jobId?: string }>("meta", "triage-request");
@@ -421,10 +457,7 @@ export async function triageTick(db: Store, runner: TriageRunner = defaultTriage
   try {
     // tick 侧一次性 controller：补跑不随任何 HTTP 请求断连中止
     const record = await runTriage(db, plan, target.jobId, triagePoolOf(target.candidates), new AbortController().signal, runner);
-    db.put("candidate-groups", "tg-" + target.jobId, record);
-    applyTriageToCandidates(target.candidates, record.groups, target.limit ?? 6);
-    db.put("discovery", target.jobId, target);
-    db.del("meta", "triage-fail:" + target.jobId);
+    applyTriageResult(db, target, record);
     console.log(`[triage] ${target.planName} 批 ${target.jobId.slice(0, 8)}：${record.groups.length} 组（强 ${record.groups.filter((g) => g.attention === "strong").length}/潜 ${record.groups.filter((g) => g.attention === "potential").length}），${record.shards} 片 ${record.calls} 调用 ${record.tokens} tokens${explicit ? "（显式请求）" : ""}`);
   } catch (error) {
     markTriageFailed(db, target, error);

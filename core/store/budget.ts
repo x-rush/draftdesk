@@ -1,5 +1,6 @@
 // 模型预算域：按天（上海时区）预留/结算。上限来自配置域（参数注入）。
-// 结算以 provider 回报的实际用量为唯一依据；未知用量与中断调用保留全额预留。
+// 结算以 provider 回报的实际用量为唯一依据；调用失败/中止走 releaseReservation 全额退预留
+//（R9-7① 前中断调用保留全额预留，停电曾把当日 reserved 挤死）。
 import { AppError } from "../errors";
 import type { KV } from "./kv";
 import type { Config, Job } from "../schema";
@@ -35,8 +36,7 @@ export function createBudget(kv: KV, config: () => Config) {
         .run(b.day, tokens);
     },
     settleReservation(day: string, reservation: number, usage: number, jobId?: string) {
-      // A provider-reported usage total is the only basis for returning unused
-      // headroom. Unknown usage and interrupted calls keep the full reservation.
+      // 成功路径：按 provider 回报的实际用量多退少补（charged ≥ usage×1.2）。
       if (!Number.isSafeInteger(usage) || usage <= 0) return;
       const charged = Math.max(usage + 500, Math.ceil(usage * 1.2));
       const delta = charged - reservation;
@@ -51,6 +51,22 @@ export function createBudget(kv: KV, config: () => Config) {
           });
         }
       });
+    },
+    // 中断释放（R9-7①）：失败/中止/超时的调用全额退预留，日内余量不被挂死挤占。
+    releaseReservation(day: string, reservation: number, jobId?: string) {
+      kv.transaction(() => {
+        kv.db.prepare("UPDATE budgets SET reserved=MAX(0,reserved-?) WHERE day=?").run(reservation, day);
+        if (jobId) {
+          const job = kv.get<Job>("jobs", jobId);
+          if (job) kv.put("jobs", jobId, { ...job, reservedTokens: Math.max(0, job.reservedTokens - reservation) });
+        }
+      });
+    },
+    // 泄漏回收（R9-7①）：对账认定泄漏后把当日行拉回台账口径——只能下调，不能凭空加钱。
+    rescueReserved(day: string, target: number) {
+      kv.db
+        .prepare("UPDATE budgets SET reserved=MIN(reserved,MAX(0,?)) WHERE day=?")
+        .run(target, day);
     },
   };
 }
