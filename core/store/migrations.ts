@@ -312,47 +312,6 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "outline-platform-v1",
-    // 选题体系（第六轮批 A §1①）：platform 五平台枚举化——存量旧值（公众号/小红书/Threads）
-    // 映射到 gzh/xhs-note/threads，outlines + artifacts.platforms + manual-decisions +
-    // clusters.suggestedPlatforms 四处一并归一；已是新值的记录幂等跳过。
-    run: ({ kv }) => {
-      let outlines = 0, others = 0;
-      for (const o of kv.list<any>("outlines")) {
-        const next = normalizePlatform(o.platform);
-        if (next && next !== o.platform) {
-          kv.put("outlines", o.id, { ...o, platform: next });
-          outlines++;
-        }
-      }
-      for (const a of kv.list<any>("artifacts")) {
-        if (!Array.isArray(a.platforms) || !a.platforms.length) continue;
-        const mapped = a.platforms.map((p: string) => normalizePlatform(p) ?? p);
-        if (JSON.stringify(mapped) !== JSON.stringify(a.platforms)) {
-          kv.put("artifacts", a.id, { ...a, platforms: mapped });
-          others++;
-        }
-      }
-      for (const m of kv.list<any>("manual-decisions")) {
-        if (!Array.isArray(m.platforms) || !m.platforms.length) continue;
-        const mapped = m.platforms.map((p: string) => normalizePlatform(p) ?? p);
-        if (JSON.stringify(mapped) !== JSON.stringify(m.platforms)) {
-          kv.put("manual-decisions", m.id, { ...m, platforms: mapped });
-          others++;
-        }
-      }
-      for (const c of kv.list<any>("clusters")) {
-        if (!Array.isArray(c.suggestedPlatforms) || !c.suggestedPlatforms.length) continue;
-        const mapped = c.suggestedPlatforms.map((p: string) => normalizePlatform(p) ?? p);
-        if (JSON.stringify(mapped) !== JSON.stringify(c.suggestedPlatforms)) {
-          kv.put("clusters", c.id, { ...c, suggestedPlatforms: mapped });
-          others++;
-        }
-      }
-      if (outlines || others) console.log(`[migration] outline-platform-v1：outlines 迁移 ${outlines} 条，artifacts/manual/clusters ${others} 条`);
-    },
-  },
-  {
     id: "site-discovery-rules-v1",
     // 网站发现补完（收尾批 §3①）：品牌/作品集过滤规则表化后按表复核存量
     // site-discoveries——增量补标（未标而表命中的升 brand、portfolio 命中补降权标记）。

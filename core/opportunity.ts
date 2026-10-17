@@ -12,26 +12,15 @@ import { judgeVerdict, platformOf } from "./seen-judge";
 import { valueScoreOf } from "./seo-gate";
 import { termId } from "./seen-terms";
 import { ATTENTION_LABELS, type TriageRecord } from "./triage";
+import { FORM_MONETIZATION, type OpportunityForm } from "./platforms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
 export type OpportunityKind = "site" | "app";
 export type OpportunityVerdict = "推荐" | "可以试试" | "不值得做" | "待验证";
 // 产品形态四值（第七轮批2 W7-5）：web=Web 应用 / app=App / miniprogram=小程序 / tool=工具站。
 // 内容线机会卡（平台适配）无产品形态，form 缺省。
-// R10 第3段：产品形态扩六值，带默认变现口径（monetization 字段）
-export type OpportunityForm = "web-app" | "site-group" | "mobile-app" | "mini-program" | "tool" | "open-source";
-export const FORM_LABELS: Record<OpportunityForm, string> = {
-  "web-app": "Web 应用", "site-group": "站群", "mobile-app": "移动 App", "mini-program": "小程序",
-  tool: "工具站", "open-source": "开源引流",
-};
-export const FORM_MONETIZATION: Record<OpportunityForm, string> = {
-  "web-app": "订阅/买断", "site-group": "展示广告/联盟", "mobile-app": "订阅/内购",
-  "mini-program": "广告/增值服务", tool: "广告/付费功能", "open-source": "引流/赞助",
-};
-// 严格六值（总纲：不做旧值映射/自由文本兼容——旧数据归档备查，新数据从新结构开始）。
-export function normalizeForm(value: unknown): OpportunityForm | undefined {
-  return value === "web-app" || value === "site-group" || value === "mobile-app" || value === "mini-program" || value === "tool" || value === "open-source" ? value : undefined;
-}
+// 产品形态目录（六值+变现口径）唯一定义在 platforms.ts（客户端共享目录）；此处仅消费。
+
 export const SIGNAL_LABELS: Record<OpportunitySignal, string> = {
   complaint: "用户抱怨",
   newtech: "新技术",

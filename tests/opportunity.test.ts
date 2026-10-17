@@ -261,30 +261,26 @@ test("news 卡收紧（批 1 收尾）：营销话术标题不出新卡 + 存量
   }
 });
 
-test("选题体系批 A：platform 五枚举迁移 + 题材六值标注（normalize + 迁移 + tick）", async () => {
+test("R10.2① 平台九值目录 + 题材六值（总纲：旧值映射与迁移已删，标签反查保留）", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-outlineplat-"));
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    const { normalizePlatform, normalizeCategory, platformLabel } = await import("../core/platforms");
-    assert.equal(normalizePlatform("公众号"), "gzh");
-    assert.equal(normalizePlatform("小红书"), "xhs-note");
-    assert.equal(normalizePlatform("Threads"), "threads");
+    const { normalizePlatform, normalizeCategory, platformLabel, PLATFORM_KEYS } = await import("../core/platforms");
+    assert.equal(PLATFORM_KEYS.length, 9);
+    for (const k of ["x", "facebook", "instagram", "linkedin"]) assert.equal(normalizePlatform(k), k, "新平台键识别");
+    assert.equal(normalizePlatform("公众号"), "gzh", "当前显示标签反查（gzh 的 label 即公众号）");
+    assert.equal(normalizePlatform("小红书笔记"), "xhs-note", "标签反查用当前全称");
+    assert.equal(normalizePlatform("小红书"), undefined, "总纲：旧简称不再映射");
     assert.equal(normalizePlatform("xhs-video"), "xhs-video");
     assert.equal(normalizePlatform("微信公众号"), undefined, "未知值不猜测");
     assert.equal(platformLabel("tiebuhao"), "贴图号");
     assert.equal(normalizeCategory("AI 新技术"), "newtech");
     assert.equal(normalizeCategory("社会热点"), "hot");
-    // 存量旧值入库（模拟迁移前状态）→ 新 Store 构造时迁移已跑，这里手工构造后重验幂等
-    db.put("outlines", "out-old", { id: "out-old", clusterId: "clu-inbox", platform: "公众号", contentType: "长文", title: "旧平台选题", outline: [], keyPoints: [], evidenceRefs: [], decision: "pending" });
-    // 该迁移在 Store 构造时已跑过（此时插入的是旧值）——直接调用迁移体逻辑复验
+    // 总纲守护：outline-platform-v1 迁移已从迁移表移除
     const { migrations } = await import("../core/store/migrations");
-    const m = migrations.find((x) => x.id === "outline-platform-v1")!;
-    m.run({ kv: db.kv, directory: dir });
-    assert.equal(db.get<any>("outlines", "out-old").platform, "gzh", "旧值迁移");
+    assert.ok(!migrations.find((x) => x.id === "outline-platform-v1"), "旧值迁移已随总纲删除");
     db.put("outlines", "out-key", { id: "out-key", clusterId: "clu-inbox", platform: "xhs-note", contentType: "长文", title: "新值选题", outline: [], keyPoints: [], evidenceRefs: [], decision: "pending" });
-    m.run({ kv: db.kv, directory: dir });
-    assert.equal(db.get<any>("outlines", "out-key").platform, "xhs-note", "新值幂等不动");
 
     // 题材标注 tick：mock cheap 模型
     db.put("outlines", "out-c1", { id: "out-c1", clusterId: "clu-inbox", platform: "gzh", contentType: "长文", title: "GPT-5 发布：一周内可用的三个工作流改造", outline: [], keyPoints: ["模型能力变化"], evidenceRefs: [], decision: "pending" });

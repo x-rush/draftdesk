@@ -12,7 +12,8 @@ const { store } = await import("../core/store");
 const { collectAllTick, archiveNoneGroups, restoreArchived } = await import("../core/collect-all");
 const { COLLECT_ALL_PLAN_NAME } = await import("../core/triage");
 const { triageEnabledOf, ANGLE_PLATFORMS } = await import("../core/triage");
-const { generateOpportunities, normalizeForm, FORM_LABELS, FORM_MONETIZATION } = await import("../core/opportunity");
+const { generateOpportunities } = await import("../core/opportunity");
+const { normalizeForm, FORM_LABELS, FORM_MONETIZATION, PLATFORM_KEYS } = await import("../core/platforms");
 const { handle } = await import("../core/http");
 
 function cleanup(d: string) { try { rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ } }
@@ -102,6 +103,65 @@ test("triage 默认全开（全 kind）；角度平台 8 值（xhs-video 后置�
   assert.equal(triageEnabledOf({ kind: "editorial", aiPolicy: { enabled: false } }, { triage: "cheap" }), false, "计划可显式退出");
   assert.equal(triageEnabledOf({ kind: "trends" }, { triage: "off" }), false, "总闸 off 一票否决");
   assert.deepEqual([...ANGLE_PLATFORMS], ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"]);
+});
+
+// ---- R10.2① 守护：平台目录与 schema 不再漂移（旧测试只断言 ANGLE_PLATFORMS，五值平台漏网教训）----
+test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集；ANGLE_PLATFORMS ⊆ PLATFORM_KEYS；9 值识别", async () => {
+  const { PLATFORM_KEYS, normalizePlatform } = await import("../core/platforms");
+  const { planSchema } = await import("../core/schema");
+  const { ANGLE_PLATFORMS } = await import("../core/triage");
+  const base = {
+    id: "p-guard", name: "守护计划", kind: "trends" as const, goal: "验证平台枚举一致性", audience: "测试",
+    keywords: [], excludeKeywords: [], includeDomains: [], sourceIds: ["s"], lookbackDays: 7,
+    maxEvidence: 10, maxQueries: 4, maxItems: 4, maxModelCalls: 8, maxTokens: 400000,
+    scheduleEnabled: false, dailyTime: "01:00", publishPolicy: "manual" as const,
+  };
+  for (const key of PLATFORM_KEYS) {
+    assert.equal(planSchema.parse({ ...base, platformAffinity: [key] }).platformAffinity?.[0], key, `${key} 须在 schema 枚举内`);
+  }
+  assert.throws(() => planSchema.parse({ ...base, platformAffinity: ["not-a-platform"] }), /platformAffinity/, "schema 拒绝未知平台");
+  assert.equal(PLATFORM_KEYS.length, 9, "九值平台目录");
+  for (const key of ["x", "facebook", "instagram", "linkedin"]) assert.equal(normalizePlatform(key), key, "新平台键原样识别");
+  assert.equal(normalizePlatform("公众号"), "gzh", "当前显示标签反查仍可用");
+  assert.ok((ANGLE_PLATFORMS as readonly string[]).every((k) => (PLATFORM_KEYS as string[]).includes(k)), "角度平台 ⊆ 平台目录");
+});
+
+// ---- R10.2②③ 守护 ----
+test("collectAll 初筛失败留痕：triage-fail 键存在 + 候选标待语义初筛；按组恢复不删整批归档", async () => {
+  const db = store();
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const jobId = "collectall-" + day;
+  db.del("meta", "collect-all-done:" + day);
+  db.del("discovery", jobId);
+  db.del("meta", "triage-fail:" + jobId);
+  db.put("sources", "s-f", src("s-f", "失败源"));
+  const reader = (async (_s: any, _l: number, signal: AbortSignal) => {
+    void signal;
+    return { items: Array.from({ length: 10 }, (_, i) => ({ title: `今日${i}`, url: `https://f/${i}`, excerpt: "x", collectedAt: new Date().toISOString(), sourceType: "media", region: "全球", language: "zh", contentLevel: "headline" as const })), warnings: [] };
+  }) as any;
+  const failing = (async () => { throw new Error("模型连接失败"); }) as any;
+  await collectAllTick(db, failing, reader);
+  assert.ok(db.get("meta", "triage-fail:" + jobId), "② 失败留痕：triage-fail 键存在（旧实现只有 console.error）");
+  const rec = db.get<any>("discovery", jobId);
+  assert.ok(rec.candidates.some((c: any) => c.reason.includes("待语义初筛")), "② 候选标注待语义初筛");
+  // ③ 按组恢复
+  const watch = rec.candidates.filter((c: any) => c.status === "watch");
+  const triage = { jobId, planName: COLLECT_ALL_PLAN_NAME, day, at: new Date().toISOString(), shards: 1, calls: 1, tokens: 1, merges: 0,
+    groups: [
+      { id: "g-a", title: "组甲", attention: "none", reason: "r", memberUrls: [watch[0].url], representativeUrl: watch[0].url, sources: ["失败源"], angles: [] },
+      { id: "g-b", title: "组乙", attention: "none", reason: "r", memberUrls: [watch[1].url], representativeUrl: watch[1].url, sources: ["失败源"], angles: [] },
+    ] };
+  const { applyTriageResult } = await import("../core/triage");
+  applyTriageResult(db, db.get<any>("discovery", jobId), triage as any);
+  archiveNoneGroups(db, jobId, triage as any);
+  const r1 = restoreArchived(db, jobId, "g-a");
+  assert.equal(r1.restored, 1, "恢复组甲");
+  const after = db.get<any>("triage-archive", "ta-" + jobId);
+  assert.ok(after, "③ 归档记录仍在（旧实现会整条删除）");
+  assert.equal(after.groups.length, 1, "仅剩组乙");
+  const r2 = restoreArchived(db, jobId, "g-b");
+  assert.equal(r2.restored, 1, "组乙仍可恢复");
+  assert.ok(!db.get("triage-archive", "ta-" + jobId), "组空后记录才删除");
 });
 
 // ---- 第3段 ----

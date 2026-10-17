@@ -65,15 +65,24 @@ export const routes: RouteDef[] = [
       const externalConsumption = report
         ? { at: report.at, by: report.by, consumed: report.consumed ?? 0, stale: Date.now() - Date.parse(report.at) > 24 * 3600000 }
         : null;
-      // R10 第1段：今日全量采集批次概况
-      const collectAll = db.get<any>("meta", "collect-all-done:" + new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date()));
+      // R10 第1段：今日全量采集批次概况；R10.2② 附初筛状态（done/failed/pending——失败含归因可查）
+      const shDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+      const collectAll = db.get<any>("meta", "collect-all-done:" + shDay);
+      const caJob = "collectall-" + shDay;
+      const caTriageDone = !!db.get("candidate-groups", "tg-" + caJob);
+      const caTriageFail = db.get<any>("meta", "triage-fail:" + caJob);
+      const collectAllTriage = caTriageDone
+        ? { state: "done" as const }
+        : caTriageFail
+          ? { state: "failed" as const, at: caTriageFail.at, error: String(caTriageFail.error || "").slice(0, 160) }
+          : { state: "pending" as const };
       return json({
         generatedAt: now(),
         pendingOutlines: outlinesPending,
         pendingDecisions: decisionsPending,
         todayChecks: { total: checks.length, terms: checks },
         fourSources,
-        collectAll: collectAll ? { sources: collectAll.sources, raw: collectAll.raw, trimmed: collectAll.trimmed ?? 0 } : null,
+        collectAll: collectAll ? { sources: collectAll.sources, raw: collectAll.raw, trimmed: collectAll.trimmed ?? 0, triage: collectAllTriage } : null,
         externalConsumption,
       });
     },

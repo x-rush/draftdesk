@@ -1,18 +1,21 @@
-// 平台与题材目录（第六轮批 A）：选题体系的双标注轴。
-// 平台五值（§0②）：gzh 公众号 / tiebuhao 贴图号 / xhs-note 小红书笔记 / xhs-video 小红书视频笔记 / threads（第 5 合法值，存量保留）。
-// 题材六值（§0⑤）：newtech / news / oss / selfproduct / thinking / hot。
-// 旧值（公众号/小红书/Threads）由 normalizePlatform 映射到新枚举——迁移 outline-platform-v1
-// 与外部 Agent 提交共用此入口，落库只存新枚举键。
+// 平台与题材目录（第六轮批 A 起；R10.2 扩 9 值）：选题体系的双标注轴 + 机会产品形态目录。
+// 平台九值：gzh / tiebuhao / xhs-note / xhs-video（视频后置）/ threads / x / facebook / instagram / linkedin。
+// 本模块是客户端共享目录（零 node 依赖）——平台、题材、机会形态的枚举与标签唯一定义处。
+// 总纲：不做旧值映射（旧中文值已随数据归档，提交侧只认当前枚举键或当前显示标签）。
 
-export type PlatformKey = "gzh" | "tiebuhao" | "xhs-note" | "xhs-video" | "threads";
-export const PLATFORM_KEYS: PlatformKey[] = ["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads"];
+export type PlatformKey = "gzh" | "tiebuhao" | "xhs-note" | "xhs-video" | "threads" | "x" | "facebook" | "instagram" | "linkedin";
+export const PLATFORM_KEYS: PlatformKey[] = ["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"];
 
 export const PLATFORM_LABELS: Record<string, string> = {
   gzh: "公众号",
   tiebuhao: "贴图号",
   "xhs-note": "小红书笔记",
-  "xhs-video": "小红书视频笔记",
+  "xhs-video": "小红书视频（后置）",
   threads: "Threads",
+  x: "X",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
 };
 
 export function platformLabel(v: string | undefined): string {
@@ -24,13 +27,25 @@ export function normalizePlatform(v: string): PlatformKey | undefined {
   const t = String(v || "").trim();
   if (!t) return undefined;
   if ((PLATFORM_KEYS as string[]).includes(t)) return t as PlatformKey;
-  // 旧值映射（存量 outlines/artifacts 62+ 条的迁移口径）
-  if (t === "公众号") return "gzh";
-  if (t === "小红书") return "xhs-note";
-  if (t === "Threads") return "threads";
-  // 中文标签反查（外部 Agent 可能直接提交标签）
+  // 当前显示标签反查（提交侧可直接给 UI 标签，如 "Instagram"）
   const byLabel = Object.entries(PLATFORM_LABELS).find(([k, label]) => label === t && (PLATFORM_KEYS as string[]).includes(k));
   return byLabel ? (byLabel[0] as PlatformKey) : undefined;
+}
+
+// ---- 机会产品形态目录（R10 六值带变现，唯一定义处）----
+export type OpportunityForm = "web-app" | "site-group" | "mobile-app" | "mini-program" | "tool" | "open-source";
+export const FORM_KEYS: OpportunityForm[] = ["web-app", "site-group", "mobile-app", "mini-program", "tool", "open-source"];
+export const FORM_LABELS: Record<OpportunityForm, string> = {
+  "web-app": "Web 应用", "site-group": "站群", "mobile-app": "移动 App", "mini-program": "小程序",
+  tool: "工具站", "open-source": "开源引流",
+};
+export const FORM_MONETIZATION: Record<OpportunityForm, string> = {
+  "web-app": "订阅/买断", "site-group": "展示广告/联盟", "mobile-app": "订阅/内购",
+  "mini-program": "广告/增值服务", tool: "广告/付费功能", "open-source": "引流/赞助",
+};
+// 严格六值（总纲：不做旧值映射/自由文本兼容）
+export function normalizeForm(value: unknown): OpportunityForm | undefined {
+  return FORM_KEYS.includes(value as OpportunityForm) ? (value as OpportunityForm) : undefined;
 }
 
 export type CategoryKey = "newtech" | "news" | "oss" | "selfproduct" | "thinking" | "hot";

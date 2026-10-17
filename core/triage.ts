@@ -460,11 +460,19 @@ export async function triageTick(db: Store, runner: TriageRunner = defaultTriage
     const global = db.get<{ triage?: string }>("config", "aiPolicy");
     if ((global?.triage ?? "off") === "off") return;
     const day = shanghaiDay();
-    const auto = db.get<any>("meta", "triage-auto:" + day);
+    // R10.2②：全量采集批补跑配额独立（不与计划批抢 3 次/日上限）且优先级最高——
+    // 每日主产出批次缺初筛的代价大于任何一个计划批。
+    const targets = db
+      .list<DiscoveryRecord>("discovery")
+      .filter((r) => triagePoolOf(r.candidates || []).length >= MIN_CANDIDATES && !triageRecordOf(db, r.jobId) && (r.mode ?? "analysis") === "analysis" && Date.parse(r.at || "") >= Date.now() - 36 * 3600000)
+      .sort((a, b) => (b.jobId.startsWith("collectall-") ? 1 : 0) - (a.jobId.startsWith("collectall-") ? 1 : 0) || String(b.at || "").localeCompare(String(a.at || "")));
+    const collectAllFirst = targets.find((r) => r.jobId.startsWith("collectall-"));
+    const autoKey = collectAllFirst ? "triage-auto-collectall:" + day : "triage-auto:" + day;
+    const auto = db.get<any>("meta", autoKey);
     if ((auto?.runs ?? 0) >= AUTO_RUNS_PER_DAY) return;
-    target = pickTriageTarget(db);
+    target = collectAllFirst || targets[0];
     if (!target) return;
-    db.put("meta", "triage-auto:" + day, { at: now(), runs: (auto?.runs ?? 0) + 1 });
+    db.put("meta", autoKey, { at: now(), runs: (auto?.runs ?? 0) + 1 });
   }
   if (!target) return;
   const plan = db.list<Plan>("plans").find((p) => p.name === target!.planName) ?? (target!.planName === COLLECT_ALL_PLAN_NAME ? (defaultTriagePlan() as unknown as Plan) : undefined);

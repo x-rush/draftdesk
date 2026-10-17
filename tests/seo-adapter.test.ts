@@ -12,7 +12,8 @@ import {
 } from "../core/seo-source";
 import { gepheiTierOf } from "../core/seen-judge";
 import { evalSiteGate, valueScoreOf, siteGateAutoMark, DEFAULT_SITE_GATE } from "../core/seo-gate";
-import { generateOpportunities, normalizeForm } from "../core/opportunity";
+import { normalizeForm } from "../core/platforms";
+import { generateOpportunities } from "../core/opportunity";
 import { migrations } from "../core/store/migrations";
 import { termId } from "../core/seen-terms";
 

@@ -13,7 +13,8 @@ import { Empty, api, date, Skeleton } from "../ui";
 
 const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newtech: "新技术", news: "新资讯", trend: "热词趋势" };
 const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
-const FORM_LABELS: Record<string, string> = { web: "Web 应用", app: "App 应用", miniprogram: "小程序", tool: "工具站" };
+// R10.2④：形态目录唯一定义在 core/platforms（六值+变现），客户端经共享目录取用
+import { FORM_LABELS, FORM_MONETIZATION } from "../../core/platforms";
 const VERDICT_STYLE: Record<string, string> = { 推荐: "#1a7f4b", 可以试试: "#8a6d1a", 不值得做: "#8a3a3a", 待验证: "#5a6b7a" };
 const MOTIVE_LABELS: Record<string, string> = { keyword: "冲着关键词", pain: "解决自己痛点", others: "满足别人需求", hobby: "兴趣爱好", business: "商业机会", unclear: "没说清" };
 const MOTIVE_SOURCE_LABELS: Record<string, string> = { quote: "作者原话", guess: "推测" };
@@ -95,7 +96,9 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                 <div className="row-meta">
                   <OpportunityBadge color={VERDICT_STYLE[o.verdict]}>{o.verdict}</OpportunityBadge>
                   <span className="pill">{KIND_LABELS[o.kind] || o.kind}</span>
-                  {o.form && <span className="pill">{FORM_LABELS[o.form] || o.form}</span>}
+                  {o.form && <span className="pill">{FORM_LABELS[o.form as keyof typeof FORM_LABELS] || o.form}</span>}
+                  {o.form && o.monetization && <span className="pill" title="默认变现口径（按产品形态推导，可被显式值覆盖）">💰 {o.monetization}</span>}
+                  {o.form && !o.monetization && FORM_MONETIZATION[o.form as keyof typeof FORM_MONETIZATION] && <span className="pill" title="默认变现口径（按产品形态推导）">💰 {FORM_MONETIZATION[o.form as keyof typeof FORM_MONETIZATION]}</span>}
                   {(o.signals || []).map((s: string) => <span key={s} className="pill">{SIGNAL_LABELS[s] || s}</span>)}
                   <span className="pill"><Zap size={11} /> {o.source}</span>
                   {o.valueUnverified && <span className="pill" title="未配 SEO 数据源或三指标缺失/过期——配置后自动升级为全门槛判定+价值分">价值未验证</span>}

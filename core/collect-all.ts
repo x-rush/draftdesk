@@ -12,7 +12,7 @@ import { now } from "./store";
 import type { Source } from "./schema";
 import type { DiscoveryCandidate, DiscoveryRecord, SourceCoverage } from "./discovery";
 import { readSourceEvidence, candidateFromItem } from "./sources";
-import { runTriage, applyTriageResult, triagePoolOf, defaultTriageRunner, COLLECT_ALL_PLAN_NAME, defaultTriagePlan, type TriageRunner, type TriageRecord } from "./triage";
+import { runTriage, applyTriageResult, triagePoolOf, defaultTriageRunner, markTriageFailed, COLLECT_ALL_PLAN_NAME, defaultTriagePlan, type TriageRunner, type TriageRecord } from "./triage";
 import { shanghaiDay } from "./model-metrics";
 
 export const COLLECT_ALL_LIMIT = 300;
@@ -92,7 +92,12 @@ export function restoreArchived(db: Store, jobId: string, groupId?: string): { r
     }
   }
   db.put("discovery", jobId, record);
-  if (restored) db.del("triage-archive", "ta-" + jobId);
+  // R10.2③：按组恢复不删整批归档——移除已恢复组，组空才删记录（其余组保持可恢复）
+  if (restored) {
+    const remaining = (archive.groups || []).filter((g: any) => !groups.includes(g));
+    if (remaining.length) db.put("triage-archive", "ta-" + jobId, { ...archive, groups: remaining });
+    else db.del("triage-archive", "ta-" + jobId);
+  }
   return { restored };
 }
 
@@ -157,7 +162,9 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
         console.log(`[collect-all] 语义初筛：${triage.groups.length} 组（强 ${triage.groups.filter((g) => g.attention === "strong").length}/潜 ${triage.groups.filter((g) => g.attention === "potential").length}），归档 ${archived.archived} 组（${archived.candidates} 条）`);
       }
     } catch (e) {
-      console.error("[collect-all] 语义初筛失败（tick 补跑机制接管）：", e instanceof Error ? e.message : e);
+      // R10.2②：失败留痕与 collect() 同款——triage-fail 键 + 候选「待语义初筛」标注（tick 补跑机制凭此发现）
+      markTriageFailed(db, db.get("discovery", jobId) || record, e);
+      console.error("[collect-all] 语义初筛失败（已标待补跑）:", e instanceof Error ? e.message : e);
     }
   }
 }

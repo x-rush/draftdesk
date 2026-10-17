@@ -4,7 +4,8 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { generateOpportunities, SIGNAL_LABELS, KIND_LABELS, FORM_LABELS } from "../opportunity";
+import { generateOpportunities, SIGNAL_LABELS, KIND_LABELS } from "../opportunity";
+import { FORM_LABELS } from "../platforms";
 
 export const routes: RouteDef[] = [
   {
