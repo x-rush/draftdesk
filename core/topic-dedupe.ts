@@ -53,10 +53,12 @@ export function coverageOf(topic: string, origin: { id: string; title: string; t
   return { originId: origin.id, originTitle: origin.title, matched: Math.round((enHit + cnHit) * 100) / 100, total: parts, ratio };
 }
 
-// 已拍板选题库：outlines 主状态进入 approved/drafting/published（拍板流转后的所有在途与完成态）
+// 已拍板选题库：outlines 的 decision 进入 approved/drafting/published（拍板流转后的所有在途与完成态）。
+// P0-2 修复（社区审查）：生产全链写的是 decision 字段（agent-write/decisions/outline-draft），
+// 旧代码读 o.status 恒 undefined → decidedTopics 永远为空、去重记忆从未生效。
 export function decidedTopics(db: Store): { id: string; title: string; text: string }[] {
   return db.list<any>("outlines")
-    .filter((o) => ["approved", "drafting", "published"].includes(String(o.status || "")) && o.title)
+    .filter((o) => ["approved", "drafting", "published"].includes(String(o.decision || "")) && o.title)
     .map((o) => ({ id: String(o.id), title: String(o.title), text: `${o.title} ${(o.outline || []).join(" ")}` }));
 }
 

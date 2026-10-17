@@ -174,6 +174,15 @@ export const routes: RouteDef[] = [
         autoMetrics: z.boolean().optional(),
         autoCollect: z.boolean().optional(),
       }).strict().parse(await readBody());
+      // baseUrl 白名单（批A P0-1，社区安全审查）：/test 会带 Bearer 哥飞令牌请求该地址，
+      // 任意 URL 等于令牌外泄通道。默认只允许官方域；自建/联调端点经 DRAFTDESK_SEO_EXTRA_HOSTS 追加。
+      if (parsed.baseUrl !== undefined) {
+        const allowed = ["seo.web.cafe", ...(process.env.DRAFTDESK_SEO_EXTRA_HOSTS || "").split(",")].map((h) => h.trim().toLowerCase()).filter(Boolean);
+        let host = "";
+        try { host = new URL(parsed.baseUrl).hostname.toLowerCase(); } catch { throw new AppError("SEO 数据源地址格式无效。", 400); }
+        if (!allowed.includes(host))
+          throw new AppError(`SEO 数据源地址不在允许域名（默认 seo.web.cafe；自建端点请在环境变量 DRAFTDESK_SEO_EXTRA_HOSTS 追加，逗号分隔）。`, 400);
+      }
       const prev = seoSourceOf(db);
       const token = parsed.token !== undefined ? parsed.token.trim() : prev.token;
       const next = { ...prev, ...parsed, token, provider: "gephei" as const };

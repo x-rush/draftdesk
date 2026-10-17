@@ -56,29 +56,38 @@ export function evalSiteGate(
 // 自动标注 sweep：判定 tick 批末跑——达标词 upsert 进 seo-terms（站群卡消费集合，
 // generateFromSiteCandidates 读 siteCandidate:true 出卡）。已标词（含外部 Agent 标注）
 // 一律跳过不覆写；单次上限 200 防写爆，余量随下一批判定自然接续。
-// SEO 数据源开启时（W7-3）：降级达标的词先经哥飞补查三指标落库（seen-terms 词库字段
-// + gepheiFetchedAt 时间戳），按全门槛重判——达标出标（价值分可算）、不过保持不标；
-// 补查失败/预算尽保持降级口径出标（增值源故障不丢候选）。
+// 哥飞付费补查（P0-3 修复，社区审查）：必须过 autoMetrics 授权门（与 seoMetricsTick 同款，
+// 违反即打破「关闭=纯手动零扣费」合同）、只查英文词（哥飞 volume 仅英文有数据），
+// 且按批调用（50 词一批扣 2 次，逐词调用会让月池 30 次在 15 个词上耗尽）；
+// 补查失败/预算尽/未授权 → 保持降级口径出标（增值源故障不丢候选，卡带 valueUnverified）。
 export async function siteGateAutoMark(db: Store, doFetch: typeof fetch = fetch, limit = 200): Promise<{ marked: number; scanned: number; enriched: number }> {
   const gate = siteGateOf(db);
-  const seoOn = seoSourceEnabled(db);
+  const paidFetch = seoSourceEnabled(db) && seoSourceOf(db).autoMetrics;
   const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
   let marked = 0, enriched = 0;
   const all = db.list<any>("seen-terms");
+  // 第一遍：判门槛；降级达标且可付费补查的英文词攒批（fetchKeywordMetrics 自带预算闸与 50 词上限）
+  const deferred: { t: any; word: string }[] = [];
+  const ready: { t: any; word: string; metrics: Record<string, unknown> }[] = [];
   for (const t of all) {
-    if (marked >= limit) break;
+    if (marked + deferred.length >= limit) break;
     const word = String(t.term || t.id || "").trim();
     if (!word || t.status === "archived") continue;
     if (markedIds.has(termId(word))) continue;
-    let verdict = evalSiteGate(t, gate);
-    let metrics: { monthlySearch?: number; kd?: number; cpc?: number; gepheiFetchedAt?: string } = {};
-    // 哥飞补查：降级达标但无新鲜指标 → 拉三指标落库并按全门槛重判（每日预算闸内）
-    if (verdict.pass && !seoMetricsFresh(t) && seoOn && seoBudgetLeft(db, "metrics") > 0) {
-      try {
-        const [m] = [...(await fetchKeywordMetrics(db, [word], doFetch)).values()];
+    const verdict = evalSiteGate(t, gate);
+    if (!verdict.pass) continue;
+    if (!seoMetricsFresh(t) && paidFetch && isEnglishTerm(word)) deferred.push({ t, word });
+    else ready.push({ t, word, metrics: {} });
+  }
+  // 付费补查一批：结果回写词库并按全门槛重判；失败/预算尽整体降级出标
+  if (deferred.length) {
+    try {
+      const fetched = await fetchKeywordMetrics(db, deferred.map((d) => d.word), doFetch);
+      for (const { t, word } of deferred) {
+        const m = fetched.get(word);
         if (m && (m.monthlySearch !== undefined || m.kd !== undefined || m.cpc !== undefined || m.intent !== undefined)) {
           enriched++;
-          metrics = { ...(m.monthlySearch !== undefined ? { monthlySearch: m.monthlySearch } : {}), ...(m.kd !== undefined ? { kd: m.kd } : {}), ...(m.cpc !== undefined ? { cpc: m.cpc } : {}), gepheiFetchedAt: new Date().toISOString() };
+          const metrics = { ...(m.monthlySearch !== undefined ? { monthlySearch: m.monthlySearch } : {}), ...(m.kd !== undefined ? { kd: m.kd } : {}), ...(m.cpc !== undefined ? { cpc: m.cpc } : {}), gepheiFetchedAt: new Date().toISOString() };
           // 词库落库（W7-8 外部 Agent 同一落点字段）。哥飞意图四分映射词库 intent 轴
           //（transactional→commercial；navigational 在词库轴无对应不猜测），只补缺不覆盖。
           const intentMap: Record<string, string> = { informational: "informational", commercial: "commercial", transactional: "commercial" };
@@ -92,11 +101,19 @@ export async function siteGateAutoMark(db: Store, doFetch: typeof fetch = fetch,
             });
             bumpSeenTermsVersion(db);
           }
-          verdict = evalSiteGate({ ...t, ...metrics }, gate);
+          if (evalSiteGate({ ...t, ...metrics }, gate).pass) ready.push({ t, word, metrics });
+        } else {
+          ready.push({ t, word, metrics: {} });
         }
-      } catch { /* 补查失败保持降级口径 */ }
+      }
+    } catch {
+      for (const { t, word } of deferred) ready.push({ t, word, metrics: {} });
     }
-    if (!verdict.pass) continue;
+  }
+  // 第二遍：出标
+  for (const { t: _t, word, metrics } of ready) {
+    if (marked >= limit) break;
+    void _t;
     // seo-terms id 口径 = term 小写（保空格），与 PUT agent/seo-terms 一致
     const seoId = word.toLowerCase();
     const prev = db.get<any>("seo-terms", seoId);
@@ -109,14 +126,14 @@ export async function siteGateAutoMark(db: Store, doFetch: typeof fetch = fetch,
       term: word,
       siteCandidate: true,
       siteCandidateBy: "builtin-gate-v1",
-      siteRationale: verdict.reason,
+      siteRationale: evalSiteGate({ ..._t, ...metrics }, gate).reason,
       updatedAt: stamp,
       ...(prev?.createdAt ? {} : { createdAt: stamp }),
     });
     markedIds.add(termId(word));
     marked++;
   }
-  if (marked || enriched) console.log(`[seen-judge] siteGate 自动标注 ${marked} 词${enriched ? `（哥飞补查 ${enriched} 词指标）` : ""}（builtin-gate-v1，扫描 ${all.length}）`);
+  if (marked || enriched) console.log(`[seen-judge] siteGate 自动标注 ${marked} 词${enriched ? `（哥飞补查 ${enriched} 词指标，批量化）` : ""}（builtin-gate-v1，扫描 ${all.length}）`);
   return { marked, scanned: all.length, enriched };
 }
 

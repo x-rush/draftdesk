@@ -69,7 +69,25 @@ export async function handle(req: Request, path: string[]) {
     const scope = def.scope ?? "none";
 
     if (scope === "none" || scope === "submit") {
-      if (scope === "none" && hasToken) throw new AppError(TOKEN_MSG, 403);
+      // UI 访问令牌（批A P0-1，社区安全审查）：设置 DRAFTDESK_UI_TOKEN 后，未鉴权的 UI 路由
+      // 必须携带令牌（X-DraftDesk-UI 头 / Authorization: Bearer / Basic 密码位）——
+      // 唯一屏障 Host 头对非浏览器客户端可伪造，远程暴露时此门是硬闸。
+      // scoped 路由（agent/intake）不走此门：它们已有自己的令牌鉴权。
+      const uiToken = process.env.DRAFTDESK_UI_TOKEN;
+      let uiTokenValidated = false;
+      if (scope === "none" && uiToken) {
+        const auth = req.headers.get("authorization") || "";
+        uiTokenValidated = req.headers.get("x-draftdesk-ui") === uiToken || auth === "Bearer " + uiToken;
+        if (!uiTokenValidated && auth.startsWith("Basic ")) {
+          try { uiTokenValidated = atob(auth.slice(6)).split(":").pop() === uiToken; } catch { /* 非法 base64 视为未通过 */ }
+        }
+        if (!uiTokenValidated)
+          return new Response(
+            JSON.stringify({ error: "需要工作台访问令牌：请求需带 X-DraftDesk-UI 头，或 Authorization（Bearer 令牌 / Basic 密码位）等于 DRAFTDESK_UI_TOKEN。", code: "UI_TOKEN_REQUIRED" }),
+            { status: 401, headers: { "content-type": "application/json; charset=utf-8", "www-authenticate": 'Basic realm="DraftDesk", charset="UTF-8"', "cache-control": "no-store" } },
+          );
+      }
+      if (scope === "none" && hasToken && !uiTokenValidated) throw new AppError(TOKEN_MSG, 403);
       if (!def.methods.includes(method)) {
         // UI/收件方法不符 = 旧长尾语义：POST 先解析 body 再 404，GET 404，其余 405
         if (method === "POST") { await readBody(); throw new AppError(NOT_FOUND_MSG, 404); }

@@ -152,30 +152,31 @@ test("siteGateAutoMark 哥飞补查：降级达标词拉指标落库并按全门
   let db: Store | undefined;
   try {
     db = new Store(dir);
+    // 批A P0-3：付费补查需过 autoMetrics 授权门（旧测试未开授权却断言补查发生，把「默认关=烧钱」坐实为合同）；词名用英文（付费通道仅英文词，R8-3 口径）
     enableSeo(db);
-    // 达标指标词
-    db.put("seen-terms", "达标词", { id: "达标词", term: "达标词", status: "rising", observations: 9, sources: ["hn"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "", relevance: "strong", region: "global", serpDedicated: 0 });
+    db.put("config", "seoDataSource", { ...db.get<any>("config", "seoDataSource"), autoMetrics: true });
+    db.put("seen-terms", termId("gate pass demo"), { id: termId("gate pass demo"), term: "gate pass demo", status: "rising", observations: 9, sources: ["hn"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "", relevance: "strong", region: "global", serpDedicated: 0 });
     const { fakeFetch } = mockGephei({});
     const r = await siteGateAutoMark(db, fakeFetch);
     assert.equal(r.marked, 1);
     assert.equal(r.enriched, 1, "补查记账");
-    const seo = db.get<any>("seo-terms", "达标词");
+    const seo = db.get<any>("seo-terms", "gate pass demo");
     assert.equal(seo.siteCandidate, true);
     assert.equal(seo.monthlySearch, 1000, "指标随出标落 seo-terms");
     assert.equal(seo.kd, 10);
     assert.equal(seo.cpc, 0.5);
     assert.ok(seo.gepheiFetchedAt, "gepheiFetchedAt 时间戳落库");
     assert.ok(String(seo.siteRationale).includes("全门槛达标"), "升级为全门槛口径");
-    const seen = db.get<any>("seen-terms", "达标词");
+    const seen = db.get<any>("seen-terms", termId("gate pass demo"));
     assert.equal(seen.monthlySearch, 1000, "词库（seen-terms）同落指标（W7-8 同口径）");
     assert.equal(seen.intent, undefined, "批4②：意图不自动查（内置 AI 标注为准）");
     // 不达标指标词：全门槛未达 → 不出标
-    db.put("seen-terms", "弱价值词", { id: "弱价值词", term: "弱价值词", status: "rising", observations: 9, sources: ["hn"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "", relevance: "strong", region: "global", serpDedicated: 0 });
+    db.put("seen-terms", termId("low value demo"), { id: termId("low value demo"), term: "low value demo", status: "rising", observations: 9, sources: ["hn"], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "", relevance: "strong", region: "global", serpDedicated: 0 });
     const { fakeFetch: lowFetch } = mockGephei({ volume: 100 });
     const r2 = await siteGateAutoMark(db, lowFetch);
     assert.equal(r2.marked, 0, "全门槛未达不出标");
     assert.equal(r2.enriched, 1, "补查照常记账");
-    assert.equal(db.get<any>("seo-terms", "弱价值词"), undefined);
+    assert.equal(db.get<any>("seo-terms", "low value demo"), undefined);
   } finally {
     db?.close();
     cleanup(dir);

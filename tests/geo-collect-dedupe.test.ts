@@ -277,7 +277,8 @@ test("选题去重（W7-9.5）：核心词重合 ≥2/3 标已覆盖变体；不
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("outlines", "out-1", { id: "out-1", title: "把会议纪要变成可核对的任务清单", status: "approved", outline: ["检查负责人", "检查截止时间"], createdAt: "" });
+    // P0-2：真实文档形狂用 decision（生产写入方字段），旧 fixture 用 status 与实现共享同一错误
+    db.put("outlines", "out-1", { id: "out-1", title: "把会议纪要变成可核对的任务清单", decision: "approved", outline: ["检查负责人", "检查截止时间"], createdAt: "" });
     // 重合达标：中文贪心最长匹配——「会议纪要」+「任务清单」共享片段覆盖 ≥2/3
     const r = coverageOf("会议纪要转任务清单工具", { id: "out-1", title: "把会议纪要变成可核对的任务清单", text: "把会议纪要变成可核对的任务清单 检查负责人 检查截止时间" });
     assert.ok(r, "重合达标（中文片段覆盖）");
