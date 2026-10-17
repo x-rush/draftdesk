@@ -20,6 +20,9 @@ const { handle } = await import("../core/http");
 function cleanup(d: string) { try { rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ } }
 after(() => { store().close(); cleanup(dir); });
 
+// 上海当日午时（避开 00:00-01:00 的 collectAll 静默窗，且与 shanghaiDay() 同日）
+const noonShanghai = () => new Date(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date()) + "T12:00:00+08:00");
+
 function src(id: string, name: string): any { return { id, name, type: "rss", url: "https://example.com/feed.xml", sourceType: "media", region: undefined, query: undefined, officialDomains: undefined, enabled: true, note: "" }; }
 const iso = (offsetH: number) => new Date(Date.now() - offsetH * 3600000).toISOString();
 
@@ -38,7 +41,7 @@ test("collectAll：当日闸（非当日 filtered/RSS 24h fallback）+ 300 精�
     warnings: [],
   })) as any;
   const noTriage = (async () => { throw new Error("本用例关初筛：不应调模型"); }) as any;
-  await collectAllTick(db, noTriage, reader);
+  await collectAllTick(db, noTriage, reader, noonShanghai());
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const jobId = "collectall-" + day;
   const record = db.get<any>("discovery", jobId);
@@ -52,7 +55,7 @@ test("collectAll：当日闸（非当日 filtered/RSS 24h fallback）+ 300 精�
   assert.equal(byTitle["源二旧闻"].status, "filtered", "非 RSS 超 24h 不放行");
   assert.ok(db.get("meta", "collect-all-done:" + day), "日闸落键");
   // 幂等：再跑不重复采集
-  await collectAllTick(db, noTriage, (async () => { throw new Error("不应再读源"); }) as any);
+  await collectAllTick(db, noTriage, (async () => { throw new Error("不应再读源"); }) as any, noonShanghai());
 });
 
 test("collectAll：超 300 按当日新>热度精简；none 组归档可恢复", async () => {
@@ -70,7 +73,7 @@ test("collectAll：超 300 按当日新>热度精简；none 组归档可恢复",
     metric: i % 7 === 0 ? { name: "热度", value: String(100000 - i), unit: "raw", period: "" } : undefined,
   }));
   const reader = (async () => ({ items, warnings: [] })) as any;
-  await collectAllTick(db, (async () => { throw new Error("no model"); }) as any, reader);
+  await collectAllTick(db, (async () => { throw new Error("no model"); }) as any, reader, noonShanghai());
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const record = db.get<any>("discovery", "collectall-" + day);
   const watch = record.candidates.filter((c: any) => c.status === "watch");
@@ -117,7 +120,7 @@ test("补跑完成→归档存在：triageTick 成功路径产出 none 组进 tr
   db.del("candidate-groups", "tg-" + jobId);
   db.put("sources", "s-t", src("s-t", "补跑源"));
   const items = Array.from({ length: 12 }, (_, i) => ({ title: `补跑${i}`, url: `https://t/${i}`, excerpt: "x", collectedAt: new Date().toISOString(), sourceType: "media", region: "全球", language: "zh", contentLevel: "headline" as const }));
-  await collectAllTick(db, (async () => { throw new Error("首跑失败留痕"); }) as any, (async () => ({ items, warnings: [] })) as any);
+  await collectAllTick(db, (async () => { throw new Error("首跑失败留痕"); }) as any, (async () => ({ items, warnings: [] })) as any, noonShanghai());
   assert.ok(db.get("meta", "triage-fail:" + jobId), "首跑失败已留痕");
   // 补跑：3 个 strong + 2 个 none（成员各 2 条）
   const runner = (async () => ({
@@ -202,7 +205,7 @@ test("collectAll 初筛失败留痕：triage-fail 键存在 + 候选标待语义
     return { items: Array.from({ length: 10 }, (_, i) => ({ title: `今日${i}`, url: `https://f/${i}`, excerpt: "x", collectedAt: new Date().toISOString(), sourceType: "media", region: "全球", language: "zh", contentLevel: "headline" as const })), warnings: [] };
   }) as any;
   const failing = (async () => { throw new Error("模型连接失败"); }) as any;
-  await collectAllTick(db, failing, reader);
+  await collectAllTick(db, failing, reader, noonShanghai());
   assert.ok(db.get("meta", "triage-fail:" + jobId), "② 失败留痕：triage-fail 键存在（旧实现只有 console.error）");
   const rec = db.get<any>("discovery", jobId);
   assert.ok(rec.candidates.some((c: any) => c.reason.includes("待语义初筛")), "② 候选标注待语义初筛");

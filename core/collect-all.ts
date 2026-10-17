@@ -21,10 +21,6 @@ export function collectAllJobId(day: string = shanghaiDay()): string {
   return "collectall-" + day;
 }
 
-function shanghaiHour(): number {
-  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
-}
-
 function isSameShanghaiDay(iso: string | undefined): boolean {
   if (!iso || !Number.isFinite(Date.parse(iso))) return false;
   try {
@@ -50,11 +46,13 @@ function recencyOf(c: DiscoveryCandidate): number {
 
 type SourceReader = typeof readSourceEvidence;
 // reader 可注入（测试用 mock 源数据；生产缺省真实读取）
-export async function collectAllTick(db: Store, runner: TriageRunner = defaultTriageRunner, reader: SourceReader = readSourceEvidence): Promise<void> {
+export async function collectAllTick(db: Store, runner: TriageRunner = defaultTriageRunner, reader: SourceReader = readSourceEvidence, nowDate: Date = new Date()): Promise<void> {
   const day = shanghaiDay();
   const doneKey = "collect-all-done:" + day;
   if (db.get("meta", doneKey)) return;
-  if (shanghaiHour() < 1) return; // 每日凌晨一次（01:00 上海起跑，01:00 前不触发）
+  // 每日凌晨一次：01:00（上海）起跑；nowDate 可注入（测试避开 00:00-01:00 的静默窗）
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", hour: "2-digit", hourCycle: "h23" }).format(nowDate));
+  if (hour < 1) return;
   const jobId = collectAllJobId(day);
   if (db.get("discovery", jobId)) { db.put("meta", doneKey, { at: now(), skipped: "already-collected" }); return; }
   const sources = db.list<Source>("sources").filter((s) => s.enabled && s.type !== "web");
