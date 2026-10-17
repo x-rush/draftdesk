@@ -52,11 +52,12 @@ services:
     restart: unless-stopped
     environment:
       CACHE_TYPE: redis
-      REDIS_URL: redis://rsshub-redis:6379/
+      REDIS_URL: redis://redis:6379/
     depends_on:
-      - rsshub-redis
-  rsshub-redis:
-    # RSSHub 缓存（无持久化需求，重启重建即可）；同样零端口暴露。
+      - redis
+  redis:
+    # 集群共享 Redis：栈内服务的缓存层（当前消费方 RSSHub，后续服务可复用同一实例）。
+    # 无持久化需求（纯缓存，重启重建）；同样零端口暴露。
     image: redis:alpine
     restart: unless-stopped
   searxng:
