@@ -7,6 +7,29 @@ import { json } from "../http/middleware";
 import { AppError } from "../store";
 import { requestTriage, ATTENTION_LABELS } from "../triage";
 
+// 组视角组装（UI /triage/groups 与外部 Agent /agent/triage/groups 共用——R10.7 P0-2 消灭双份）
+export function triageGroupsPayload(db: import("../store").Store, jobId: string) {
+  const record = jobId
+    ? db.get<any>("candidate-groups", "tg-" + jobId)
+    : db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
+  if (!record) throw new AppError("该批次还没有语义初筛结果（未跑、off 或失败待补跑）。", 404);
+  const discovery = db.get<any>("discovery", record.jobId);
+  return {
+    jobId: record.jobId,
+    planName: record.planName,
+    at: record.at,
+    shards: record.shards,
+    calls: record.calls,
+    tokens: record.tokens,
+    merges: record.merges,
+    groups: (record.groups || []).map((g: any) => ({
+      ...g,
+      attentionLabel: ATTENTION_LABELS[g.attention as keyof typeof ATTENTION_LABELS] || g.attention,
+      members: (discovery?.candidates || []).filter((c: any) => (g.memberUrls || []).includes(c.url)).map((c: any) => ({ title: c.title, url: c.url, sourceName: c.sourceName, status: c.status })),
+    })),
+  };
+}
+
 export const routes: RouteDef[] = [
   {
     methods: ["POST"],
@@ -26,28 +49,7 @@ export const routes: RouteDef[] = [
     // ?jobId= 指定批次；缺省返回最近一条有归组的批次
     methods: ["GET"],
     pattern: "triage/groups",
-    handler: ({ db, query }) => {
-      const jobId = query.get("jobId") || "";
-      const record = jobId
-        ? db.get<any>("candidate-groups", "tg-" + jobId)
-        : db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
-      if (!record) throw new AppError("该批次还没有语义初筛结果（未跑、off 或失败待补跑）。", 404);
-      const discovery = db.get<any>("discovery", record.jobId);
-      return json({
-        jobId: record.jobId,
-        planName: record.planName,
-        at: record.at,
-        shards: record.shards,
-        calls: record.calls,
-        tokens: record.tokens,
-        merges: record.merges,
-        groups: (record.groups || []).map((g: any) => ({
-          ...g,
-          attentionLabel: ATTENTION_LABELS[g.attention as keyof typeof ATTENTION_LABELS] || g.attention,
-          members: (discovery?.candidates || []).filter((c: any) => (g.memberUrls || []).includes(c.url)).map((c: any) => ({ title: c.title, url: c.url, sourceName: c.sourceName, status: c.status })),
-        })),
-      });
-    },
+    handler: ({ db, query }) => json(triageGroupsPayload(db, query.get("jobId") || "")),
   },
   {
     // R10 第2段：归档队列（判无注意力的组）可查可恢复——「没有价值的需要归档」的明示动作留痕

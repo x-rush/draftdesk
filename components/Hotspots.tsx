@@ -1,3 +1,4 @@
+import { PLATFORM_KEYS, platformLabel } from "../core/platforms";
 import { useState } from "react";
 import type {HotspotFeed} from "../core/hotspots";
 import type {Source} from "../core/schema";
@@ -67,7 +68,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
         <button aria-label={`推进：${row.title}`} onClick={()=>setPromoting(promoting===row.url?null:row.url)}>推进</button>
         <ArchiveButton onConfirm={()=>onArchive(row)} disabled={busy}/>
         {promoting===row.url&&<div style={{display:"grid",gap:6,padding:10,border:"1px solid var(--line)",borderRadius:9,minWidth:260}}>
-          <Select aria-label="适配平台" value={promotePlatform} onChange={e=>setPromotePlatform(e.target.value)}>{["公众号","小红书","哔哩哔哩","抖音","知乎"].map(p=><option key={p} value={p}>{p}</option>)}</Select>
+          <Select aria-label="适配平台" value={promotePlatform} onChange={e=>setPromotePlatform(e.target.value)}>{PLATFORM_KEYS.map(p=><option key={p} value={p}>{platformLabel(p)}</option>)}</Select>
           <Select aria-label="目标簇" value={promoteCluster} onChange={e=>setPromoteCluster(e.target.value)}><option value="clu-inbox">选题收集箱</option>{clusters.filter(c=>c.id!=="clu-inbox").map(c=><option key={c.id} value={c.id}>{c.topic}</option>)}</Select>
           <input aria-label="一句话写作角度" placeholder="一句话写作角度（可选）" value={promoteAngle} onChange={e=>setPromoteAngle(e.target.value)}/>
           <button className="primary" disabled={busy} onClick={()=>{onPromote(row,{clusterId:promoteCluster,platform:promotePlatform,angle:promoteAngle});setPromoting(null);}}>生成为选题（进每日发现）</button>

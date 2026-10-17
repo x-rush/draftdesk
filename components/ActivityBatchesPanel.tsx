@@ -1,6 +1,7 @@
 "use client";
 // Part 7 UI（信息架构 v2-7）：创作活动页新增「采集批次 · AI 整理」区块——
 // 分类徽章（外部 Agent 写入）、pin 置顶、三按钮（讨论/归档=标记不感兴趣/推进=转 outline）。
+import { PLATFORM_KEYS, platformLabel } from "../core/platforms";
 import { useState } from "react";
 import { api, date } from "./ui";
 import { ArchiveButton } from "./ActionButtons";
@@ -31,7 +32,7 @@ export function ActivityBatchesPanel({ ws, data }: { ws: any; data: any }) {
       {promoteBatch && (() => {
         const b = batches.find((x) => x.id === promoteBatch)!;
         return <div style={{ display: "grid", gap: 6, padding: 9, border: "1px solid var(--line)", borderRadius: 9, marginTop: 6 }}>
-          <Select aria-label="适配平台" value={platform} onChange={e => setPlatform(e.target.value)}>{["公众号", "小红书", "哔哩哔哩", "抖音"].map(p => <option key={p} value={p}>{p}</option>)}</Select>
+          <Select aria-label="适配平台" value={platform} onChange={e => setPlatform(e.target.value)}>{PLATFORM_KEYS.map(p => <option key={p} value={p}>{platformLabel(p)}</option>)}</Select>
           <button className="primary" disabled={ws.busy} onClick={() => void ws.act(async () => {
             await api("outlines", { clusterId: "clu-inbox", platform, contentType: "活动解读", title: `${b.platform} 活动激励整理（${b.count} 条）`, keyPoints: [], evidenceRefs: [] });
             ws.setNotice("活动批次已转为待拍选题。");

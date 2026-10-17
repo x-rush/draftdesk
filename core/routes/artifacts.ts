@@ -9,6 +9,16 @@ import { type ResearchEvent, type MetricSnapshot, metricComparison } from "../hi
 
 export const routes: RouteDef[] = [
   {
+    // R10.7 P0-1：产物详情证据区读口（ArtifactPanel 一直在此拿 404，证据区恒空）
+    methods: ["GET"],
+    pattern: "evidence/:id",
+    handler: ({ db, params }) => {
+      const evidence = db.get<Evidence>("evidence", params.id);
+      if (!evidence) throw new AppError("证据不存在", 404, "NOT_FOUND");
+      return json(evidence);
+    },
+  },
+  {
     methods: ["GET"],
     pattern: "public",
     handler: ({ db }) => json({

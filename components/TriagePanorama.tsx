@@ -30,6 +30,28 @@ export function TriagePanorama() {
     })();
   }, []);
 
+  // R10.7 P0-2：组卡动作——strong/potential 组一键出大纲（进每日发现待拍）或转机会卡
+  async function toOutline(g: Group) {
+    setBusy(true);
+    try {
+      const platform = g.angles[0]?.platform || "gzh";
+      await api("outlines", {
+        clusterId: "clu-inbox", platform, contentType: "组卡直出",
+        title: g.title.slice(0, 120),
+        keyPoints: [...g.angles.map((a) => `${a.platform}：${a.angle}`), ...(g.appGap ? [`应用缺口：${g.appGap}`] : [])].slice(0, 8),
+        evidenceRefs: g.memberUrls.slice(0, 10),
+      });
+      setNotice(`已生成大纲《${g.title.slice(0, 30)}》(${platform})，进每日发现待拍`);
+    } catch (e) { setNotice("生成大纲失败：" + (e as Error).message); } finally { setBusy(false); }
+  }
+  async function toOpportunity(jobId: string, g: Group) {
+    setBusy(true);
+    try {
+      const r = await api<{ note: string }>("opportunities/from-group", { jobId, groupId: g.id });
+      setNotice(`组「${g.title.slice(0, 24)}」转机会卡：${r.note}`);
+    } catch (e) { setNotice("转卡失败：" + (e as Error).message); } finally { setBusy(false); }
+  }
+
   async function restore(jobId: string, groupId: string) {
     setBusy(true);
     try {
@@ -61,6 +83,12 @@ export function TriagePanorama() {
                     {g.appGap && <small>app 缺口：{g.appGap}</small>}
                   </div>
                   <button className="text-button" style={{ fontSize: 14, fontWeight: 600 }} onClick={() => setOpen(open === g.id ? null : g.id)}>{g.title}（点开成员）</button>
+                  {g.attention !== "none" && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      <button className="button-secondary" disabled={busy} onClick={() => void toOutline(g)}>生成大纲</button>
+                      <button className="button-secondary" disabled={busy} onClick={() => void toOpportunity(groups!.jobId, g)}>转机会卡</button>
+                    </div>
+                  )}
                   {open === g.id && (
                     <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>
                       {g.members.map((m) => (

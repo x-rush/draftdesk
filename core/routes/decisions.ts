@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
-import { normalizePlatform, normalizeCategory, aggregateOutlineDecision } from "../platforms";
+import { PLATFORM_KEYS, normalizePlatform, normalizeCategory, aggregateOutlineDecision } from "../platforms";
 
 // 决策拍板入参：rejected 必须给否决原因；published 建议给发布链接（回填）。
 const decisionInput = z.object({
@@ -118,7 +118,9 @@ export const routes: RouteDef[] = [
       }).strict().parse(await readBody());
       const outline = db.get<any>("outlines", params.id);
       if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
-      const key = normalizePlatform(parsed.platform) ?? parsed.platform;
+      // R10.7 P0-4：未知平台 400（原裸 string 回退让拍板静默失效）
+      const key = normalizePlatform(parsed.platform);
+      if (!key) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}。`, 400);
       const per = { ...(outline.perPlatformDecision || {}), [key]: parsed.decision };
       const aggregate = aggregateOutlineDecision({ ...outline, perPlatformDecision: per });
       db.put("outlines", params.id, { ...outline, perPlatformDecision: per, decision: aggregate, decidedBy: "human", decidedAt: now() });

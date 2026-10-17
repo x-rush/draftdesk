@@ -25,6 +25,8 @@ const listQuery = (query: URLSearchParams) => {
   return params;
 };
 
+import { triageGroupsPayload } from "./triage";
+
 export const routes: RouteDef[] = [
   // 方法截获器：mcp 与 suggestions 只认 POST/PATCH，其余方法先 405（旧 read 块 methodOk 语义）
   { methods: ["GET", "PUT", "DELETE"], pattern: "mcp", preAuth405: true, handler: () => { throw new Error("unreachable"); } },
@@ -39,6 +41,31 @@ export const routes: RouteDef[] = [
       const reply = mcpRpc(db, await readBody());
       if (!reply) return new Response(null, { status: 202 });
       return json(reply);
+    },
+  },
+  {
+    // R10.7 P0-2：外部消费链路读口——组视角与归档（read scope；原 none-scope 的 /triage/groups
+    // 对带令牌的 Agent 实测 403，agent/* 下又无对应路由，R10 第③段在接口层断链）
+    methods: ["GET"],
+    pattern: "agent/triage/groups",
+    scope: "read",
+    methodGuardFirst: true,
+    handler: ({ db, query }) => {
+      const jobId = query.get("jobId") || "";
+      return json(triageGroupsPayload(db, jobId));
+    },
+  },
+  {
+    methods: ["GET"],
+    pattern: "agent/triage/archive",
+    scope: "read",
+    methodGuardFirst: true,
+    handler: ({ db, query }) => {
+      const jobId = query.get("jobId") || "";
+      const rows = jobId
+        ? db.list<any>("triage-archive").filter((r) => r.jobId === jobId)
+        : db.list<any>("triage-archive").sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 14);
+      return json({ items: rows.map((r) => ({ jobId: r.jobId, day: r.day, at: r.at, groups: (r.groups || []).map((g: any) => ({ id: g.id, title: g.title, reason: g.reason, members: (g.memberUrls || []).length })) })), total: db.list<any>("triage-archive").length });
     },
   },
   {
