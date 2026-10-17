@@ -3,6 +3,7 @@
 // （PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
 import { ActivityCard, ActivityTools } from "../Activities";
 import { DiscoveryLens } from "../DiscoveryLens";
+import { TriagePanorama } from "../TriagePanorama";
 import { api, date, Empty, kindLabels, Skeleton } from "../ui";
 import { Search, ArrowUpRight } from "lucide-react";
 import { creationLabels } from "../../core/workspace-ui";
@@ -146,6 +147,7 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
       </>}
       {view === "discover" && discoveryMode === "coverage" && <div className="toolbar"><Select aria-label="采集预览策略" value={previewPlan} onChange={e => setPreviewPlan(e.target.value)}>{data.plans.filter(p => p.kind !== "activities" && p.sourceIds.some(id => data.sources.some(s => s.id === id && s.enabled && s.type !== "web"))).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select><button disabled={busy} onClick={() => void act(async () => { const result = await api<{ evidenceCount: number; warnings: string[] }>("source-preview", { planId: previewPlan }); setNotice(result.evidenceCount ? `已采集 ${result.evidenceCount} 条证据，${result.warnings.length} 个来源提示；未调用 AI。` : `来源读取完成，但没有命中当前焦点词和关键词；请检查策略筛选。未调用 AI。`); })}>只采集预览 · 不调用 AI</button></div>}
       {view === "discover" && (discoveryMode === "watch" || discoveryMode === "coverage") && <DiscoveryLens record={data.discovery} mode={discoveryMode} />}
+      {view === "discover" && <TriagePanorama />}
     </>
   );
 }
