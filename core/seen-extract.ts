@@ -16,16 +16,13 @@ type ModelRunner = (db: Store, messages: { role: "user"; content: string }[], op
 // 北京白天采集的任务 finishedAt 的 UTC 日期恒为「昨天」，按日历日比较会让闸门白天永不置位）
 // 且无排队/运行中 → 置位 { date, at }（每日一次，幂等）。
 export function seenTermsGate(db: Store): { date: string; at: string } | undefined {
-  const today = new Date().toISOString().slice(0, 10);
+  // R10.11-5：计划调度已废弃（R10.9 P2-1 scheduleTick 删除）——闸门改由
+  // 当日 collect-all 批触发（01:00 全量采集落盘即开闸），语义对齐 R10 四段流水线
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const gate = db.get<any>("meta", GATE_KEY);
   if (gate?.date === today) return gate;
-  const scheduled = db.list<any>("plans").filter((p) => p.scheduleEnabled);
-  if (!scheduled.length) return gate;
-  const jobs = db.list<any>("jobs");
-  const doneRecently = (id: string) => jobs.some((j) => j.planId === id && j.state === "completed" && j.finishedAt && Date.now() - Date.parse(j.finishedAt) < DAY_MS);
-  const allDone = scheduled.every((p) => doneRecently(p.id));
-  const noneActive = !jobs.some((j) => ["queued", "running"].includes(j.state));
-  if (!allDone || !noneActive) return gate;
+  const collectAllDone = db.get<any>("meta", "collect-all-done:" + today);
+  if (!collectAllDone) return gate;
   const at = new Date().toISOString();
   db.put("meta", GATE_KEY, { date: today, at });
   return { date: today, at };

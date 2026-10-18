@@ -117,6 +117,21 @@ export const routes: RouteDef[] = [
     },
   },
   {
+    // R10.11-2②：机会引擎全信号自动出卡开关（默认开——老大拍 B；关闭只留组级转卡）
+    methods: ["GET"],
+    pattern: "autoOpportunityGenerate",
+    handler: ({ db }) => json(db.get("config", "autoOpportunityGenerate") || { enabled: true }),
+  },
+  {
+    methods: ["POST"],
+    pattern: "autoOpportunityGenerate",
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({ enabled: z.boolean() }).strict().parse(await readBody());
+      db.put("config", "autoOpportunityGenerate", parsed);
+      return json(parsed);
+    },
+  },
+  {
     methods: ["POST"],
     pattern: "planMode",
     handler: async ({ db, readBody }) => {

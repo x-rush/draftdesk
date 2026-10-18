@@ -40,7 +40,7 @@ export const routes: RouteDef[] = [
       if (!drafts.length) throw new AppError("该组无角度且无 appGap，无可出的卡。", 400);
       const { upsertOpportunityDrafts } = await import("../opportunity");
       const r = upsertOpportunityDrafts(db, drafts, "agent");
-      return json({ ok: true, ...r, note: `出 ${drafts.length} 张（内容线 ${drafts.filter(d => d.kind === "site").length} + 应用 ${drafts.filter(d => d.kind === "app").length}）。` });
+      return json({ ok: true, ...r, note: `新增 ${r.created} 张${r.merged ? `、合并 ${r.merged} 张信号` : ""}（内容线 ${drafts.filter((d: any) => d.kind === "site").length} 条草案 + 应用 ${drafts.filter((d: any) => d.kind === "app").length} 条草案）。` });
     },
   },
   {

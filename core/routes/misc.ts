@@ -6,6 +6,7 @@ import { planSchema, type Plan } from "../schema";
 import { termId } from "../seen-terms";
 import { dailyMetricsCandidates, siteGateOf, isEnglishTerm } from "../seo-gate";
 import { gepheiToolLinks } from "../seo-source";
+import { shanghaiDay } from "../model-metrics";
 
 export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "health", handler: () => json({ ok: true, version: "2.0.0" }) },
@@ -36,6 +37,7 @@ export const routes: RouteDef[] = [
     methods: ["GET"],
     pattern: "summary/today",
     handler: ({ db }) => {
+      const shDayKey = shanghaiDay(); // R10.11-4：统一上海日口径
       const gate = siteGateOf(db);
       const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
       const checks = dailyMetricsCandidates(db, gate, markedIds)
@@ -66,9 +68,8 @@ export const routes: RouteDef[] = [
         ? { at: report.at, by: report.by, consumed: report.consumed ?? 0, stale: Date.now() - Date.parse(report.at) > 24 * 3600000 }
         : null;
       // R10 第1段：今日全量采集批次概况；R10.2② 附初筛状态（done/failed/pending——失败含归因可查）
-      const shDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
-      const collectAll = db.get<any>("meta", "collect-all-done:" + shDay);
-      const caJob = "collectall-" + shDay;
+      const collectAll = db.get<any>("meta", "collect-all-done:" + shDayKey);
+      const caJob = "collectall-" + shDayKey;
       const caTriageDone = !!db.get("candidate-groups", "tg-" + caJob);
       const caTriageFail = db.get<any>("meta", "triage-fail:" + caJob);
       const collectAllTriage = caTriageDone
@@ -77,17 +78,29 @@ export const routes: RouteDef[] = [
           ? { state: "failed" as const, at: caTriageFail.at, error: String(caTriageFail.error || "").slice(0, 160) }
           : { state: "pending" as const };
       // R10.8 P1-2：六段总览补齐——组分布 / 机会卡数 / 今日已拍
-      const latestGroups = db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
+      // R10.11-4②：优先当日 collectall 批；无则回落最新并标注批次来源
+      const todayCa = db.get<any>("candidate-groups", "tg-collectall-" + shDayKey);
+      const latestGroups = todayCa || db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
       const groupStats = latestGroups
-        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length, at: latestGroups.at }
+        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length, at: latestGroups.at, source: todayCa ? "today" : "latest" }
         : null;
       const opportunities = db.list<any>("opportunities").length;
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const decidedToday = db.list<any>("outlines").filter((o: any) => String(o.decidedAt || "").startsWith(todayIso) && o.decision && o.decision !== "pending").length
-        + db.list<any>("decisions").filter((d: any) => String(d.decidedAt || "").startsWith(todayIso) && d.decision && d.decision !== "pending").length;
+      // R10.11-4①：decidedToday 改上海日（原 UTC 口径漏今晨 04:12 的拍板）
+      const decidedToday = db.list<any>("outlines").filter((o: any) => {
+        if (!o.decidedAt || !o.decision || o.decision === "pending") return false;
+        try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date(o.decidedAt)) === shDayKey; } catch { return false; }
+      }).length
+        + db.list<any>("decisions").filter((d: any) => {
+          if (!d.decidedAt || !d.decision || d.decision === "pending") return false;
+          try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date(d.decidedAt)) === shDayKey; } catch { return false; }
+        }).length;
+      // R10.11-4③：入池=discovery 实况 status=watch 计数（原 raw−trimmed 把非当日 filtered 算入）
+      const todayRecord = db.get<any>("discovery", "collectall-" + shDayKey);
+      const inPool = todayRecord ? todayRecord.candidates.filter((c: any) => c.status === "watch" || c.status === "selected").length : null;
       return json({
         generatedAt: now(),
         groups: groupStats,
+        inPool,
         opportunities,
         decidedToday,
         pendingOutlines: outlinesPending,

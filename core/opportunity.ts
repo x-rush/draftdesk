@@ -1,5 +1,8 @@
-// 机会引擎（第五轮 §1）：三大机会引擎（站群/应用/内容）的统一输入层。
-// 四类信号 → opportunity 统一记录；判定逻辑写成共享纯函数，两个执行者共用：
+// 机会引擎（第五轮 §1；R10.11-2 老大拍板 B 定稿）：四信号七生成器统一输入层。
+// **全引擎自动出卡，external 模式照跑**——应用机会从所有采集数据里找，热词趋势
+// 也是来源之一（老大 2026-10-18 10:44 原话）；机会生成属采集侧衍生，不受消费
+// 模式门控（互斥的是「分析消费」，不是「信号扫描」）。config.autoOpportunityGenerate
+// 可关（默认开；关闭后只保留组级手动转卡 from-group）。
 // · external（默认，我们的现状）：外部 Agent 点 POST /opportunities/generate 触发生成；
 //   consumerMode=external 时 worker 不自动跑（内置 AI 只管采集与初筛，不做机会生成）。
 // · builtin：worker 每日 opportunityTick 自动跑一次（同一套规则，仅执行者不同）。
@@ -352,8 +355,9 @@ export function groupOpportunityDrafts(g: NonNullable<TriageRecord["groups"][num
   const appId = g.appGap ? "opp-" + hash(`app:grp:${g.id}`).slice(0, 20) : undefined;
   const contentIds = angles.map((a) => "opp-" + hash(`site:grp:${g.id}:${a.platform}`).slice(0, 20));
   const verdictReason = `注意力 ${ATTENTION_LABELS[g.attention]}（${(g.sources || []).join("/") || "AI 语义初筛"}）：${g.reason}`.slice(0, 160);
+  // R10.11-4④：同组同平台多角度 dedupeKey 加角度指纹（原同平台第二角度覆盖第一角度）
   const drafts: Draft[] = angles.map((a) => ({
-    dedupeKey: `site:grp:${g.id}:${a.platform}`, kind: "site", signals: ["news"],
+    dedupeKey: `site:grp:${g.id}:${a.platform}:${hash(a.angle).slice(0, 8)}`, kind: "site", signals: ["news"],
     evidenceIds: [], url: g.representativeUrl, title: g.title.slice(0, 120),
     oneLiner: `${PLATFORM_LABELS[a.platform] || a.platform}角度（AI 语义初筛）：${a.angle.slice(0, 100)}`,
     form: undefined,
@@ -376,8 +380,9 @@ export function groupOpportunityDrafts(g: NonNullable<TriageRecord["groups"][num
 
 // 外部 Agent 机会卡写口（R10.7 P0-5）：suggest 令牌直达 upsert（form 走严格六值归一）
 export function writeAgentOpportunity(db: Store, draft: { title: string; oneLiner: string; form?: unknown; monetization?: string; signals?: unknown[]; url?: string; term?: string; verifyPlan?: string[] }) {
-  const form = draft.form !== undefined ? normalizeForm(draft.form) : undefined;
-  if (draft.form !== undefined && form === undefined) throw new AppError(`未知产品形态；允许值：${FORM_KEYS.join(", ")}`, 400);
+  // R10.11-4⑥：form 必填（Agent 不传 form 就是没想好形态——不给 kind 兜底猜测）
+  const form = normalizeForm(draft.form);
+  if (!form) throw new AppError(`产品形态（form）必填；允许值：${FORM_KEYS.join(", ")}`, 400);
   const signals = (Array.isArray(draft.signals) ? draft.signals : ["news"]).filter((x): x is OpportunitySignal => ["complaint", "newtech", "news", "trend"].includes(String(x)));
   const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
   upsert(db, {
@@ -449,14 +454,19 @@ export function generateOpportunities(db: Store, opts: { source?: "auto" | "agen
   const source = opts.source ?? "agent";
   const since = Date.now() - (opts.lookbackDays ?? 30) * 86400000;
   const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
-  generateFromComplaints(db, source, counters);
-  generateFromNewtech(db, source, counters, since);
-  generateFromNews(db, source, counters, since);
-  generateFromTrend(db, source, counters);
-  generateFromSiteCandidates(db, source, counters);
+  // R10.11-2②：config.autoOpportunityGenerate 开关（默认开=全引擎；关=只保留组级转卡）
+  const auto = db.get<any>("config", "autoOpportunityGenerate");
+  const groupsOnly = auto?.enabled === false;
+  if (!groupsOnly) {
+    generateFromComplaints(db, source, counters);
+    generateFromNewtech(db, source, counters, since);
+    generateFromNews(db, source, counters, since);
+    generateFromTrend(db, source, counters);
+    generateFromSiteCandidates(db, source, counters);
+    generateFromLaunches(db, source, counters);
+  }
   generateFromGroups(db, source, counters);
-  generateFromLaunches(db, source, counters);
-  return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal };
+  return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal, ...(groupsOnly ? { groupsOnly: true as const } : {}) };
 }
 
 // 存量 news/newtech 卡复检（批 1 收尾②）：按收紧后的 launch gate 重跑，

@@ -173,6 +173,10 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - **哥飞分工（第七轮批4 v3.1 手动优先，覆盖旧口径）**：外部 Agent **直连哥飞永久移除**——哥飞 API 调用唯一出口=工作台内置 tick（token 在 settings，用户自填）。外部 Agent 为**只读消费方**：读词库指标/机会卡/标杆站页面（GET /agent/benchmark-pages）/外链来源站（GET /agent/link-prospects）做分析与意图交叉验证（哥飞权威 vs 内置标注，冲突标 intent-conflict 留人工）。付费接口自动调用由用户在 settings 授权勾选（autoMetrics/autoCollect，默认关=纯手动模式）；手动数据经「站点发现页手动回传框」或 POST /api/v1/seo-terms/manual 落库（✋manual-gephei 权重最高）。判定方法论共用 skills/seo-methodology/SKILL.md（工作台内置，与内置判定同源）。
 - **哥飞余额语义（实测）**：`GET /api/v1/me` 返回 `apiAvailable`（开放 API 可用，工作台自动调用只扣这部分）/`wallet.daySpent/dayCap`（日上限）/`gift`（每日赠送 500，仅限网站内使用，API 不扣）。响应归一已按真实合同校准（2026-10-14 实测：data.keywords 为 map；volume 值含 avg/avgCpc；difficulty 值为纯数字）。
 
+## 机会引擎口径（R10.11-2 老大拍板 B，2026-10-18 定稿）
+
+**全引擎自动出卡，external 模式照跑**——「应用机会就是都要从所有采集数据里找，热词趋势也是应用机会来源」（老大原话）。七生成器（抱怨/新产品/官方动态/热词/站群候选/组级 appGap/新站复刻）每日初筛后自动执行，产出属采集侧衍生，不受消费模式互斥门控。config.autoOpportunityGenerate 可关（默认开；关闭只留组级 from-group 手动转卡）。
+
 ## R10 四段流水线（2026-10-17 终版，外部 Agent 必读）
 
 **① 全量采集（01:00 上海，collectAllTick）**：全部 enabled 内容源一次采集落盘（discovery 批次 jobId=`collectall-{日}`，planName=「全量采集」）。当日双闸（非当日 filtered；RSS 24h fallback）+ 超 300 按「当日新>热度」精简 + 跨源 URL 去重。计划的 sourceIds 退化为分析期过滤条件（定时采集已迁移关停）。web 搜索源不在全量采集范围（它是查询执行器，仍由计划/补证路径驱动）。

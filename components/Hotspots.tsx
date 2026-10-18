@@ -28,6 +28,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
   const healthById=new Map((feed?.sourceHealth||[]).map(s=>[s.id,s]));
   const uncollectedLabel=(id:string)=>{
     if(healthById.get(id)?.status==="failed")return" · 上次采集失败";
+    if(!batch?.sources)return""; // R10.11-3：批次缺失不显示标签（不错显）
     if(collectedIds.has(id))return" · 今日已采";
     return" · 未进今日批";
   };

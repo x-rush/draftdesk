@@ -24,31 +24,17 @@ function job(id: string, planId: string, state: string, finishedAt?: string) {
   return { id, planId, state, createdAt: new Date().toISOString(), ...(finishedAt ? { finishedAt } : {}), evidenceIds: [], calls: 0, reservedTokens: 0, actualTokens: 0, warnings: [], steps: [] };
 }
 
-test("闸门：24h 内完成→置位；25h 前→不置位；运行中→不置位；同日幂等", () => {
+test("闸门（R10.11-5 重写）：当日 collect-all 批落盘→置位；无批→不置位；同日幂等", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-gate-"));
   let db: Store | undefined;
   try {
     db = setup(dir);
-    // 25h 前完成 → 不置位（滚动窗外）
-    db.put("jobs", "j-old", job("j-old", "p1", "completed", new Date(Date.now() - 25 * 3600000).toISOString()));
-    assert.equal(seenTermsGate(db), undefined, "25h 前的完成不应置位");
-    // 24h 内完成 → 置位
-    db.del("jobs", "j-old");
-    db.put("jobs", "j-new", job("j-new", "p1", "completed", new Date().toISOString()));
+    const shDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+    assert.equal(seenTermsGate(db), undefined, "无当日批不应置位");
+    db.put("meta", "collect-all-done:" + shDay, { at: new Date().toISOString(), sources: 38, raw: 1000 });
     const gate = seenTermsGate(db);
-    assert.equal(gate?.date, new Date().toISOString().slice(0, 10));
-    assert.equal(seenTermsGate(db)?.date, gate?.date);
-    // 运行中 → 不置位（独立新库验证）
-    db.close();
-    const dir2 = mkdtempSync(path.join(tmpdir(), "draftdesk-gate2-"));
-    try {
-      const db2 = new Store(dir2);
-      db2.put("jobs", "j-run", job("j-run", "p1", "running"));
-      assert.equal(seenTermsGate(db2), undefined);
-      db2.close();
-    } finally {
-      cleanup(dir2);
-    }
+    assert.equal(gate?.date, shDay, "批落盘后置位为上海日");
+    assert.equal(seenTermsGate(db)?.date, gate.date, "同日幂等");
   } finally {
     db?.close();
     cleanup(dir);

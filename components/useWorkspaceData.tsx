@@ -92,7 +92,7 @@ export function useWorkspaceData() {
   const [seenLoading, setSeenLoading] = useState(false);
   const [previewPlan, setPreviewPlan] = useState("daily-editorial");
   const knownJobs = useRef(new Map<string, string>()), activityReady = useRef(false), activitySince = useRef(Date.now()), restoreScroll = useRef(true);
-  const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
+  const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), mode: discoveryMode, jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
   const currentKey = useRef(requestKey), requestVersion = useRef(0);
   currentKey.current = requestKey;
   async function refresh() {
