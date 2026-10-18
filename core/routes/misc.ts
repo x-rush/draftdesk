@@ -113,6 +113,16 @@ export const routes: RouteDef[] = [
     },
   },
   {
+    // R10.13：DiscoveryLens 按需拉全量候选（workspace 的 discovery 已瘦身为摘要）
+    methods: ["GET"],
+    pattern: "discovery/:jobId",
+    handler: ({ db, params }) => {
+      const record = db.get<any>("discovery", params.jobId);
+      if (!record) throw new AppError("批次不存在", 404, "NOT_FOUND");
+      return json(record);
+    },
+  },
+  {
     // 手动触发内置分析（信息架构 v2 增补）：入队 job，worker 认领后跑整理/提词/审核链
     methods: ["POST"],
     pattern: "plans/:id/analyze",

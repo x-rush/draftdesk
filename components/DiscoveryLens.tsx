@@ -1,7 +1,7 @@
 "use client";
-import {useState} from "react";
+import {useState,useEffect} from "react";
 import type {DiscoveryRecord} from "../core/discovery";
-import {date} from "./ui";
+import {date, api} from "./ui";
 
 // 注意力判级徽章（R9-6③）：AI 语义初筛产出，随 candidate.reason/groupId 一并审查台可见
 const ATTENTION_BADGE: Record<string,{label:string;cls:string}>={
@@ -10,7 +10,15 @@ const ATTENTION_BADGE: Record<string,{label:string;cls:string}>={
   none:{label:"○ 无注意力",cls:"att-none"},
 };
 
-export function DiscoveryLens({record,mode}:{record:DiscoveryRecord|null;mode:"watch"|"coverage"}){
+// R10.13：workspace 的 discovery 是轻量摘要（无 candidates）——Lens 挂载时按需拉全量
+export function DiscoveryLens({record: slim, mode}: { record: DiscoveryRecord | null; mode: "watch" | "coverage" }) {
+  const [record, setRecord] = useState<DiscoveryRecord | null>(null);
+  useEffect(() => {
+    if (!slim?.jobId) { setRecord(null); return; }
+    if ((slim as any).candidates) { setRecord(slim); return; } // 已是全量（测试/直传场景）
+    void api<DiscoveryRecord>("discovery/" + slim.jobId).then(setRecord).catch(() => setRecord(null));
+  }, [slim?.jobId]);
+
   const [query,setQuery]=useState(""),[includeFiltered,setIncludeFiltered]=useState(false),[page,setPage]=useState(1);
   if(!record)return <section className="lens-empty"><h2>还没有采集覆盖记录</h2><p>可以先做一次只采集预览，查看来源、筛选和失败情况；正式研究才会调用 AI。外部 Agent 提交的材料按收件回执查看。</p></section>;
   const watched=record.candidates.filter(c=>c.status==="watch"||(includeFiltered&&c.status==="filtered"));

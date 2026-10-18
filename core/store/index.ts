@@ -187,7 +187,16 @@ export class Store {
       submissions: this.list<any>("receipts").map((r) => ({ ...r, jobs: allJobs.filter((j) => j.receiptId === r.id || (!j.receiptId && j.external && j.evidenceIds.length === r.evidenceIds.length && j.evidenceIds.every((id) => r.evidenceIds.includes(id)))) })),
       budget: this.dayBudget(),
     };
-    if (!params) return { ...snapshot, discovery: snapshot.discovery.slice(0, 5), evidence: snapshot.evidence.slice(0, 300), jobs: snapshot.jobs.slice(0, 40), submissions: snapshot.submissions.slice(0, 30) };
+    // 接口瘦身（R10.13）：discovery 只返回轻量摘要（元信息+来源覆盖+状态计数），
+    // 不带 candidates 数组（单条可达 1.3MB，5 条 = 2-6MB 拖慢 workspace）。
+    // DiscoveryLens 需要候选详情时走 GET /discovery/:jobId 按需拉取。
+    const slimDiscovery = (d: DiscoveryRecord) => {
+      const counts = { watch: 0, selected: 0, filtered: 0, archived: 0 };
+      for (const c of d.candidates || []) { if (c.status in counts) (counts as any)[c.status]++; }
+      const { candidates, ...meta } = d;
+      return { ...meta, candidateCount: (d.candidates || []).length, candidateStatusCounts: counts };
+    };
+    if (!params) return { ...snapshot, discovery: snapshot.discovery.slice(0, 5).map(slimDiscovery), evidence: snapshot.evidence.slice(0, 300), jobs: snapshot.jobs.slice(0, 40), submissions: snapshot.submissions.slice(0, 30) };
     const pageSize = Math.min(100, Math.max(1, Math.floor(Number(params.get("pageSize"))) || 20));
     const paginate = <T,>(items: T[], key: string) => {
       const pages = Math.max(1, Math.ceil(items.length / pageSize));
@@ -218,7 +227,7 @@ export class Store {
     const interested = this.get<any>("config", "main")?.interestedCategories as string[] | undefined;
     const hotspotSummary = hotspotFeed(snapshot.discovery, new URLSearchParams("hotspotConsumed=include"), 1, consumedHotspotKeys, hotspotCategoryMap, interested);
     const hotspotConsumption = consumptionSummary(this, "hotspots");
-    return { ...snapshot, discovery: params.get("jobId") ? researchDiscovery.find((d) => d.jobId === params.get("jobId")) || null : researchDiscovery[0] || null,
+    return { ...snapshot, discovery: params.get("jobId") ? (researchDiscovery.find((d) => d.jobId === params.get("jobId")) || null) && slimDiscovery(researchDiscovery.find((d) => d.jobId === params.get("jobId"))!) : researchDiscovery[0] ? slimDiscovery(researchDiscovery[0]) : null,
       hotspots: view === "hotspots" ? hotspotFeed(snapshot.discovery, params, pageSize, consumedHotspotKeys, hotspotCategoryMap, interested) : null, artifacts: artifacts.items, jobs: jobs.items,
       submissions: submissions.items.map((r) => ({ ...r, artifacts: snapshot.artifacts.filter((a) => r.artifactIds?.includes(a.id) || r.jobs.some((j: Job) => j.id === a.jobId)) })),
       evidence: snapshot.evidence.filter((e) => artifacts.items.some((a) => a.evidenceIds.includes(e.id))),
