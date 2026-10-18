@@ -310,36 +310,3 @@ export function recoverOrphanJobs(db: Store, maxAgeMs = 30 * 60000) {
   }
   return recovered;
 }
-
-export function scheduleTick(db: Store, date = new Date()) {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
-  const parts = fmt.formatToParts(date);
-  const get = (k: string) => parts.find((p) => p.type === k)!.value;
-  const day = `${get("year")}-${get("month")}-${get("day")}`,
-    time = `${get("hour")}:${get("minute")}`;
-  for (const p of db.list<Job["plan"]>("plans"))
-    if (p.kind !== "activities" && p.scheduleEnabled && time >= p.dailyTime) {
-      if(p.scheduleActivatedAt){
-        const enabled=fmt.formatToParts(new Date(p.scheduleActivatedAt));
-        const part=(key:string)=>enabled.find(x=>x.type===key)!.value;
-        const enabledDay=`${part("year")}-${part("month")}-${part("day")}`;
-        if(enabledDay>day || enabledDay===day && `${part("hour")}:${part("minute")}`>p.dailyTime)continue;
-      }
-      try {
-        db.enqueue(p.id, [], `${p.id}:${day}`);
-      } catch (e) {
-        db.put("meta", "schedule-error", {
-          at: now(),
-          message: e instanceof AppError ? e.message : "定时入队失败",
-        });
-      }
-    }
-}

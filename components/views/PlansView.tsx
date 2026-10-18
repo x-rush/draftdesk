@@ -14,7 +14,6 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { busy, setPlan, navigate, act, setNotice } = ws;
   const [analyzeBusy, setAnalyzeBusy] = useState("");
   const plans = data.plans || [];
-  const scheduled = plans.filter((p) => p.scheduleEnabled).length;
   const enabledSources = (data.sources || []).filter((s) => s.enabled !== false).length;
   const activeRuns = data.stats?.activePlanIds?.length ?? 0;
 
@@ -22,8 +21,8 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
     <>
       {/* ① 统计条 */}
       <div className="stat-strip">
-        <div className="stat-card"><strong>{plans.length}</strong><span>研究策略</span><small>{scheduled} 个启用每日调度</small></div>
-        <div className="stat-card accent"><strong>{scheduled}</strong><span><Clock size={13} /> 启用调度</span><small>每晚自动采集与分析</small></div>
+        <div className="stat-card"><strong>{plans.length}</strong><span>研究策略</span><small>分析口径配置 · 每日 01:00 全量采集统一执行</small></div>
+        <div className="stat-card accent"><strong>{enabledSources}</strong><span><RadioTower size={13} /> 全量采集源</span><small>每日 01:00 一次采回</small></div>
         <div className="stat-card"><strong>{enabledSources}</strong><span><RadioTower size={13} /> 数据源启用</span><small>共 {(data.sources || []).length} 个可配置</small></div>
         <div className="stat-card"><strong>{activeRuns}</strong><span><Play size={12} /> 运行中</span><small>{activeRuns ? "运行记录页可查进度" : "当前无运行任务"}</small></div>
       </div>
@@ -48,9 +47,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
             <article className="plan-card" key={p.id}>
               <div className="plan-card-head">
                 <span className="pill">{kindPlanLabels[p.kind]}</span>
-                <span className={"pill" + (p.scheduleEnabled && p.kind !== "activities" ? " sched-on" : "")}>
-                  {p.kind === "activities" ? "手动采集" : p.scheduleEnabled ? <><Clock size={11} /> 每天 {p.dailyTime}</> : "手动运行"}
-                </span>
+                <span className="pill" title="R10 起：每日 01:00 全量采集统一执行，本策略定义分析口径">分析口径 · 每日 01:00 全量采集承接</span>
                 {running && <span className="pill sched-run"><Play size={11} /> 运行中</span>}
               </div>
               <h3 className="plan-name"><Layers size={16} />{p.name}</h3>
@@ -71,24 +68,14 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                     <button className="primary" style={{ whiteSpace: "nowrap" }} onClick={() => navigate("activities")}>前往采集</button>
                   ) : (
                     <>
-                      <button disabled={busy || analyzeBusy === p.id} onClick={() => void (async () => {
+                      <button className="primary" disabled={busy || analyzeBusy === p.id || running} title="按本策略口径重读源并跑内置分析（与每日 01:00 全量采集相互独立，会重复消耗模型额度）" onClick={() => void (async () => {
                         setAnalyzeBusy(p.id);
                         try {
                           const r = await api<{ triggered: boolean; running: boolean }>("plans/" + p.id + "/analyze", {});
-                          setNotice(r.triggered ? "内置分析已入队（整理→提词→审核）。" : "该策略已有分析在运行。");
+                          setNotice(r.triggered ? "已入队：按本策略口径重读源 + 内置分析（整理→提词→审核）。" : "该策略已有分析在运行。");
                           await ws.refresh();
                         } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
-                      })()}>{analyzeBusy === p.id ? "分析入队中…" : "立即分析"}</button>
-                      <button className="primary" disabled={busy || running} title={running ? "该策略已有任务在运行" : undefined} onClick={() =>
-                        void act(async () => {
-                          await api("jobs", { planId: p.id });
-                          navigate("runs");
-                          setNotice("研究任务已入队。");
-                        })
-                      }>
-                        <Play size={15} />
-                        运行
-                      </button>
+                      })()}><Play size={15} /> {analyzeBusy === p.id ? "分析入队中…" : "手动跑一次分析"}</button>
                     </>
                   )}
                   <details className="more-menu" data-popover>

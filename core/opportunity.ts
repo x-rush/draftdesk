@@ -13,7 +13,7 @@ import { judgeVerdict, platformOf } from "./seen-judge";
 import { valueScoreOf } from "./seo-gate";
 import { termId } from "./seen-terms";
 import { ATTENTION_LABELS, type TriageRecord } from "./triage";
-import { FORM_MONETIZATION, FORM_KEYS, normalizeForm } from "./platforms";
+import { FORM_MONETIZATION, FORM_KEYS, normalizeForm, PLATFORM_LABELS } from "./platforms";
 import type { OpportunityForm } from "./platforms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
@@ -30,7 +30,7 @@ export const SIGNAL_LABELS: Record<OpportunitySignal, string> = {
   trend: "热词趋势",
 };
 export const KIND_LABELS: Record<OpportunityKind, string> = { site: "站群/内容页", app: "应用" };
-export const PLATFORM_LABELS: Record<string, string> = { gzh: "公众号", tiebuhao: "贴图号", "xhs-note": "小红书笔记", "xhs-video": "小红书视频（后置）", threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn" };
+
 
 export type Opportunity = {
   id: string;

@@ -49,7 +49,7 @@ export function Review() {
   const [persona, setPersona] = useState<any>(null);
   const [personaText, setPersonaText] = useState("");
   const [aiPolicy, setAiPolicy] = useState<any>(null);
-  const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "公众号", contentType: "长文", title: "" });
+  const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "gzh", contentType: "长文", title: "" });
   const [clusters, setClusters] = useState<any[]>([]);
   // R10 第4段：今日总览（四段流水线一屏看全）+ 外部消费回执（超 24h 未跑提醒）
   const [today, setToday] = useState<any>(null);
@@ -65,6 +65,7 @@ export function Review() {
     ]);
     setRows(list.items);
     setClusters(clustersRes.items);
+    setToday(await api<any>("summary/today").catch(() => null)); // P1-2：拍板后总览随 reload 刷新
     return stats;
   }
   useEffect(() => {
@@ -212,16 +213,20 @@ export function Review() {
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
 
-      {/* ⓪ 今日总览（R10 四段流水线）：采集 → 初筛 → 待拍 → 大纲/机会；外部消费回执 */}
+      {/* ⓪ 今日总览（R10.8 P1-2 六段）：采集→精简→组→待拍→已拍→机会卡→外部回执 */}
       {today && (
         <div className="stat-strip" style={{ marginBottom: 8 }} aria-label="今日总览">
-          <div className="stat-card"><strong>{today.collectAll?.raw ?? "—"}</strong><span>采集（{today.collectAll?.sources ?? "—"} 源{today.collectAll?.trimmed ? `，精简 ${today.collectAll.trimmed}` : ""}）</span></div>
-          <div className="stat-card"><strong>{today.pendingOutlines + today.pendingDecisions}</strong><span>待拍（大纲 {today.pendingOutlines} · 决策 {today.pendingDecisions}）</span></div>
-          <div className="stat-card"><strong>{today.todayChecks?.total ?? 0}</strong><span>今日待查词（哥飞手动）</span></div>
+          <div className="stat-card"><strong>{today.collectAll?.raw ?? "—"}</strong><span>采集（{today.collectAll?.sources ?? "—"} 源）</span></div>
+          <div className="stat-card"><strong>{today.collectAll?.trimmed ?? "—"}</strong><span>精简（入池 {today.collectAll ? (today.collectAll.raw ?? 0) - (today.collectAll.trimmed ?? 0) : "—"}）</span></div>
+          <div className="stat-card accent"><strong>{today.groups ? today.groups.strong + today.groups.potential : "—"}</strong><span>组（强 {today.groups?.strong ?? 0} / 潜 {today.groups?.potential ?? 0} / 无 {today.groups?.none ?? 0}）</span></div>
+          <div className="stat-card"><strong>{(today.pendingOutlines ?? 0) + (today.pendingDecisions ?? 0)}</strong><span>待拍（大纲 {today.pendingOutlines ?? 0} · 决策 {today.pendingDecisions ?? 0}）</span></div>
+          <div className="stat-card"><strong>{today.decidedToday ?? 0}</strong><span>今日已拍</span></div>
+          <div className="stat-card"><strong>{today.opportunities ?? 0}</strong><span>机会卡</span></div>
           <div className={"stat-card" + (today.externalConsumption?.stale ? " accent" : "")}>
             <strong>{today.externalConsumption ? today.externalConsumption.consumed : "—"}</strong>
-            <span>外部消费{today.externalConsumption ? `（${String(today.externalConsumption.by || "").replace("agent:", "")} · ${new Date(today.externalConsumption.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}）` : "（无回执）"}</span>
+            <span>外部消费{today.externalConsumption ? `（${String(today.externalConsumption.by || "").replace("agent:", "")}）` : "（无回执）"}</span>
             {today.externalConsumption?.stale && <small>⚠️ 超 24h 未跑——检查外部 Agent 调度</small>}
+            {!today.externalConsumption && <small>接上：外部 Agent 跑完 ping POST /api/v1/agent/consume-report（consume 令牌，body {"{"}consumed:N{"}"}），见外部接入页</small>}
           </div>
         </div>
       )}

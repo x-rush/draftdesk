@@ -204,7 +204,7 @@ export function Discussion({
       {hotspotContext && <div className="discussion-context"><strong>讨论上下文</strong><span>{hotspotContext.source} · {hotspotContext.title}</span><a href={hotspotContext.url} target="_blank" rel="noopener noreferrer">查看原文 ↗</a>
         <button disabled={outlineBusy} onClick={() => {
           setOutlineBusy(true);
-          void api("outlines", { clusterId: "clu-inbox", platform: "公众号", contentType: "资讯解读", title: hotspotContext.title, keyPoints: [], evidenceRefs: [hotspotContext.url] })
+          void api("outlines", { clusterId: "clu-inbox", platform: "gzh", contentType: "资讯解读", title: hotspotContext.title, keyPoints: [], evidenceRefs: [hotspotContext.url] })
             .then(() => { setSavedNotice("已生成大纲（选题收集箱），进入每日发现待拍队列。"); onOutlineCreated?.(); })
             .catch((e) => setError((e as Error).message))
             .finally(() => setOutlineBusy(false));

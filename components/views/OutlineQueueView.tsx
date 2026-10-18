@@ -118,10 +118,9 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                 </div>
                 <div className="row-side">
                   <small>{o.evidenceRefs?.length || 0} 条数据源</small>
+                  {/* R10.8 P1-4：拍板口收敛到审查台（唯一拍板口），队列侧只读+跳转 */}
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={busy} onClick={() => void decideGroup(group, "approved").then(() => setNotice(dupCount > 1 ? `已通过 ${dupCount} 条（含同题）。` : "已通过，进入选题库。"))}>通过{dupCount > 1 ? ` ×${dupCount}` : ""}</button>
-                    <button disabled={busy} onClick={() => setReasonFor(reasonFor === o.id ? null : o.id)}>否决</button>
-                    <button disabled={busy} onClick={() => void decideGroup(group, "deferred")}>暂缓</button>
+                    <button className="primary" onClick={() => navigate("decisions")}>去审查台拍板 ↗</button>
                   </div>
                   {reasonFor === o.id && (
                     <Select aria-label={o.title + " 否决原因"} placeholder="选否决原因…" onChange={(e) => { const v = e.target.value; if (v) { setReasonFor(null); void decideGroup(group, "rejected", v); } }} style={{ marginTop: 6 }}>

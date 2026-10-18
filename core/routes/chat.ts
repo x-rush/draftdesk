@@ -83,7 +83,7 @@ export const routes: RouteDef[] = [
   {
     methods: ["GET"],
     pattern: "skills",
-    handler: () => json(skillCatalog.map((s) => ({ ...s, ...loadSkill(s.id) }))),
+    handler: () => json({ items: skillCatalog.map((s) => ({ ...s, ...loadSkill(s.id) })) }),
   },
   {
     methods: ["GET"],

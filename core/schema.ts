@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PLATFORM_KEYS, type PlatformKey } from "./platforms";
 export const id = z
   .string()
   .min(1)
@@ -98,7 +99,7 @@ export const artifactSchema = z.discriminatedUnion("kind", [
         platforms: z
           .array(
             z.object({
-              name: z.enum(["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"]),
+              name: z.enum(PLATFORM_KEYS as [PlatformKey, ...PlatformKey[]]),
               titles: z.array(z.string().max(120)).min(1).max(3),
               hook: text,
               structure: z.array(text).min(2).max(12),
@@ -349,8 +350,8 @@ export const planSchema = z
     // 源绑定矩阵（第五轮 §1⑦）：上限从 12→24（五轮）→32（R9-2 并入四聚合源）
     sourceIds: z.array(id).min(1).max(32),
     // 平台适配（第五轮 §1⑥b；R9-3① tiehao→tiebuhao 枚举修复，扩四平台）：机会引擎二次精筛 watch 池的平台权重标签
-    // R10 第2段：平台扩 9 值（+x/facebook/instagram/linkedin 图文；xhs-video 视频后置占位）
-    platformAffinity: z.array(z.enum(["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"])).max(9).optional(),
+    // R10.9 P2-2：平台枚举唯一定义在 platforms.ts（schema 引用防双份漂移）
+    platformAffinity: z.array(z.enum(PLATFORM_KEYS as [PlatformKey, ...PlatformKey[]])).max(9).optional(),
     // 语义初筛策略（R9-6②）：enabled 缺省=trends 类计划开、其余关；档位总开关在 config.aiPolicy.triage。
     aiPolicy: z.object({
       enabled: z.boolean().optional(),

@@ -6,7 +6,7 @@ import { json } from "../http/middleware";
 import { AppError, now } from "../store";
 import { sourceSchema } from "../schema";
 import type { Plan, Source } from "../schema";
-import { candidateFromItem, collect, readAggregatedHotlist, readHotspotSource } from "../sources";
+import { candidateFromItem, collect, readAggregatedHotlist, readHotspotSource, parseFeed, safeRead } from "../sources";
 import { isAggregatePlatform } from "../hotlists";
 import type { DiscoveryRecord } from "../discovery";
 
@@ -37,10 +37,13 @@ export const routes: RouteDef[] = [
     pattern: "source-check",
     handler: async ({ db, req, readBody }) => {
       const { sourceId } = z.object({ sourceId: z.string() }).strict().parse(await readBody());
-      const source = db.get<{ type: string; query?: string; name: string }>("sources", sourceId);
-      if (!source || source.type !== "aggregated" || !source.query || !isAggregatePlatform(source.query)) throw new AppError("请选择聚合热榜来源。");
-      const items = await readAggregatedHotlist(source.query, req.signal);
-      return json({ ok: true, count: items.length, updatedAt: items[0].acquisition?.observedAt, method: "aggregator", provider: "DailyHotApi", platform: source.name });
+      const source = db.get<{ type: string; query?: string; name: string; url?: string }>("sources", sourceId);
+      if (!source || !["aggregated", "rss", "hotlist"].includes(source.type)) throw new AppError("检测连接支持聚合热榜 / RSS / 官方热榜来源。");
+      // R10.9 P2-7：检测连接放宽到 rss/hotlist——R10 新增的 RSS 源也能在 UI 验证
+      const items = source.type === "rss"
+        ? parseFeed(await safeRead(source.url!, req.signal), source as any)
+        : await readHotspotSource(source as any, req.signal);
+      return json({ ok: true, count: items.length, updatedAt: items[0]?.collectedAt, method: source.type, provider: source.type === "rss" ? "RSS" : "官方接口", platform: source.name });
     },
   },
   {

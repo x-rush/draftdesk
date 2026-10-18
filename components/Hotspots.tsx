@@ -13,22 +13,23 @@ type HotspotsProps = {
   onPage:(page:number)=>void;onRefresh:()=>void;hotspotSort?:string;onSort:(value:string)=>void;
   onDiscuss:(row:any)=>void;onArchive:(row:any)=>void;
   onPromote:(row:any,payload:{clusterId:string;platform:string;angle:string})=>void;
-  clusters:any[];clusterId?:string;plans?:any[];
+  clusters:any[];clusterId?:string;plans?:any[];batch?:any;
 };
-export function Hotspots({feed,sources,query,status,source,plan,busy,loading,consumed,onConsumed,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort,plans}:HotspotsProps){
+export function Hotspots({feed,sources,query,status,source,plan,busy,loading,consumed,onConsumed,onQuery,onStatus,onSource,onPlan,onPage,onRefresh,onDiscuss,onArchive,onPromote,clusters,clusterId,hotspotSort,onSort,plans,batch}:HotspotsProps){
   const [promoting,setPromoting]=useState<string|null>(null);
-  const [promotePlatform,setPromotePlatform]=useState("公众号");
+  const [promotePlatform,setPromotePlatform]=useState("gzh");
   const [promoteCluster,setPromoteCluster]=useState(clusterId||"clu-inbox");
   const [promoteAngle,setPromoteAngle]=useState("");
   const available=sources.filter(s=>s.enabled&&["hotlist","aggregated","trends"].includes(s.type));
   // 来源三态标注（未采集笼统标注拆解，小拾 UI 建议落地）：
   // 上次采集失败（排了但失败，sourceHealth）/ 已排期待首采（绑定启用计划但当前批次无产出）/ 未排进计划（孤儿源，去研究策略勾选生效）
-  const scheduledIds=new Set((plans||[]).filter(p=>p.scheduleEnabled).flatMap(p=>p.sourceIds||[]));
+  // R10.8 P1-7：调度已废弃——改判「今日全量采集批覆盖」：在批里=已采，不在=未进今日批
+  const collectedIds = new Set((batch?.sources || []).map((s: any) => s.sourceId));
   const healthById=new Map((feed?.sourceHealth||[]).map(s=>[s.id,s]));
   const uncollectedLabel=(id:string)=>{
     if(healthById.get(id)?.status==="failed")return" · 上次采集失败";
-    if(scheduledIds.has(id))return" · 已排期待首采";
-    return" · 未排进计划";
+    if(collectedIds.has(id))return" · 今日已采";
+    return" · 未进今日批";
   };
   return <section className="hotspot-view" aria-label="热点列表">
     <div className="hotspot-controls hotspot-controls-wide">

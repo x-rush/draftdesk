@@ -73,6 +73,8 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 技能安装路径由各运行器决定，指导本身与 Agent 无关：已实测样例中 Hermes 放 `~/.hermes/skills/`，OpenClaw 放其工作区 `skills/` 或用户技能目录，其他 Agent 按各自官方文档加载 Skill 目录即可。工作台不自动替用户安装、创建日程或接通付费搜索；定时搜罗由 Agent 在自己的调度功能里安排。附带 Skill 描述了如何按工作台导出的策略运行外部每日研究。远程智能体需显式设置可达的安全入口；Docker 容器的 localhost 不是宿主机。**把工作台暴露到本机之外前，必须设置访问令牌**：环境变量 `DRAFTDESK_UI_TOKEN`（设置后，所有管理接口强制鉴权，未设置仅适合本机使用）——请求需带 `X-DraftDesk-UI` 头，或 `Authorization: Bearer <令牌>`，或 Basic 认证的密码位；浏览器远程访问建议在反向代理层加 Basic 认证。Agent 专用令牌（接入页创建）不受此门影响。
 
+**部署安全提醒（R10.9）**：`DRAFTDESK_UI_TOKEN` 当前未设——本机 compose 只绑 127.0.0.1 暂无暴露面；**一旦把端口映射改为对外（0.0.0.0 或反代公网），必须先配置该令牌**，否则全部 UI 管理路由（含令牌铸造、全量导出、付费调用触发）对任何能访问端口的客户端裸奔。
+
 同机运行外部 Agent 时，推荐让 Agent 只返回严格 JSON 证据包，由用户在宿主机用提交令牌直接调用 `POST /api/v1/intake` 做预检和提交；这样提交令牌不进入 Agent 对话或容器。网页提取仍受来源的登录与访问限制。外部 Agent 的模型费用和搜索额度由其运行器管理。安装与真实试跑记录见[接入说明](docs/external-onboarding.md)。
 
 ## 热词掘金与站点发现

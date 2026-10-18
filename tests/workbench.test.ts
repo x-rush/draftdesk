@@ -11,7 +11,7 @@ import {
   type Job,
 } from "../core/schema";
 import { qualityIssues } from "../core/quality";
-import { runJob, scheduleTick } from "../core/pipeline";
+import { runJob } from "../core/pipeline";
 import { structured, requestModel } from "../core/model";
 import { parseFeed, publicIp, balancedEvidence } from "../core/sources";
 import { checkRequest } from "../core/http";
@@ -126,18 +126,14 @@ test("任务领取互斥，过期租约标失败不重复执行", async () =>
   }));
 test("北京每日策略幂等，失败不自动重复付费", async () =>
   fixture((db) => {
-    db.put("plans", plan.id, {
-      ...plan,
-      scheduleEnabled: true,
-      dailyTime: "01:00",
-    });
-    scheduleTick(db, new Date("2026-09-21T00:00:00Z"));
-    scheduleTick(db, new Date("2026-09-21T01:00:00Z"));
+    // R10.9 P2-1：调度已删，等价验证 enqueue 幂等键（当日一键一任务；失败不重入队）
+    db.enqueue(plan.id, [], `${plan.id}:2026-09-21`);
+    db.enqueue(plan.id, [], `${plan.id}:2026-09-21`); // 同键幂等：返回旧任务不新增
     assert.equal(db.list("jobs").length, 1);
     const j = db.list<Job>("jobs")[0];
     db.patchJob(j.id, { state: "failed" });
-    scheduleTick(db, new Date("2026-09-21T02:00:00Z"));
-    assert.equal(db.list("jobs").length, 1);
+    db.enqueue(plan.id, [], `${plan.id}:2026-09-21`); // 幂等：失败后同键也不新增
+    assert.equal(db.list("jobs").length, 1, "失败后同键不重入队");
   }));
 test("引用原话、未知证据和单来源触发质量门槛", () => {
   assert.deepEqual(qualityIssues(topic, evidence), []);

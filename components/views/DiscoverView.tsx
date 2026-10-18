@@ -3,6 +3,7 @@
 // （PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
 import { ActivityCard, ActivityTools } from "../Activities";
 import { DiscoveryLens } from "../DiscoveryLens";
+import { useTodaySummary } from "../useTodaySummary";
 import { TriagePanorama } from "../TriagePanorama";
 import { api, date, Empty, kindLabels, Skeleton } from "../ui";
 import { Search, ArrowUpRight } from "lucide-react";
@@ -12,6 +13,7 @@ import { Select } from "../Select";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 
 export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
+  const today = useTodaySummary();
   const { view, busy, navigate, refresh, act, setNotice, jobId, setJobId, quality, setQuality, kind, setKind,
     query, setQuery, activityPlatform, setActivityPlatform, activityTime, setActivityTime,
     creation, setCreation, page, setPage, loading, discoveryMode, setDiscoveryMode,
@@ -24,6 +26,8 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
         <div className="daily-overview-head"><div><span>{data.discovery ? `最近研究 · ${data.discovery.planName} · ${date(data.discovery.at)}` : "尚无研究记录"}</span><h2>线索、判断和异常，都从这里进入</h2><p>{data.discovery ? `本轮读取 ${data.discovery.sources.reduce((n, s) => n + s.raw, 0)} 条，入模 ${data.discovery.sources.reduce((n, s) => n + s.selected, 0)} 条；下方可查看本轮覆盖。` : "配置来源后开始第一次研究，原始线索会单独保留。"}</p></div><button onClick={() => navigate(data.config.hasApiKey ? "plans" : "settings")}>{data.config.hasApiKey ? "查看研究策略" : "配置模型"} <ArrowUpRight size={15} /></button></div>
         <div className="overview-links">
           <button onClick={() => navigate("hotspots")}><span>原始热点 · 近 14 天</span><strong>{data.stats.hotspotRemaining}</strong><small>未消费 · 共 {data.stats.hotspotTotal} 条（已消费 {data.stats.hotspotConsumed}）↗</small></button>
+          <div className="stat-card"><strong>{today?.collectAll?.raw ?? "—"}</strong><span>今日采集（{today?.collectAll?.sources ?? "—"} 源）</span><small>精简 {today?.collectAll?.trimmed ?? "—"} · 组 强{today?.groups?.strong ?? 0}/潜{today?.groups?.potential ?? 0}</small></div>
+          <div className="stat-card"><strong>{(today?.pendingOutlines ?? 0) + (today?.pendingDecisions ?? 0)}</strong><span>待拍</span><small>今日已拍 {today?.decidedToday ?? 0} · 机会卡 {today?.opportunities ?? 0}</small></div>
           <button onClick={() => { setDiscoveryMode("results"); setQuality("ready"); setPage(1); }}><span>通过检查</span><strong>{data.stats.qualityCounts.ready}</strong><small>查看可考虑的推荐 ↗</small></button>
           <button onClick={() => { setDiscoveryMode("results"); setQuality("review"); setPage(1); }}><span>待验证</span><strong>{data.stats.qualityCounts.review}</strong><small>查看缺失证据 ↗</small></button>
           <button onClick={() => { setDiscoveryMode("results"); setQuality("rejected"); setPage(1); }}><span>已否决</span><strong>{data.stats.qualityCounts.rejected}</strong><small>查看排除理由 ↗</small></button>

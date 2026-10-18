@@ -48,7 +48,7 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           <span className={"activity-dot" + (on ? " online" : "")} aria-label={on ? "已启用" : "已停用"} style={{ flex: "none" }} />
           <div className="source-cell">
             <div className="term-title-line">
-              <button className="term-name" onClick={() => setSource(s)} title={s.note}>{s.name}</button>
+              <button className="term-name" onClick={() => setSource(s)} title={s.note}>{s.name}{" "}{["qbitai","ifanr","solidot","36kr-newsflashes","huxiu-moment","aihot-daily","aihot-hot"].includes(s.id) && <span className="pill" style={{ marginLeft: 6, fontSize: 10 }}>R10 新增</span>}</button>
               <span className="pill">{TYPE_LABELS[s.type] || s.type}</span>
               {!on && <span className="pill">已停用</span>}
             </div>
@@ -59,7 +59,7 @@ export function SourcesView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           </span>
         </div>
         <div className="term-actions">
-          {s.type === "aggregated" && (
+          {["aggregated", "rss", "hotlist"].includes(s.type) && (
             <button disabled={sourceChecks[s.id] === "检测中…"} onClick={() => void checkSource(s.id)}>
               {sourceChecks[s.id]?.startsWith("可用") ? "再检测" : "检测连接"}
             </button>

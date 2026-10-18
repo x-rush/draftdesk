@@ -143,8 +143,8 @@ export function useWorkspaceData() {
   }, [seenQ, seenStatus, seenIntent, seenRegion, seenOrigin, seenPage, locationReady]);
   useEffect(() => {
     setToday(new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long", timeZone: "Asia/Shanghai" }));
-    void api<any[]>("skills")
-      .then(setSkills)
+    void api<{ items: any[] }>("skills")
+      .then((r) => setSkills(r.items))
       .catch(() => { });
     void (async () => {
       try {

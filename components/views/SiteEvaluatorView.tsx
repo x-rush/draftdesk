@@ -39,7 +39,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   async function generate() {
     setGenerating(true);
     try {
-      const res = await api<{ ok: boolean; created: number; merged: number; note: string }>("opportunities/generate", {});
+      const res = await api<{ ok: boolean; created: number; merged: number; note: string }>("opportunities/generate", { source: "auto" });
       setNotice(res.note);
       await ws.refresh();
     } catch (e) {

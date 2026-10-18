@@ -1,6 +1,5 @@
 "use client";
 import { Select } from "./Select";
-import { TimePicker } from "./TimePicker";
 import { searchIntents } from "../core/research-policy";
 import { useState } from "react";
 import type { Plan, Source } from "../core/schema";
@@ -162,28 +161,8 @@ export function PlanEditor({
             </Field>
           ))}
         </div>
-        {p.kind!=="activities"&&<><label className="check">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={p.scheduleEnabled}
-            onChange={(e) => update("scheduleEnabled", e.target.checked)}
-          />
-          每天自动运行
-        </label>
-        <p className="muted">内置定时是默认研究路径，零额外组件。已有 OpenClaw／Hermes
-          等个人助理在跑同样策略的话，关掉它，改用「外部接入」让
-          Agent 自主搜罗回传，避免两边同时消耗模型额度。</p>
-        <Field label="北京时间">
-          <TimePicker
-            value={p.dailyTime}
-            onChange={(value) => update("dailyTime", value)}
-          />
-        </Field>
-        <p className="muted">
-          电脑与 Worker
-          需要保持运行。错过时间后仅补当天一次；失败不自动重复付费。所有结果先私有，公开需另行确认。
-        </p></>}
+        {p.kind!=="activities"&&<p className="muted">每日 01:00 由全量采集统一执行（全部启用源一次采回）；本策略不再单独定时——
+          它定义分析口径（源过滤/受众/预算），供「手动跑一次分析」与外部 Agent 消费使用。</p>}
         {error && (
           <p className="error" role="alert">
             {error}

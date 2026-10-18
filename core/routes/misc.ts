@@ -76,8 +76,20 @@ export const routes: RouteDef[] = [
         : caTriageFail
           ? { state: "failed" as const, at: caTriageFail.at, error: String(caTriageFail.error || "").slice(0, 160) }
           : { state: "pending" as const };
+      // R10.8 P1-2：六段总览补齐——组分布 / 机会卡数 / 今日已拍
+      const latestGroups = db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
+      const groupStats = latestGroups
+        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length, at: latestGroups.at }
+        : null;
+      const opportunities = db.list<any>("opportunities").length;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const decidedToday = db.list<any>("outlines").filter((o: any) => String(o.decidedAt || "").startsWith(todayIso) && o.decision && o.decision !== "pending").length
+        + db.list<any>("decisions").filter((d: any) => String(d.decidedAt || "").startsWith(todayIso) && d.decision && d.decision !== "pending").length;
       return json({
         generatedAt: now(),
+        groups: groupStats,
+        opportunities,
+        decidedToday,
         pendingOutlines: outlinesPending,
         pendingDecisions: decisionsPending,
         todayChecks: { total: checks.length, terms: checks },

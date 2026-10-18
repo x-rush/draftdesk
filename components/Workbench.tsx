@@ -273,8 +273,7 @@ export function Workbench() {
                   <button className={ws.discoveryMode === "queue" ? "active" : ""} aria-current={ws.discoveryMode === "queue" ? "page" : undefined} onClick={() => ws.setDiscoveryMode("queue")}>选题待拍</button>
                   {/* 语义初筛（R9-6）属初筛，external 模式照跑——待观察两模式都可见；分析结果仍 builtin 专属 */}
                   <button className={ws.discoveryMode === "watch" ? "active" : ""} onClick={() => ws.setDiscoveryMode("watch")}>本轮待观察{data.discovery ? ` ${data.discovery.candidates.filter((c) => c.status === "watch").length}` : ""}</button>
-                  {(data.config.consumerMode || "external") === "builtin" &&
-                    <button className={ws.discoveryMode === "results" ? "active" : ""} onClick={() => ws.setDiscoveryMode("results")}>分析结果</button>}
+                  <button className={ws.discoveryMode === "results" ? "active" : ""} onClick={() => ws.setDiscoveryMode("results")}>分析结果{external ? "（内置产物）" : ""}</button>
                   <button className={ws.discoveryMode === "coverage" ? "active" : ""} onClick={() => ws.setDiscoveryMode("coverage")}>来源覆盖</button>
                 </nav>
               )}
@@ -350,7 +349,8 @@ export function Workbench() {
         />
       )}{" "}
       <div className="bottom-tabs">
-        <button className={view === "discover" ? "active" : ""} onClick={() => navigate("discover")}>审查台</button>
+        <button className={view === "discover" ? "active" : ""} onClick={() => navigate("discover")}>发现</button>
+        <button className={view === "decisions" ? "active" : ""} onClick={() => navigate("decisions")}>审查台</button>
         <button className={["hotspots","trends","ideas","chat","activities"].includes(view) ? "active" : ""} onClick={() => navigate("hotspots")}>素材</button>
         <button className={["plans","sources","connections","settings"].includes(view) ? "active" : ""} onClick={() => navigate("settings")}>设置</button>
         <button onClick={() => setMobile(!mobile)}>更多</button>
