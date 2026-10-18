@@ -25,7 +25,7 @@ export const routes: RouteDef[] = [
       const parsed = z.object({
         title: z.string().min(1).max(120),
         oneLiner: z.string().min(1).max(300),
-        form: z.string().max(30).optional(),
+        form: z.enum(["web-app", "site-group", "mobile-app", "mini-program", "tool", "open-source"]),
         monetization: z.string().max(60).optional(),
         signals: z.array(z.enum(["complaint", "newtech", "news", "trend"])).max(4).optional(),
         url: z.string().max(2048).optional(),

@@ -101,6 +101,31 @@ test("R10.11-1 P0：agent 口 PUT /agent/outlines 平台归一——未知值 40
   assert.equal((await ok.json()).platform, "gzh");
 });
 
+test("R10.15：PUT /agent/opportunities form 必填六值——无 form 400 / 非法 400 / 六值全部可写 201", async () => {
+  const db = store();
+  const writer = db.createConnection("r15w", ["suggest"]);
+  const auth = { authorization: "Bearer " + writer.token, "content-type": "application/json" };
+  const B = "http://127.0.0.1:5173/api/v1/agent/opportunities";
+  const put = (body: any) => handle(new Request(B, { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify(body) }), ["agent", "opportunities"]);
+  // 无 form
+  const noForm = await put({ title: "r15 no form", oneLiner: "x" });
+  assert.equal(noForm.status, 400, "无 form → 400");
+  // 非法 form
+  const badForm = await put({ title: "r15 bad", oneLiner: "x", form: "web" });
+  assert.equal(badForm.status, 400, "旧值 web → 400");
+  // 六值全部可写
+  const six = ["web-app", "site-group", "mobile-app", "mini-program", "tool", "open-source"];
+  for (const f of six) {
+    const ok = await put({ title: `r15 ${f}`, oneLiner: "y", form: f });
+    assert.equal(ok.status, 200, `${f} → 200`);
+    assert.equal((await ok.json()).ok, true);
+  }
+  // 库内核实 kind 分档
+  const cards = db.list<any>("opportunities").filter((o) => o.title?.startsWith("r15 "));
+  assert.equal(cards.filter((o) => o.kind === "site").length, 1, "site-group → kind=site");
+  assert.equal(cards.filter((o) => o.kind === "app").length, 5, "其余五值 → kind=app");
+});
+
 test("P0-3 + P0-5：collectAll 覆盖率每源独立计数；appGap 自动转卡不受 consumerMode 门控", async () => {
   const db = store();
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());

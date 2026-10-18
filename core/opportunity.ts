@@ -407,8 +407,8 @@ export function writeAgentOpportunity(db: Store, draft: { title: string; oneLine
   const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
   upsert(db, {
     dedupeKey: `agent:${hash(String(draft.title) + "|" + String(draft.url || draft.term || "")).slice(0, 24)}`,
-    kind: form === "site-group" ? "site" : "app", signals: signals.length ? signals : ["news"],
-    evidenceIds: [], url: draft.url, term: draft.term, title: draft.title.slice(0, 120),
+    kind: form === "site-group" ? "site" : "app", // R10.15：form 已在路由层必填六值，此处仅按形态分 kind
+    evidenceIds: [], signals: signals.length ? signals : ["news"], url: draft.url, term: draft.term, title: draft.title.slice(0, 120),
     oneLiner: draft.oneLiner.slice(0, 300), form, monetization: draft.monetization?.slice(0, 60),
     verdict: "待验证", verdictReason: "外部 Agent 写入（未经工作台规则验证）",
     verifyPlan: draft.verifyPlan?.slice(0, 4) || [], source: "agent",
