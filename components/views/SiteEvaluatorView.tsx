@@ -25,6 +25,13 @@ function OpportunityBadge({ children, color }: { children: ReactNode; color?: st
 
 function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities: any[] }) {
   const { busy, setNotice } = ws;
+  // R10.14 P1-3：chips 用全库 counts（UI 列表 300 截断导致按信号筛选时 0 显示误导）
+  const [counts, setCounts] = useState<any>(null);
+  useEffect(() => { void api<any>("opportunities?limit=1").then((r) => setCounts(r.counts)).catch(() => {}); }, []);
+  const cAll = counts?.total ?? opportunities.length;
+  const cSignal = (key: string) => counts?.bySignal?.[key] ?? opportunities.filter((o) => (o.signals || []).includes(key)).length;
+  const cKind = (key: string) => counts?.byKind?.[key] ?? opportunities.filter((o) => o.kind === key).length;
+  const cForm = (key: string) => counts?.byForm?.[key] ?? opportunities.filter((o) => o.form === key).length;
   const [signal, setSignal] = useState("");
   const [source, setSource] = useState("");
   const [kind, setKind] = useState("");
@@ -33,7 +40,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   // kind 筛选（第六轮批 B §2.5①）+ form 形态筛选（第七轮批2 W7-5）
   const filtered = opportunities.filter((o) =>
     (!kind || o.kind === kind) && (!form || o.form === form) && (!signal || (o.signals || []).includes(signal)) && (!source || o.source === source));
-  const counts = { app: opportunities.filter((o) => o.kind === "app").length, site: opportunities.filter((o) => o.kind === "site").length };
   const auto = opportunities.filter((o) => o.source === "auto").length;
 
   async function generate() {
@@ -53,14 +59,14 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
     <>
       <div className="filter-row">
         <nav className="discovery-modes" aria-label="机会类型筛选">
-          <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>全部 {opportunities.length}</button>
-          <button className={kind === "app" ? "active" : ""} onClick={() => setKind("app")}>应用 {opportunities.filter((o) => o.kind === "app").length}</button>
-          <button className={kind === "site" ? "active" : ""} onClick={() => setKind("site")}>站群 {opportunities.filter((o) => o.kind === "site").length}</button>
+          <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>全部 {cAll}</button>
+          <button className={kind === "app" ? "active" : ""} onClick={() => setKind("app")}>应用 {cKind("app")}</button>
+          <button className={kind === "site" ? "active" : ""} onClick={() => setKind("site")}>站群 {cKind("site")}</button>
         </nav>
         <nav className="discovery-modes" aria-label="机会形态筛选">
           <button className={form === "" ? "active" : ""} onClick={() => setForm("")}>全部形态</button>
           {Object.entries(FORM_LABELS).map(([key, label]) => (
-            <button key={key} className={form === key ? "active" : ""} onClick={() => setForm(key)}>{label} {opportunities.filter((o) => o.form === key).length}</button>
+            <button key={key} className={form === key ? "active" : ""} onClick={() => setForm(key)}>{label} {cForm(key)}</button>
           ))}
         </nav>
       </div>
@@ -81,7 +87,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
         </button>
       </div>
       <p className="muted" style={{ fontSize: 12 }}>
-        应用 {counts.app} · 站群/内容页 {counts.site} · auto 来源 {auto} 张——四信号源：用户抱怨 / 新技术 / 新资讯 / 热词趋势；去重规则：同词或同证据集只出一张卡。
+        应用 {cKind("app")} · 站群/内容页 {cKind("site")} · 共 {cAll} 张（全库口径）——四信号源：用户抱怨 / 新技术 / 新资讯 / 热词趋势；去重规则：同词或同证据集只出一张卡。
       </p>
       {filtered.length === 0 ? (
         <Empty title="还没有机会卡。">

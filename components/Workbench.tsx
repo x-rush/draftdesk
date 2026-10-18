@@ -279,7 +279,7 @@ export function Workbench() {
               )}
               {view === "discover" && ws.discoveryMode === "queue" && <OutlineQueueView ws={ws} data={data} />}
               {view === "activities" && <p className="dash-label"><Compass size={14} /> 采集与整理<span className="dash-label-sub">四平台来源 → 三步向导 → AI 初筛 → 活动列表（通过核验可推进为选题）</span></p>}
-              {(["library", "activities"].includes(view) || (view === "discover" && ws.discoveryMode !== "queue")) && <DiscoverView ws={ws} data={data} />}
+              {(["library", "activities"].includes(view) || view === "discover") && <DiscoverView ws={ws} data={data} />}
               {view === "trends" && <SeoWorkspaceView ws={ws} data={data} />}
               {view === "ideas" && <SiteEvaluatorView ws={ws} data={data} />}
               {view === "activities" && <ActivityBatchesPanel ws={ws} data={data} />}

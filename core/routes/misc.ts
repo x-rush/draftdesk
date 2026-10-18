@@ -42,7 +42,7 @@ export const routes: RouteDef[] = [
       const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
       const checks = dailyMetricsCandidates(db, gate, markedIds)
         .filter((t) => isEnglishTerm(String(t.term || t.id)))
-        .slice(0, 5)
+        .slice(0, 10)
         .map((t) => ({
           term: String(t.term || t.id),
           observations: t.observations ?? 0,

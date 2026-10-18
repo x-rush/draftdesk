@@ -403,7 +403,7 @@ function SiteGateForm() {
             {type === "checkbox" ? (
               <input type="checkbox" checked={!!gate[key]} onChange={(e) => setGate({ ...gate, [key]: e.target.checked })} />
             ) : (
-              <input type="number" value={gate[key]} style={{ width: 80 }} onChange={(e) => setGate({ ...gate, [key]: Number(e.target.value) })} />
+              <input type="number" value={gate[key]} style={{ width: 80 }} onChange={(e) => { const v = e.target.value; if (v === "") return; const n = Number(v); if (!Number.isFinite(n) || n < 0) return; setGate({ ...gate, [key]: n }); }} />
             )}
             {label}
           </label>

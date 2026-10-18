@@ -28,14 +28,17 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
   const healthById=new Map((feed?.sourceHealth||[]).map(s=>[s.id,s]));
   const uncollectedLabel=(id:string)=>{
     if(healthById.get(id)?.status==="failed")return" · 上次采集失败";
-    if(!batch?.sources)return""; // R10.11-3：批次缺失不显示标签（不错显）
+    // R10.14 P1-1：全部 available 源都标三态——今日已采/上次采集失败/未进今日批
+    const cov=batch?.sources?.find((s:any)=>s.sourceId===id);
+    if(cov?.status==="failed")return" · 上次采集失败";
     if(collectedIds.has(id))return" · 今日已采";
+    if(!batch?.sources)return""; // 无批次信息不标
     return" · 未进今日批";
   };
   return <section className="hotspot-view" aria-label="热点列表">
     <div className="hotspot-controls hotspot-controls-wide">
       <input aria-label="搜索热点" placeholder="搜索标题、来源或筛选原因" value={query} onChange={e=>onQuery(e.target.value)}/>
-      <Select aria-label="热点来源" value={source} onChange={e=>onSource(e.target.value)}><option value="all">全部来源</option>{feed?.sourceOptions.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}{available.filter(s=>!feed?.sourceOptions.some(option=>option.id===s.id)).map(s=><option value={s.id} key={s.id}>{s.name}{uncollectedLabel(s.id)}</option>)}</Select>
+      <Select aria-label="热点来源" value={source} onChange={e=>onSource(e.target.value)}><option value="all">全部来源</option>{available.map(s=><option value={s.id} key={s.id}>{s.name}{uncollectedLabel(s.id)}</option>)}</Select>
       <Select aria-label="热点状态" value={status} onChange={e=>onStatus(e.target.value)}><option value="all">全部线索</option><option value="watch">待观察</option><option value="selected">进入过分析</option><option value="filtered">被策略筛除</option></Select>
       <Select aria-label="排序方式" value={hotspotSort||"interested"} onChange={e=>onSort(e.target.value)}><option value="interested">感兴趣分类置顶</option><option value="time">纯时间序</option></Select>
       <Select aria-label="采集策略" value={plan} onChange={e=>onPlan(e.target.value)}><option value="all">全部采集批次</option>{feed?.planOptions.map(name=><option value={name} key={name}>{name}</option>)}</Select>

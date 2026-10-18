@@ -45,7 +45,7 @@ export function TriagePanorama() {
       const platform = g.angles[0]?.platform || "gzh";
       await api("outlines", {
         clusterId: "clu-inbox", platform, contentType: "组卡直出",
-        title: g.title.slice(0, 120),
+        title: (g.angles.find((a) => a.platform === platform)?.angle || g.title).slice(0, 120), // P1-2：标题用该平台角度（选题句），无角度回退组名
         keyPoints: [...g.angles.map((a) => `${a.platform}：${a.angle}`), ...(g.appGap ? [`应用缺口：${g.appGap}`] : [])].slice(0, 8),
         evidenceRefs: g.memberUrls.slice(0, 10),
       });

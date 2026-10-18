@@ -217,11 +217,14 @@ export function Review() {
       {today && (
         <div className="stat-strip" style={{ marginBottom: 8 }} aria-label="今日总览">
           <div className="stat-card"><strong>{today.collectAll?.raw ?? "—"}</strong><span>采集（{today.collectAll?.sources ?? "—"} 源）</span></div>
-          <div className="stat-card"><strong>{today.collectAll?.trimmed ?? "—"}</strong><span>精简（入池 {today.collectAll ? (today.collectAll.raw ?? 0) - (today.collectAll.trimmed ?? 0) : "—"}）</span></div>
+          <div className="stat-card"><strong>{today.collectAll?.trimmed ?? "—"}</strong><span>精简（入池 {today.inPool ?? "—"}）</span></div>
           <div className="stat-card accent"><strong>{today.groups ? today.groups.strong + today.groups.potential : "—"}</strong><span>组（强 {today.groups?.strong ?? 0} / 潜 {today.groups?.potential ?? 0} / 无 {today.groups?.none ?? 0}）</span></div>
           <div className="stat-card"><strong>{(today.pendingOutlines ?? 0) + (today.pendingDecisions ?? 0)}</strong><span>待拍（大纲 {today.pendingOutlines ?? 0} · 决策 {today.pendingDecisions ?? 0}）</span></div>
           <div className="stat-card"><strong>{today.decidedToday ?? 0}</strong><span>今日已拍</span></div>
           <div className="stat-card"><strong>{today.opportunities ?? 0}</strong><span>机会卡</span></div>
+          <button className="stat-card clickable" onClick={() => window.location.hash = "ideas"}>
+            <strong>{today.todayChecks?.total ?? 0}</strong><span>今日待查词（哥飞手动）↗</span>
+          </button>
           <div className={"stat-card" + (today.externalConsumption?.stale ? " accent" : "")}>
             <strong>{today.externalConsumption ? today.externalConsumption.consumed : "—"}</strong>
             <span>外部消费{today.externalConsumption ? `（${String(today.externalConsumption.by || "").replace("agent:", "")}）` : "（无回执）"}</span>
