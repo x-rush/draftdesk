@@ -31,6 +31,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   const cAll = counts?.total ?? opportunities.length;
   const cSignal = (key: string) => counts?.bySignal?.[key] ?? opportunities.filter((o) => (o.signals || []).includes(key)).length;
   const cKind = (key: string) => counts?.byKind?.[key] ?? opportunities.filter((o) => o.kind === key).length;
+  const cContentLine = counts?.contentLine ?? opportunities.filter((o) => o.kind === "site" && !o.form).length;
   const cForm = (key: string) => counts?.byForm?.[key] ?? opportunities.filter((o) => o.form === key).length;
   const [signal, setSignal] = useState("");
   const [source, setSource] = useState("");
@@ -87,7 +88,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
         </button>
       </div>
       <p className="muted" style={{ fontSize: 12 }}>
-        应用 {cKind("app")} · 站群/内容页 {cKind("site")} · 共 {cAll} 张（全库口径）——四信号源：用户抱怨 / 新技术 / 新资讯 / 热词趋势；去重规则：同词或同证据集只出一张卡。
+        共 {cAll} 张——内容线 {cContentLine} · 应用 {cKind("app")} · 站群/产品 {cAll - cContentLine}——四信号源：抱怨 / 新技术 / 新资讯 / 热词趋势；去重：同词或同证据集一张卡。
       </p>
       {filtered.length === 0 ? (
         <Empty title="还没有机会卡。">

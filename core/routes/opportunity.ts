@@ -52,12 +52,13 @@ export const routes: RouteDef[] = [
       const signal = query.get("signal") || "";
       const source = query.get("source") || "";
       const form = query.get("form") || "";
+      const isContentLine = form === "content-line"; // R10.16②：kind=site 无 form = 组卡内容线
       const limit = Math.min(300, Math.max(1, Number(query.get("limit")) || 100));
       const all = db.list<any>("opportunities").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
       const items = all.filter((o) =>
         (!kind || o.kind === kind) &&
         (!source || o.source === source) &&
-        (!form || o.form === form) &&
+        (!form || (isContentLine ? (o.kind === "site" && !o.form) : o.form === form)) &&
         (!signal || (o.signals || []).includes(signal)),
       ).slice(0, limit);
       const counts = {
@@ -66,6 +67,7 @@ export const routes: RouteDef[] = [
         bySource: { auto: all.filter((o) => o.source === "auto").length, agent: all.filter((o) => o.source === "agent").length },
         bySignal: Object.fromEntries(Object.keys(SIGNAL_LABELS).map((s) => [s, all.filter((o) => (o.signals || []).includes(s as any)).length])),
         byForm: Object.fromEntries(Object.keys(FORM_LABELS).map((f) => [f, all.filter((o) => o.form === f).length])),
+        contentLine: all.filter((o) => o.kind === "site" && !o.form).length,
       };
       return json({ items, total: all.length, limit, counts, labels: { signals: SIGNAL_LABELS, kinds: KIND_LABELS, forms: FORM_LABELS } });
     },
