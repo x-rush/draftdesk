@@ -4,7 +4,7 @@
 // 启动入口：根目录 instrumentation.ts（Next 服务启动时注册，构建期与测试不触发）。
 import type { Store } from "../core/store";
 import { now } from "../core/store";
-import { recoverOrphanJobs, runJob, scheduleTick } from "../core/pipeline";
+import { recoverOrphanJobs, runJob } from "../core/pipeline";
 import { seenTermsTick } from "../core/seen-extract";
 import { judgeBackfillTick } from "../core/seen-extract";
 import { seenDiggingTick } from "../core/seen-dig";
@@ -37,7 +37,6 @@ export function startWorkerLoop(db: Store) {
         db.put("meta", "worker", { heartbeat: now(), pid: process.pid });
         // R10 第1段：每日 01:00（上海）全量采集落盘 + 内联语义初筛（自带日闸）
         await collectAllTick(db);
-        scheduleTick(db);
         seenTermsTick(db, requestModel);
         // 判定吞吐扩容（第五轮 §5）：relevance 回填判定日多批（积压 7112 → 48h <2000 的反推口径）
         judgeBackfillTick(db, requestModel);
