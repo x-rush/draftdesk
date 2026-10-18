@@ -38,9 +38,25 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   const [kind, setKind] = useState("");
   const [form, setForm] = useState("");
   const [generating, setGenerating] = useState(false);
+  // R10.17：筛选 active 时走后端查询（前端 300 缓存里 form=site-group 为 0 张的根因修复）
+  const [serverItems, setServerItems] = useState<any[] | null>(null);
+  const [serverLoading, setServerLoading] = useState(false);
+  const hasFilter = !!form || !!signal || !!source || !!kind;
+  useEffect(() => {
+    if (!hasFilter) { setServerItems(null); return; }
+    setServerLoading(true);
+    const params = new URLSearchParams({ limit: "300" });
+    if (form) params.set("form", form);
+    if (signal) params.set("signal", signal);
+    if (source) params.set("source", source);
+    if (kind) params.set("kind", kind);
+    void api<{ items: any[] }>("opportunities?" + params.toString())
+      .then((r) => setServerItems(r.items))
+      .catch(() => setServerItems([]))
+      .finally(() => setServerLoading(false));
+  }, [form, signal, source, kind]);
   // kind 筛选（第六轮批 B §2.5①）+ form 形态筛选（第七轮批2 W7-5）
-  const filtered = opportunities.filter((o) =>
-    (!kind || o.kind === kind) && (!form || o.form === form) && (!signal || (o.signals || []).includes(signal)) && (!source || o.source === source));
+  const filtered = hasFilter ? (serverItems ?? []) : opportunities;
   const auto = opportunities.filter((o) => o.source === "auto").length;
 
   async function generate() {
@@ -59,23 +75,24 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   return (
     <>
       <div className="filter-row">
-        <nav className="discovery-modes" aria-label="机会类型筛选">
-          <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>全部 {cAll}</button>
-          <button className={kind === "app" ? "active" : ""} onClick={() => setKind("app")}>应用 {cKind("app")}</button>
-          <button className={kind === "site" ? "active" : ""} onClick={() => setKind("site")}>站群 {cKind("site")}</button>
-        </nav>
         <nav className="discovery-modes" aria-label="机会形态筛选">
-          <button className={form === "" ? "active" : ""} onClick={() => setForm("")}>全部形态</button>
+          <button className={form === "" && !kind ? "active" : ""} onClick={() => { setForm(""); setKind(""); }}>全部 {cAll}</button>
           {Object.entries(FORM_LABELS).map(([key, label]) => (
-            <button key={key} className={form === key ? "active" : ""} onClick={() => setForm(key)}>{label} {cForm(key)}</button>
+            <button key={key} className={form === key ? "active" : ""} onClick={() => { setForm(key); setKind(""); }}>{label} {cForm(key)}</button>
           ))}
+          <button className={form === "content-line" ? "active" : ""} onClick={() => setForm("content-line")}>内容线 {cContentLine}</button>
         </nav>
       </div>
-      <div className="filter-row">
+      <details className="fold-card" style={{ marginBottom: 8 }}>
+        <summary style={{ fontSize: 13 }}>高级筛选（类型 / 信号源 / 来源）</summary>
+        <div className="filter-row" style={{ marginTop: 6 }}>
+        <nav className="discovery-modes" aria-label="机会类型">
+          <button className={kind === "app" && form === "" ? "active" : ""} onClick={() => { setKind(kind === "app" ? "" : "app"); setForm(""); }}>应用 {cKind("app")}</button>
+          <button className={kind === "site" && form === "" ? "active" : ""} onClick={() => { setKind(kind === "site" ? "" : "site"); setForm(""); }}>站群 {cKind("site")}</button>
+        </nav>
         <nav className="discovery-modes" aria-label="机会信号筛选">
-          <button className={signal === "" ? "active" : ""} onClick={() => setSignal("")}>全部 {opportunities.length}</button>
           {Object.entries(SIGNAL_LABELS).map(([key, label]) => (
-            <button key={key} className={signal === key ? "active" : ""} onClick={() => setSignal(key)}>{label} {opportunities.filter((o) => (o.signals || []).includes(key)).length}</button>
+            <button key={key} className={signal === key ? "active" : ""} onClick={() => setSignal(signal === key ? "" : key)}>{label} {cSignal(key)}</button>
           ))}
         </nav>
         <Select aria-label="按来源筛选" placeholder="全部来源" value={source} onChange={(e) => setSource(e.target.value)}>
@@ -86,11 +103,27 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
         <button className="button-secondary" disabled={busy || generating} onClick={() => void generate()}>
           <Sparkles size={13} /> {generating ? "生成中…" : "按四信号源生成"}
         </button>
-      </div>
+        </div>
+      </details>
       <p className="muted" style={{ fontSize: 12 }}>
         共 {cAll} 张——内容线 {cContentLine} · 应用 {cKind("app")} · 站群/产品 {cAll - cContentLine}——四信号源：抱怨 / 新技术 / 新资讯 / 热词趋势；去重：同词或同证据集一张卡。
       </p>
       {filtered.length === 0 ? (
+        hasFilter ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <p className="muted" style={{ fontSize: 15 }}>
+              {serverLoading ? "正在查询匹配的机会卡…" : "当前筛选组合下暂无卡"}
+            </p>
+            {!serverLoading && (
+              <>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  生效筛选：{[form && `形态=${form === "content-line" ? "内容线" : form}`, kind && `类型=${kind}`, signal && `信号=${signal}`, source && `来源=${source}`].filter(Boolean).join(" · ")}
+                </p>
+                <button className="button-secondary" onClick={() => { setForm(""); setKind(""); setSignal(""); setSource(""); }}>清除筛选</button>
+              </>
+            )}
+          </div>
+        ) :
         <Empty title="还没有机会卡。">
           点「按四信号源生成」跑一轮规则扫描（small-products 候选 / news 产物配套缺口推演 / 官方新品 / verdict=推荐 蓝海词）。
           consumerMode=builtin 时 worker 每天也会自动生成一次。
