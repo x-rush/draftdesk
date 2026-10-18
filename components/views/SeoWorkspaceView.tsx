@@ -5,7 +5,7 @@
 // ③ 分区扫描（新词/突增/持续 tab + 词质筛选 + 紧凑词行）
 // ④ 全量词表（区域/意图/搜索/分页，查看全部展开）
 // 旧 seo-terms 板块已在前轮移除；本页唯一数据源 = seen-terms。
-import { useMemo, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Drawer, Empty, api, Skeleton } from "../ui";
 import { Ban, CheckCircle2, Circle, ClipboardList, Crosshair, Flame, Gem, Globe, Sparkles, Star, TrendingUp, XCircle } from "lucide-react";
@@ -287,6 +287,11 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         </>
       )}
       {drawerTerm && <SeenTermDrawer ws={ws} term={drawerTerm} onClose={() => setDrawerTerm(null)} onSearch={() => searchTerm(drawerTerm.term)} />}
+      <details className="fold-card" style={{ marginTop: 12 }}>
+        <summary><h2 style={{ display: "inline", margin: 0 }}>站群门槛</h2> <small className="muted">siteCandidate 判定的五个参数（改完全局生效，内置 sweep 与 Agent 复核同源）</small></summary>
+        <SiteGateForm />
+      </details>
+
     </>
   );
 }
@@ -373,5 +378,42 @@ function SeenTermDrawer({ ws, term, onClose, onSearch }: { ws: Workspace; term: 
           <button onClick={() => { void navigator.clipboard.writeText(term.term); }}>复制</button>
         </div>
     </Drawer>
+  );
+}
+
+function SiteGateForm() {
+  const [gate, setGate] = useState<any>(null);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void api<any>("siteGate").then(setGate).catch((e: Error) => setNotice(e.message)); }, []);
+  if (!gate) return <p className="muted">{notice || "读取门槛配置…"}</p>;
+  const fields: [string, string, string][] = [
+    ["requireStrong", "必须 strong 判定", "checkbox"],
+    ["serpDedicatedMax", "SERP 竞争站上限", "number"],
+    ["monthlySearchMin", "月搜下限", "number"],
+    ["kdMax", "KD 上限", "number"],
+    ["cpcMin", "CPC 下限（美元）", "number"],
+  ];
+  return (
+    <div>
+      {notice && <p role="status" className="notice">{notice}</p>}
+      <div className="toolbar" style={{ flexWrap: "wrap", gap: 10 }}>
+        {fields.map(([key, label, type]) => (
+          <label key={key} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13 }}>
+            {type === "checkbox" ? (
+              <input type="checkbox" checked={!!gate[key]} onChange={(e) => setGate({ ...gate, [key]: e.target.checked })} />
+            ) : (
+              <input type="number" value={gate[key]} style={{ width: 80 }} onChange={(e) => setGate({ ...gate, [key]: Number(e.target.value) })} />
+            )}
+            {label}
+          </label>
+        ))}
+        <button className="primary" disabled={busy} onClick={() => void (async () => {
+          setBusy(true);
+          try { const r = await api<any>("siteGate", gate); setNotice("已保存，判定 sweep 与 Agent 复核即刻按新门槛执行。"); setGate(r); }
+          catch (e) { setNotice("保存失败：" + (e as Error).message); } finally { setBusy(false); }
+        })()}>保存门槛</button>
+      </div>
+    </div>
   );
 }

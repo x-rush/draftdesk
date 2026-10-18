@@ -55,7 +55,22 @@ export function useWorkspaceData() {
   const [activityPlatform, setActivityPlatform] = useState("all"), [activityTime, setActivityTime] = useState("all");
   const [locationReady, setLocationReady] = useState(false), [creation, setCreation] = useState("all"), [jobId, setJobId] = useState(""), [runId, setRunId] = useState("");
   const [finished, setFinished] = useState<Snapshot["jobActivity"]>([]);
-  const [discoveryMode, setDiscoveryMode] = useState<"queue" | "results" | "watch" | "coverage">("queue");
+  // R10.10-5：discoveryMode 进 URL（?mode=），刷新不回 queue
+  const [discoveryMode, setDiscoveryModeState] = useState<"queue" | "results" | "watch" | "coverage">(() => {
+    if (typeof window !== "undefined") {
+      const m = new URLSearchParams(window.location.search).get("mode");
+      if (m === "results" || m === "watch" || m === "coverage" || m === "queue") return m;
+    }
+    return "queue";
+  });
+  const setDiscoveryMode = (m: "queue" | "results" | "watch" | "coverage") => {
+    setDiscoveryModeState(m);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("mode", m);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
   const [sourceChecks, setSourceChecks] = useState<Record<string, string>>({});
   const [outlines, setOutlines] = useState<any[]>([]);
   const [clusters, setClusters] = useState<any[]>([]);

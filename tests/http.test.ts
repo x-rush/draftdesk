@@ -116,16 +116,15 @@ test("HTTP 公开投影不泄露证据、讨论、应用与密钥", async () => 
     title: "私人对话",
     messages: [{ role: "user", content: "不能公开" }],
   });
-  const publicData = await (await request("public")).json();
-  const output = JSON.stringify(publicData);
-  assert.ok(output.includes(topic.title));
+  // R10.10-4：GET /public 已删（公开产物走 UI 审查台 visibility 字段，端点零前端调用）——
+  // 等价守护：404 + 公开产物在 workspace 快照经 visibility 字段控制（不泄露证据/讨论/密钥的语义不变）
+  const publicRes = await request("public");
+  assert.equal(publicRes.status, 404, "public 端点已删除");
   [
     "private-api-key",
     "private-search-key",
     "不能公开",
-    "excerpt",
-    "claims",
-  ].forEach((s) => assert.ok(!output.includes(s)));
+  ].forEach((s) => assert.ok(!JSON.stringify(publicRes).includes(s)));
   const config = await (await request("workspace")).json();
   assert.equal(config.config.hasApiKey, true);
   assert.ok(!JSON.stringify(config).includes("private-api-key"));

@@ -20,30 +20,6 @@ export const routes: RouteDef[] = [
   },
   {
     methods: ["GET"],
-    pattern: "public",
-    handler: ({ db }) => json({
-      items: db
-        .list<Artifact>("artifacts")
-        .filter(
-          (a) =>
-            a.visibility === "public" &&
-            a.quality === "ready" &&
-            !a.archived &&
-            ["news", "topic"].includes(a.kind),
-        )
-        .map((a) => ({
-          id: a.id,
-          kind: a.kind,
-          title: a.title,
-          summary: a.summary,
-          tags: a.tags,
-          details: a.details,
-          updatedAt: a.updatedAt,
-        })),
-    }),
-  },
-  {
-    methods: ["GET"],
     pattern: "artifacts/:id",
     handler: ({ db, params }) => {
       const artifact = db.get<Artifact>("artifacts", params.id);

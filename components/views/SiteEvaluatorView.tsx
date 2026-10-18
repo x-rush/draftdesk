@@ -255,7 +255,10 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const [siteType, setSiteType] = useState("all");
   const [ignored, setIgnored] = useState<string[]>([]);
   // 单入口（第六轮批 B §2.5①）：站群候选独立 tab 撤销——应用形态机会统一在「机会引擎」（kind 筛选），站群卡不再孤岛
-  const [tab, setTab] = useState<"sites" | "launches" | "opportunities">("opportunities");
+  const [tab, setTab] = useState<"sites" | "launches" | "opportunities" | "links">("opportunities");
+  const [linkProspects, setLinkProspects] = useState<any[]>([]);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [launchRefreshing, setLaunchRefreshing] = useState(false);
   const [siteSort, setSiteSort] = useState("ref");
   const candidates = useMemo(
     () => (seoTerms || []).filter((t) => t.siteCandidate === true && !ignored.includes(t.term)),
@@ -280,8 +283,33 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
         <button className={tab === "opportunities" ? "active" : ""} aria-current={tab === "opportunities" ? "page" : undefined} onClick={() => setTab("opportunities")}><Sparkles size={13} /> 机会引擎 {opportunityList.length}</button>
         <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}><Globe size={13} /> 站点发现 {discoveries.length}</button>
         <button className={tab === "launches" ? "active" : ""} aria-current={tab === "launches" ? "page" : undefined} onClick={() => setTab("launches")}>🚀 新站发现 {launchList.length}</button>
+        <button className={tab === "links" ? "active" : ""} aria-current={tab === "links" ? "page" : undefined} onClick={() => { setTab("links"); void (async () => { setLinkLoading(true); try { const r = await api<{ items: any[] }>("link-prospects"); setLinkProspects(r.items); } catch (e) { setNotice("外链反推读取失败：" + (e as Error).message); } finally { setLinkLoading(false); } })(); }}>🔗 外链反推</button>
       </nav>
+      {tab === "launches" && (
+        <div className="toolbar" style={{ marginBottom: 8 }}>
+          <button className="button-secondary" disabled={launchRefreshing} onClick={() => void (async () => {
+            setLaunchRefreshing(true);
+            try { const r = await api<{ note: string }>("site-launches/refresh", {}); setNotice(r.note || "新站抓取已触发。"); await ws.refresh(); }
+            catch (e) { setNotice("刷新失败：" + (e as Error).message); } finally { setLaunchRefreshing(false); }
+          })()}>{launchRefreshing ? "抓取中…" : "立即抓取新站"}</button>
+          <small className="muted">从 Show HN + Product Hunt 抓取当日新发布站并做 AI 分类。</small>
+        </div>
+      )}
       {tab === "launches" && <SiteLaunchesTab siteLaunches={launchList} onJumpSites={(host) => { setTab("sites"); setNotice("新站发现交叉站：" + host + "（已在站点发现列表中，可按排序查看）。"); }} />}
+      {tab === "links" && (
+        linkLoading ? <p className="muted">读取外链反推数据…</p> :
+        linkProspects.length === 0 ? (
+          <p className="muted">尚无外链来源站数据。外链反推任务在每月 15 日自动跑一次（哥飞免费通道），也可以等它下次跑完后回来查看。</p>
+        ) : (
+          <div className="discovery-list">{linkProspects.map((l: any, i: number) => (
+            <article className="discovery-row" key={l.id || i}><div className="row-content">
+              <div className="row-meta"><span className="pill">来源站</span>{l.updatedAt && <span>{date(l.updatedAt)}</span>}</div>
+              <a className="article-title" href={"https://" + (l.host || l.id)} target="_blank" rel="noreferrer">{l.host || l.id} ↗</a>
+              <p>{l.note || l.reason || JSON.stringify(l).slice(0, 120)}</p>
+            </div></article>
+          ))}</div>
+        )
+      )}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
       {tab === "sites" && <TodayCheckPanel ws={ws} />}
       {tab === "sites" && <ManualReturnPanel ws={ws} />}
