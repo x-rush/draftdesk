@@ -61,7 +61,7 @@ test("四信号源：complaint(idea 产物) + newtech(news 产物推演) + news(
     });
     db.put("seen-terms", "notifalternative", {
       id: "notifalternative", term: "notif alternative", status: "rising", observations: 3, sources: ["hn-algolia"],
-      relatedSearches: [], daysSeen: [], obsByDay: {}, firstSeenAt: iso(2), lastSeenAt: iso(0),
+      relatedSearches: [], daysSeen: [], obsByDay: { [dayKey(0)]: 3 }, firstSeenAt: iso(2), lastSeenAt: iso(0),
       relevance: "strong", region: "global", intent: "comparison",
     });
     assert.equal(toolSignalOf({ intent: "comparison", relevance: "strong", observations: 3 }), true);

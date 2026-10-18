@@ -166,7 +166,12 @@ type Draft = Omit<Opportunity, "id" | "createdAt" | "updatedAt">;
 type Counters = { created: number; merged: number; bySignal: Record<OpportunitySignal, number> };
 
 // 同 dedupeKey 合并：signals 并集（同词被抱怨与趋势先后命中时一张卡两信号）；agent 生成提升 source 标注。
+// R10.12-3：单次出卡总量护栏（防任何生成器失控倾倒——3217 张教训）；
+// 在 upsert 级拦截，任何生成器超限后新增直接跳过
+export const OPPORTUNITY_DAILY_CAP = 200;
 function upsert(db: Store, draft: Draft, counters: Counters) {
+  // R10.12-3：总量护栏在 upsert 级拦截（生成器间检查不够——单个生成器内就能超限）
+  if (counters.created >= OPPORTUNITY_DAILY_CAP) return;
   const id = "opp-" + hash(draft.dedupeKey).slice(0, 20);
   const prev = db.get<any>("opportunities", id);
   if (prev) {
@@ -302,9 +307,24 @@ function isAlternativeProbe(t: { term?: string; seed?: string }): boolean {
   if (t.seed === "alternative") return true;
   return /(^|[\s-])alternative(s)?($|[\s-])/i.test(t.term || "");
 }
+// R10.12-1 P0：trend 生成器限定当日/近三日活跃词——只吃 obsByDay 近 3 日有增量的词
+//（原扫全量 17637 词库一次倾倒 2437 张卡，失控）。蓝海词卡代表「正在上升的搜索需求」，
+// 存量老词无当日增量不成卡。
+export const TREND_ACTIVE_DAYS = 3;
+function hasRecentObservation(t: any): boolean {
+  const obs = t.obsByDay;
+  if (!obs || typeof obs !== "object") return false;
+  const cutoff = Date.now() - TREND_ACTIVE_DAYS * 86400000;
+  for (const day of Object.keys(obs)) {
+    const ts = Date.parse(day);
+    if (Number.isFinite(ts) && ts >= cutoff && (obs[day] ?? 0) > 0) return true;
+  }
+  return false;
+}
 function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counters) {
   for (const t of db.list<any>("seen-terms")) {
     if (t.status === "archived" || t.offTopic) continue;
+    if (!hasRecentObservation(t)) continue; // 近 3 日无增量不出卡（R10.12-1）
     const { verdict, reason } = judgeVerdict(t);
     if (verdict === "推荐" && (t.region ?? "global") === "global") {
       upsert(db, {
@@ -450,7 +470,8 @@ export function generateFromLaunches(db: Store, source: "auto" | "agent", counte
   }
 }
 
-export function generateOpportunities(db: Store, opts: { source?: "auto" | "agent"; lookbackDays?: number } = {}): { created: number; merged: number; bySignal: Record<OpportunitySignal, number> } {
+
+export function generateOpportunities(db: Store, opts: { source?: "auto" | "agent"; lookbackDays?: number } = {}): { created: number; merged: number; bySignal: Record<OpportunitySignal, number>; capped?: boolean } {
   const source = opts.source ?? "agent";
   const since = Date.now() - (opts.lookbackDays ?? 30) * 86400000;
   const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
@@ -459,14 +480,19 @@ export function generateOpportunities(db: Store, opts: { source?: "auto" | "agen
   const groupsOnly = auto?.enabled === false;
   if (!groupsOnly) {
     generateFromComplaints(db, source, counters);
-    generateFromNewtech(db, source, counters, since);
-    generateFromNews(db, source, counters, since);
-    generateFromTrend(db, source, counters);
-    generateFromSiteCandidates(db, source, counters);
-    generateFromLaunches(db, source, counters);
+    // R10.12-2：news/newtech 窗口收紧到 3 日（原随 lookbackDays=30 日扫全量 evidence
+    // 产 691 张 news 卡——当日新闻信号不需要 30 天窗口）
+    const since3d = Date.now() - 3 * 86400000;
+    generateFromNewtech(db, source, counters, since3d);
+    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromNews(db, source, counters, since3d);
+    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromTrend(db, source, counters);
+    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromSiteCandidates(db, source, counters);
+    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromLaunches(db, source, counters);
+    if (counters.created >= OPPORTUNITY_DAILY_CAP) console.warn(`[opportunity] 出卡护栏触发：已达 ${OPPORTUNITY_DAILY_CAP} 上限，后续生成器跳过（检查是否有生成器在倾倒）`);
   }
-  generateFromGroups(db, source, counters);
-  return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal, ...(groupsOnly ? { groupsOnly: true as const } : {}) };
+  const capped = counters.created >= OPPORTUNITY_DAILY_CAP;
+  if (!capped) generateFromGroups(db, source, counters);
+  return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal, ...(groupsOnly ? { groupsOnly: true as const } : {}), ...(capped ? { capped: true } : {}) };
 }
 
 // 存量 news/newtech 卡复检（批 1 收尾②）：按收紧后的 launch gate 重跑，
