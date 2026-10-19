@@ -35,13 +35,12 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   const cForm = (key: string) => counts?.byForm?.[key] ?? opportunities.filter((o) => o.form === key).length;
   const [signal, setSignal] = useState("");
   const [source, setSource] = useState("");
-  const [kind, setKind] = useState("");
   const [form, setForm] = useState("");
   const [generating, setGenerating] = useState(false);
   // R10.17：筛选 active 时走后端查询（前端 300 缓存里 form=site-group 为 0 张的根因修复）
   const [serverItems, setServerItems] = useState<any[] | null>(null);
   const [serverLoading, setServerLoading] = useState(false);
-  const hasFilter = !!form || !!signal || !!source || !!kind;
+  const hasFilter = !!form || !!signal || !!source;
   useEffect(() => {
     if (!hasFilter) { setServerItems(null); return; }
     setServerLoading(true);
@@ -49,12 +48,11 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
     if (form) params.set("form", form);
     if (signal) params.set("signal", signal);
     if (source) params.set("source", source);
-    if (kind) params.set("kind", kind);
     void api<{ items: any[] }>("opportunities?" + params.toString())
       .then((r) => setServerItems(r.items))
       .catch(() => setServerItems([]))
       .finally(() => setServerLoading(false));
-  }, [form, signal, source, kind]);
+  }, [form, signal, source]);
   // kind 筛选（第六轮批 B §2.5①）+ form 形态筛选（第七轮批2 W7-5）
   const filtered = hasFilter ? (serverItems ?? []) : opportunities;
   const auto = opportunities.filter((o) => o.source === "auto").length;
@@ -76,9 +74,9 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
     <>
       <div className="filter-row">
         <nav className="discovery-modes" aria-label="机会形态筛选">
-          <button className={form === "" && !kind ? "active" : ""} onClick={() => { setForm(""); setKind(""); }}>全部 {cAll}</button>
+          <button className={form === "" ? "active" : ""} onClick={() => setForm("")}>全部 {cAll}</button>
           {Object.entries(FORM_LABELS).map(([key, label]) => (
-            <button key={key} className={form === key ? "active" : ""} onClick={() => { setForm(key); setKind(""); }}>{label} {cForm(key)}</button>
+            <button key={key} className={form === key ? "active" : ""} onClick={() => setForm(key)}>{label} {cForm(key)}</button>
           ))}
           <button className={form === "content-line" ? "active" : ""} onClick={() => setForm("content-line")}>内容线 {cContentLine}</button>
         </nav>
@@ -86,10 +84,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
       <details className="fold-card" style={{ marginBottom: 8 }}>
         <summary style={{ fontSize: 13 }}>高级筛选（类型 / 信号源 / 来源）</summary>
         <div className="filter-row" style={{ marginTop: 6 }}>
-        <nav className="discovery-modes" aria-label="机会类型">
-          <button className={kind === "app" && form === "" ? "active" : ""} onClick={() => { setKind(kind === "app" ? "" : "app"); setForm(""); }}>应用 {cKind("app")}</button>
-          <button className={kind === "site" && form === "" ? "active" : ""} onClick={() => { setKind(kind === "site" ? "" : "site"); setForm(""); }}>站群 {cKind("site")}</button>
-        </nav>
         <nav className="discovery-modes" aria-label="机会信号筛选">
           {Object.entries(SIGNAL_LABELS).map(([key, label]) => (
             <button key={key} className={signal === key ? "active" : ""} onClick={() => setSignal(signal === key ? "" : key)}>{label} {cSignal(key)}</button>
@@ -106,7 +100,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
         </div>
       </details>
       <p className="muted" style={{ fontSize: 12 }}>
-        共 {cAll} 张——内容线 {cContentLine} · 应用 {cKind("app")} · 站群/产品 {cAll - cContentLine}——四信号源：抱怨 / 新技术 / 新资讯 / 热词趋势；去重：同词或同证据集一张卡。
+        共 {cAll} 张——内容线 {cContentLine} · 产品形态 {cAll - cContentLine}（Web应用/站群/移动App/小程序/工具站/开源引流）——高级筛选：信号源/来源；去重：同词或同证据集一张卡。
       </p>
       {filtered.length === 0 ? (
         hasFilter ? (
@@ -117,9 +111,9 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
             {!serverLoading && (
               <>
                 <p className="muted" style={{ fontSize: 12 }}>
-                  生效筛选：{[form && `形态=${form === "content-line" ? "内容线" : form}`, kind && `类型=${kind}`, signal && `信号=${signal}`, source && `来源=${source}`].filter(Boolean).join(" · ")}
+                  生效筛选：{[form && `形态=${form === "content-line" ? "内容线" : form}`, signal && `信号=${signal}`, source && `来源=${source}`].filter(Boolean).join(" · ")}
                 </p>
-                <button className="button-secondary" onClick={() => { setForm(""); setKind(""); setSignal(""); setSource(""); }}>清除筛选</button>
+                <button className="button-secondary" onClick={() => { setForm(""); setSignal(""); setSource(""); }}>清除筛选</button>
               </>
             )}
           </div>
