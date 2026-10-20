@@ -110,8 +110,8 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
   db.put("discovery", jobId, record);
   db.put("meta", doneKey, { at: now(), sources: sources.length, raw: candidates.length, trimmed, durationMs: Date.now() - started });
   console.log(`[collect-all] ${day}：${sources.length} 源 ${candidates.length} 条（精简 ${trimmed}）落盘，用时 ${Math.round((Date.now() - started) / 1000)}s`);
-  // R10.19-1：consumerMode 决定整套链——external=采集落盘即止（语义处理由外部
-  // Agent 02:00 全套完成），builtin=内置 AI 跑全套（初筛+归档+机会引擎）。
+  // R10.20-A3 注释更新：consumerMode 决定整套链——external=采集落盘即止（语义处理由
+  // 外部 Agent 02:00 全套完成），builtin=内置 AI 跑全套。appGap 转卡在 builtin 门内。
   // 不新增第三种机制，无自动兜底。
   const consumerMode = db.get<any>("config", "consumerMode") || "external";
   const global = db.get<any>("config", "aiPolicy");
@@ -131,7 +131,7 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
           db.put("discovery", jobId, live);
         }
         console.log(`[collect-all] 语义初筛：${triage.groups.length} 组（强 ${triage.groups.filter((g) => g.attention === "strong").length}/潜 ${triage.groups.filter((g) => g.attention === "potential").length}），归档 ${archived.archived} 组（${archived.candidates} 条）`);
-        // R10.7 P0-5：appGap 自动转卡不受 consumerMode 门控（初筛属采集侧——外部模式也出卡）
+        // R10.20-A3：appGap 转卡在 builtin 门内（R10.19 后 external 由 Agent 直接写机会卡）
         const { generateOpportunities } = await import("./opportunity");
         const gen = generateOpportunities(db, { source: "auto" });
         if (gen.created) console.log(`[collect-all] 机会卡自动生成：新增 ${gen.created} / 合并 ${gen.merged}`);

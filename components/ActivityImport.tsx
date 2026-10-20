@@ -262,7 +262,13 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
     setError("");
     try {
       if (!batchIds.length) throw new Error("请先保存原始采集包。");
-      const result = await api<ActivityTriageRecord>("activity-triage", { batchIds, keywords });
+      const result = await api<ActivityTriageRecord & { skipped?: boolean; reason?: string }>("activity-triage", { batchIds, keywords });
+      // R10.20-B：external 模式下后端返回 {skipped:true, reason}——不当正常结果处理（原直接
+      // setTriage(result) 后 triage.items.length 读不存在的 items 导致渲染崩溃）
+      if (result?.skipped) {
+        setError(result.reason || "当前模式下 AI 初筛不可用（consumerMode=external，语义处理由外部 Agent 完成）。");
+        return;
+      }
       setTriage(result);
       setLastTriageId(result.id);
       setActiveView("recommend");
@@ -339,7 +345,7 @@ export function ActivityImport({ onChange, onRun, active }: { onChange: () => Pr
   const renderTriage = () => (
     <section className="activity-triage-results activity-view-panel"><div className="activity-panel-heading"><div><span className="activity-eyebrow">AI 整理</span><h3>从原始线索到内容方向</h3></div><span className="activity-count-badge">{triage?.selectedCount ?? 0} 条入模</span></div><p className="activity-panel-intro">AI 只负责相关性整理和方向建议；活动是否仍有效、是否具备报名资格，仍以官方规则核验为准。</p>
       {triage ? <><div className="activity-triage-summary"><strong>{formatDate(triage.createdAt)}</strong><span>输入 {triage.totalCount} 条原始记录</span><span>实际 {triage.modelTokens} tokens</span>{!triageMatchesCurrentBatch && <span className="activity-status-tag review">基于旧快照</span>}</div>{triage.items.length ? ([["high", "高相关"], ["medium", "中相关"], ["low", "低相关"]] as const).map(([level, label]) => { const group = triage.items.filter((item) => item.relevance === level); return group.length ? <section key={level}><div className="activity-relevance-head">{label} · {group.length} 条</div>{group.map((item) => <article key={item.ref} className="activity-triage-card"><div className="activity-row-meta"><span className="activity-platform-tag">{item.platform}</span><span>{item.dateText || "时间未知"}</span></div><h4>{item.title}</h4><p>{item.reason}</p><p><strong>待核事项：</strong>{item.missing.join("；") || "暂无"}</p><a href={item.url} target="_blank" rel="noopener noreferrer">打开原始官方来源 ↗</a>{item.directions.length > 0 && <ol className="activity-direction-list">{item.directions.map((direction, index) => <li key={index}><strong>{direction.title}</strong><span>{direction.angle}</span><small>发布前核实：{direction.verify}</small></li>)}</ol>}</article>)}</section> : null; }) : <div className="activity-empty"><strong>这次没有给出内容方向</strong><p>原始数据仍在「全部材料」中。可以调整关键词或重新采集后再次整理。</p></div>}</> : <div className="activity-empty"><strong>尚未运行 AI 初筛</strong><p>在下方命令条确认关键词后点击「AI 初筛」。原始数据不会因为整理失败而丢失，随时可在「全部材料」查看。</p></div>}
-      {triageHistory.length > 1 && <details className="activity-history-inline fold-card"><summary>历史 AI 初筛 · {triageHistory.length} 次</summary><div className="activity-history-buttons">{triageHistory.map((row) => <button type="button" key={row.id} onClick={() => void api<ActivityTriageRecord>(`activity-triage/${row.id}`).then((result) => { setTriage(result); setLastTriageId(result.id); }).catch((e) => setError(e.message))}>{formatDate(row.createdAt)} · {row.selectedCount} 条</button>)}</div></details>}
+      {triageHistory.length > 1 && <details className="activity-history-inline fold-card"><summary>历史 AI 初筛 · {triageHistory.length} 次</summary><div className="activity-history-buttons">{triageHistory.map((row) => <button type="button" key={row.id} onClick={() => void api<ActivityTriageRecord & { skipped?: boolean; reason?: string }>(`activity-triage/${row.id}`).then((result) => { if (result?.skipped) { setError(result.reason || "该记录不可用"); return; } setTriage(result); setLastTriageId(result.id); }).catch((e) => setError(e.message))}>{formatDate(row.createdAt)} · {row.selectedCount} 条</button>)}</div></details>}
     </section>
   );
 

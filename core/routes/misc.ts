@@ -65,7 +65,7 @@ export const routes: RouteDef[] = [
       // R10 第3段：外部消费回执（超 24h 未跑标记 stale——运维提醒信号，不触发内置补稿）
       const report = db.get<any>("meta", "agent-consume-report");
       const externalConsumption = report
-        ? { at: report.at, by: report.by, consumed: report.consumed ?? 0, stale: Date.now() - Date.parse(report.at) > 24 * 3600000 }
+        ? { by: report.by, consumed: report.consumed ?? 0, stale: Date.now() - Date.parse(report.at) > 24 * 3600000 }
         : null;
       // R10 第1段：今日全量采集批次概况；R10.2② 附初筛状态（done/failed/pending——失败含归因可查）
       const collectAll = db.get<any>("meta", "collect-all-done:" + shDayKey);
@@ -85,10 +85,8 @@ export const routes: RouteDef[] = [
       // R10.11-4②：优先当日 collectall 批；无则回落最新并标注批次来源
       const todayCa = db.get<any>("candidate-groups", "tg-collectall-" + shDayKey);
       const latestGroups = todayCa || db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
-      // R10.19-3：groups.source 标注 external/builtin
-      const groupsSource = latestGroups?.source === "external" ? "external" : "builtin";
       const groupStats = latestGroups
-        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length, at: latestGroups.at, source: todayCa ? "today" : "latest", engine: groupsSource }
+        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length }
         : null;
       const opportunities = db.list<any>("opportunities").length;
       // R10.11-4①：decidedToday 改上海日（原 UTC 口径漏今晨 04:12 的拍板）
@@ -104,7 +102,6 @@ export const routes: RouteDef[] = [
       const todayRecord = db.get<any>("discovery", "collectall-" + shDayKey);
       const inPool = todayRecord ? todayRecord.candidates.filter((c: any) => c.status === "watch" || c.status === "selected").length : null;
       return json({
-        generatedAt: now(),
         groups: groupStats,
         inPool,
         opportunities,

@@ -159,6 +159,6 @@ test("P0-3 + P0-5：collectAll 覆盖率每源独立计数；appGap 自动转卡
   // appGap 自动转卡（external 模式下 collectAll 内联完成，不靠外部触发/consumerMode）
   // R10.11-6：修两处弱断言（|| 优先级死重 + deduqueKey 拼写恒真）
   const appCards = db.list<any>("opportunities").filter((o) => o.dedupeKey?.startsWith("app:grp:"));
-  assert.ok(appCards.length >= 1, "appGap 自动出卡（consumerMode=external 不门控）");
-  assert.ok(appCards.every((o) => o.form === "web-app" && o.monetization), "应用缺口卡带 form+monetization");
+  assert.ok(appCards.length >= 1, "appGap 自动出卡（builtin 模式内）");
+  assert.ok(appCards.every((o) => o.form === "web-app" && o.monetization), "应用缺口卡带 form+monetization（builtin 门内）");
 });

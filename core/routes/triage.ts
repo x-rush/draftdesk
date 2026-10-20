@@ -40,6 +40,10 @@ export const routes: RouteDef[] = [
         const body = await readBody(4096).catch(() => ({}));
         jobId = String(body?.jobId || "");
       }
+      // R10.20-C：external 模式下补跑路由不再假装接受——语义处理由外部 Agent 完成
+      if ((db.get("config", "consumerMode") || "external") !== "builtin") {
+        return json({ ok: false, skipped: true, reason: "external 模式下语义处理由外部 Agent 02:00 执行全套，无需内置补跑。如需内置初筛请切 consumerMode=builtin。" });
+      }
       const parsed = z.string().max(64).optional().safeParse(jobId || undefined);
       requestTriage(db, parsed.success ? parsed.data : undefined);
       return json({ ok: true, queued: true, jobId: jobId || null, note: jobId ? `已请求补跑批次 ${jobId}` : "已请求对最近未初筛批次补跑；worker tick 数秒内消费。" }, 202);

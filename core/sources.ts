@@ -494,11 +494,12 @@ export async function collect(
       coverage.push({sourceId:s.id,sourceName:s.name,status:"failed",raw:0,matched:0,selected:0,error:e instanceof Error?e.message:"读取失败"});
     }
   }
-  // 语义初筛（R9-6）：批次内联跑「归类+注意力判级+双线草案」，属初筛不受 consumerMode 门控；
-  // 档位总开关 config.aiPolicy.triage（off=跳过，回退来源均衡分配）。失败降级不阻断采集。
+  // 语义初筛（R9-6；R10.20-A1 门控补齐）：consumerMode 决定整套链——external 下
+  // 手动跑分析也不调内置 AI（与 collect-all 侧同款门控哲学），回退来源均衡分配。
   let triage: Awaited<ReturnType<typeof runTriage>> | null = null;
   const triagePool = triagePoolOf(candidates);
-  if (jobId && mode === "analysis" && triagePool.length >= 8 && triageEnabledOf(plan, db.get<any>("config", "aiPolicy"))) {
+  const isBuiltin = (db.get<any>("config", "consumerMode") || "external") === "builtin";
+  if (isBuiltin && jobId && mode === "analysis" && triagePool.length >= 8 && triageEnabledOf(plan, db.get<any>("config", "aiPolicy"))) {
     onProgress("AI 语义初筛：归类与注意力判级");
     try {
       triage = await runTriage(db, plan, jobId, triagePool, signal);

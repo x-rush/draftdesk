@@ -54,7 +54,19 @@ export const routes: RouteDef[] = [
         source: "external" as const,
       };
       db.put("candidate-groups", "tg-" + parsed.jobId, doc);
-      return json({ ok: true, jobId: parsed.jobId, groups: doc.groups.length, at: nowIso });
+      // R10.20-A2：回写 discovery 候选判级标记（attention/groupId/selected）——
+      // builtin 链靠 applyTriageToCandidates 做，external 写口补齐同款回写+覆盖率入模率回填
+      const disc = db.get<any>("discovery", parsed.jobId);
+      if (disc) {
+        const limit = disc.limit ?? 6;
+        const { applyTriageToCandidates } = await import("../triage");
+        applyTriageToCandidates(disc.candidates || [], doc.groups as any, limit);
+        const judgedBySource = new Map<string, number>();
+        for (const c of disc.candidates || []) if (c.attention) judgedBySource.set(c.sourceId, (judgedBySource.get(c.sourceId) || 0) + 1);
+        for (const cov of disc.sources || []) cov.selected = judgedBySource.get(cov.sourceId) || 0;
+        db.put("discovery", parsed.jobId, disc);
+      }
+      return json({ ok: true, jobId: parsed.jobId, groups: doc.groups.length, at: nowIso, candidatesUpdated: disc ? (disc.candidates || []).filter((c: any) => c.attention).length : 0 });
     },
   },
   {
