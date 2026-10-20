@@ -70,19 +70,25 @@ export const routes: RouteDef[] = [
       // R10 第1段：今日全量采集批次概况；R10.2② 附初筛状态（done/failed/pending——失败含归因可查）
       const collectAll = db.get<any>("meta", "collect-all-done:" + shDayKey);
       const caJob = "collectall-" + shDayKey;
-      const caTriageDone = !!db.get("candidate-groups", "tg-" + caJob);
+      const caTriageDone = db.get<any>("candidate-groups", "tg-" + caJob);
       const caTriageFail = db.get<any>("meta", "triage-fail:" + caJob);
+      // R10.19-3：external 模式 triage 状态=外部处理状态（pending→02:00 外部 Agent 执行）
+      const isExternal = (db.get("config", "consumerMode") || "external") === "external";
       const collectAllTriage = caTriageDone
-        ? { state: "done" as const }
-        : caTriageFail
-          ? { state: "failed" as const, at: caTriageFail.at, error: String(caTriageFail.error || "").slice(0, 160) }
-          : { state: "pending" as const };
+        ? { state: "done" as const, engine: caTriageDone.source === "external" ? "external" as const : "builtin" as const }
+        : isExternal
+          ? { state: "pending" as const, engine: "external" as const, note: "等待外部 Agent 02:00 语义处理" }
+          : caTriageFail
+            ? { state: "failed" as const, at: caTriageFail.at, error: String(caTriageFail.error || "").slice(0, 160) }
+            : { state: "pending" as const, engine: "builtin" as const };
       // R10.8 P1-2：六段总览补齐——组分布 / 机会卡数 / 今日已拍
       // R10.11-4②：优先当日 collectall 批；无则回落最新并标注批次来源
       const todayCa = db.get<any>("candidate-groups", "tg-collectall-" + shDayKey);
       const latestGroups = todayCa || db.list<any>("candidate-groups").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
+      // R10.19-3：groups.source 标注 external/builtin
+      const groupsSource = latestGroups?.source === "external" ? "external" : "builtin";
       const groupStats = latestGroups
-        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length, at: latestGroups.at, source: todayCa ? "today" : "latest" }
+        ? { strong: latestGroups.groups.filter((g: any) => g.attention === "strong").length, potential: latestGroups.groups.filter((g: any) => g.attention === "potential").length, none: latestGroups.groups.filter((g: any) => g.attention === "none").length, at: latestGroups.at, source: todayCa ? "today" : "latest", engine: groupsSource }
         : null;
       const opportunities = db.list<any>("opportunities").length;
       // R10.11-4①：decidedToday 改上海日（原 UTC 口径漏今晨 04:12 的拍板）

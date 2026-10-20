@@ -502,6 +502,8 @@ export function restoreArchived(db: Store, jobId: string, groupId?: string): { r
 
 const AUTO_RUNS_PER_DAY = 3;
 export async function triageTick(db: Store, runner: TriageRunner = defaultTriageRunner): Promise<void> {
+  // R10.19-1：external 模式下补跑 tick 也不跑（外部 Agent 负责全套语义处理）
+  if ((db.get("config", "consumerMode") || "external") !== "builtin") return;
   const request = db.get<{ jobId?: string }>("meta", "triage-request");
   let explicit = false;
   let target: DiscoveryRecord | undefined;

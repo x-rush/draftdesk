@@ -126,8 +126,9 @@ test("R10.15：PUT /agent/opportunities form 必填六值——无 form 400 / �
   assert.equal(cards.filter((o) => o.kind === "app").length, 5, "其余五值 → kind=app");
 });
 
-test("P0-3 + P0-5：collectAll 覆盖率每源独立计数；appGap 自动转卡不受 consumerMode 门控", async () => {
+test("P0-3 + P0-5：collectAll 覆盖率每源独立计数；appGap 自动转卡（builtin 模式）", async () => {
   const db = store();
+  db.put("config", "consumerMode", "builtin"); // R10.19：内置初筛需 builtin
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   for (const [c, id] of [["meta", "collect-all-done:" + day], ["discovery", "collectall-" + day], ["candidate-groups", "tg-collectall-" + day]] as const) db.del(c as never, id as never);
   db.put("sources", "sA", { id: "sA", name: "源A", type: "rss", url: "https://a/f", sourceType: "media", enabled: true, note: "" });

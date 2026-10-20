@@ -246,6 +246,7 @@ test("runTriage：两片判级 + 片间合并 + 组 id 确定性；候选不足�
 // ---- triageTick：显式请求、失败标注、补跑、off 闸 ----
 function setupTickDb(dir: string) {
   const db = new Store(dir);
+  db.put("config", "consumerMode", "builtin"); // R10.19：tick 测试需 builtin 模式
   db.put("plans", PLAN.id, PLAN);
   const candidates = Array.from({ length: 12 }, (_, i) => cand(i, "s1"));
   const record: DiscoveryRecord = { jobId: "job-t1", at: new Date().toISOString(), planName: PLAN.name, candidates, sources: [{ sourceId: "s1", sourceName: "S1", status: "ok", raw: 12, matched: 12, selected: 0 }], limit: 6, mode: "analysis" };

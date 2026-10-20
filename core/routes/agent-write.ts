@@ -15,6 +15,89 @@ import { writeAgentOpportunity } from "../opportunity";
 
 export const routes: RouteDef[] = [
   {
+    // R10.19-2：外部 Agent 组结构写回——判级+角度+appGap（external 模式语义处理主写口）
+    methods: ["PUT", "POST"],
+    pattern: "agent/triage/groups",
+    scope: "suggest",
+    methodGuardFirst: true,
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({
+        jobId: z.string().min(1).max(64),
+        groups: z.array(z.object({
+          id: z.string().min(1).max(40),
+          title: z.string().min(1).max(120),
+          attention: z.enum(["strong", "potential", "none"]),
+          reason: z.string().max(300).optional(),
+          memberUrls: z.array(z.string().max(2048)).max(100).optional(),
+          representativeUrl: z.string().max(2048).optional(),
+          sources: z.array(z.string().max(80)).max(10).optional(),
+          angles: z.array(z.object({ platform: z.string().max(30), angle: z.string().max(150) })).max(8).optional(),
+          appGap: z.string().max(300).optional(),
+        })).min(1).max(200),
+      }).strict().parse(await readBody());
+      if (!db.get("discovery", parsed.jobId)) throw new AppError("采集批次不存在，请确认 jobId。", 404, "NOT_FOUND");
+      const record = db.get<any>("candidate-groups", "tg-" + parsed.jobId);
+      const nowIso = now();
+      const doc = {
+        jobId: parsed.jobId,
+        planName: record?.planName || "外部语义处理",
+        day: record?.day || nowIso.slice(0, 10),
+        at: nowIso,
+        groups: parsed.groups.map((g) => ({
+          ...g,
+          memberUrls: g.memberUrls || [],
+          representativeUrl: g.representativeUrl || g.memberUrls?.[0] || "",
+          sources: g.sources || [],
+          angles: g.angles || [],
+        })),
+        shards: 0, calls: 0, tokens: 0, merges: 0,
+        source: "external" as const,
+      };
+      db.put("candidate-groups", "tg-" + parsed.jobId, doc);
+      return json({ ok: true, jobId: parsed.jobId, groups: doc.groups.length, at: nowIso });
+    },
+  },
+  {
+    // R10.19-2：外部 Agent 归档写回——判 none 的组进归档队列
+    methods: ["PUT", "POST"],
+    pattern: "agent/triage/archive",
+    scope: "suggest",
+    methodGuardFirst: true,
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({
+        jobId: z.string().min(1).max(64),
+        groups: z.array(z.object({
+          id: z.string().min(1).max(40),
+          title: z.string().min(1).max(120),
+          reason: z.string().max(300).optional(),
+          memberUrls: z.array(z.string().max(2048)).max(100).optional(),
+        })).min(1).max(200),
+      }).strict().parse(await readBody());
+      if (!db.get("discovery", parsed.jobId)) throw new AppError("采集批次不存在。", 404, "NOT_FOUND");
+      const nowIso = now();
+      db.put("triage-archive", "ta-" + parsed.jobId, {
+        jobId: parsed.jobId,
+        day: nowIso.slice(0, 10),
+        at: nowIso,
+        groups: parsed.groups.map((g) => ({ ...g, memberUrls: g.memberUrls || [], sources: [] })),
+        source: "external" as const,
+      });
+      // 同步更新 discovery 候选状态（归档成员置 filtered）
+      const disc = db.get<any>("discovery", parsed.jobId);
+      if (disc) {
+        const archivedUrls = new Set(parsed.groups.flatMap((g) => g.memberUrls || []));
+        for (const c of disc.candidates || []) {
+          if (archivedUrls.has(c.url) && c.status !== "filtered") {
+            c.status = "filtered";
+            c.reason = `已归档（外部 Agent 判无注意力）`;
+          }
+        }
+        db.put("discovery", parsed.jobId, disc);
+      }
+      return json({ ok: true, jobId: parsed.jobId, archivedGroups: parsed.groups.length });
+    },
+  },
+  {
     // R10.7 P0-5：外部 Agent 机会卡写口（suggest scope）——初筛 appGap 由内置自动转卡，
     // Agent 主分析产出的深挖卡（form 六值+monetization）经此写回。
     methods: ["PUT", "POST"],

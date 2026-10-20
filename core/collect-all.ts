@@ -110,9 +110,12 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
   db.put("discovery", jobId, record);
   db.put("meta", doneKey, { at: now(), sources: sources.length, raw: candidates.length, trimmed, durationMs: Date.now() - started });
   console.log(`[collect-all] ${day}：${sources.length} 源 ${candidates.length} 条（精简 ${trimmed}）落盘，用时 ${Math.round((Date.now() - started) / 1000)}s`);
-  // 第2段：采集完自动语义初筛（全批候选；档位=config.aiPolicy.triage，off 跳过）
+  // R10.19-1：consumerMode 决定整套链——external=采集落盘即止（语义处理由外部
+  // Agent 02:00 全套完成），builtin=内置 AI 跑全套（初筛+归档+机会引擎）。
+  // 不新增第三种机制，无自动兜底。
+  const consumerMode = db.get<any>("config", "consumerMode") || "external";
   const global = db.get<any>("config", "aiPolicy");
-  if ((global?.triage ?? "off") !== "off") {
+  if (consumerMode === "builtin" && (global?.triage ?? "off") !== "off") {
     try {
       const pool = triagePoolOf(candidates);
       if (pool.length >= 8) {

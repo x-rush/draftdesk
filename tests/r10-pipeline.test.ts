@@ -112,6 +112,7 @@ test("triage 默认全开（全 kind）；角度平台 8 值（xhs-video 后置�
 // ---- R10.2 追加：补跑路径完成初筛后同样归档（实测 134 组 none 109 未进 triage-archive 的修复）----
 test("补跑完成→归档存在：triageTick 成功路径产出 none 组进 triage-archive，成员置 filtered", async () => {
   const db = store();
+  db.put("config", "consumerMode", "builtin"); // R10.19
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const jobId = "collectall-" + day;
   db.del("meta", "collect-all-done:" + day);
@@ -194,6 +195,7 @@ test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集
 // ---- R10.2②③ 守护 ----
 test("collectAll 初筛失败留痕：triage-fail 键存在 + 候选标待语义初筛；按组恢复不删整批归档", async () => {
   const db = store();
+  db.put("config", "consumerMode", "builtin"); // R10.19
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const jobId = "collectall-" + day;
   db.del("meta", "collect-all-done:" + day);

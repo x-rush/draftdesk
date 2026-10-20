@@ -17,7 +17,7 @@ type ArchiveRes = { items: { jobId: string; day: string; at: string; groups: { i
 export function TriagePanorama() {
   const [groups, setGroups] = useState<GroupsRes | null>(null);
   const [archive, setArchive] = useState<ArchiveRes | null>(null);
-  const [status, setStatus] = useState<{ state: string; error?: string } | null>(null);
+  const [status, setStatus] = useState<{ state: string; error?: string; engine?: string; note?: string } | null>(null);
   const [filter, setFilter] = useState<"" | "strong" | "potential" | "none">("");
   const [open, setOpen] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -72,7 +72,7 @@ export function TriagePanorama() {
   if (!groups && !archive?.items?.length && !groupsError) return null;
   const counts = groups ? { strong: groups.groups.filter((g) => g.attention === "strong").length, potential: groups.groups.filter((g) => g.attention === "potential").length, none: groups.groups.filter((g) => g.attention === "none").length } : null;
   const shown = groups ? (filter ? groups.groups.filter((g) => g.attention === filter) : groups.groups) : [];
-  const STATUS_BADGE: Record<string, string> = { done: "✅ 初筛完成", failed: "❌ 初筛失败（待补跑）", pending: "⏳ 待初筛" };
+  const STATUS_BADGE: Record<string, string> = { done: "✅ 语义处理完成", failed: "❌ 语义处理失败", pending: "⏳ 待语义处理" };
 
   return (
     <section className="lens-panel" aria-label="初筛组视角与归档">
@@ -80,12 +80,13 @@ export function TriagePanorama() {
       {status && (
         <div className="toolbar" style={{ marginBottom: 8 }}>
           <span className="pill">{STATUS_BADGE[status.state] || status.state}</span>
-          {status.state !== "done" && <button className="button-secondary" disabled={busy} onClick={() => void rerun()}>补跑初筛</button>}
+          {status.state !== "done" && status.engine !== "external" && <button className="button-secondary" disabled={busy} onClick={() => void rerun()}>补跑初筛</button>}
           {status.state === "failed" && status.error && <small className="muted" title={status.error}>{String(status.error).slice(0, 60)}</small>}
+          {status.state === "pending" && status.engine === "external" && <small className="muted">采集完成，语义处理中——外部 Agent 将于 02:00 执行全套处理（归组/判级/归档/选题大纲/机会方向）</small>}
         </div>
       )}
       {groupsError && !groups && (
-        <p className="lens-note">今日批次还没有组视角：{groupsError}。批次初筛在采集后自动跑（失败自动补跑，每日上限 3 次），也可点上方「补跑初筛」手动触发。</p>
+        <p className="lens-note">今日批次还没有组视角：{groupsError}。{status?.engine === "external" ? "外部 Agent 将于 02:00 完成语义处理（归组+判级+归档+选题大纲+机会方向），无需手动触发。" : "内置初筛在采集后自动跑（失败自动补跑），也可点「补跑初筛」手动触发。"}</p>
       )}
       {groups && (
         <details className="fold-card" open>
