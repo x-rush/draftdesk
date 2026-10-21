@@ -222,6 +222,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
           setFullMode(true);
           ws.setSeenStatus(radarTab === "new" ? "new" : radarTab === "sustained" ? "sustained" : "");
           ws.setSeenIntent("");
+          ws.setSeenRegion(""); // R10.21：查看全部时清区域筛选——分区扫描的海外/中文是 tab 级视觉标记，全量词表须看到该区全部
           ws.setSeenPage(1);
         }}>查看全部 {zoneTotals[radarTab] || 0} 条 →</button>
       </section>
