@@ -31,7 +31,7 @@ function producedByLabel(by?: string): string {
   if (by.startsWith("agent:")) return by.slice(6);
   return by;
 }
-const sourceFilterLabels: Record<string, string> = { artifact: "内置产物", outline: "大纲", manual: "手动" };
+const sourceFilterLabels: Record<string, string> = { outline: "大纲", manual: "手动" };
 
 export function Review() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -260,7 +260,6 @@ export function Review() {
             <Field label="来源筛选">
               <Select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
                 <option value="all">全部来源</option>
-                <option value="artifact">内置产物</option>
                 <option value="outline">大纲</option>
                 <option value="manual">手动</option>
               </Select>
