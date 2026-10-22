@@ -145,9 +145,29 @@ export const routes: RouteDef[] = [
   },
   { methods: ["GET"], pattern: "agent/stats", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(agentStats(db)) },
   {
-    // 命名空间兜底（必须最后注册）。methods 只有 GET：
-    // GET 未知路径 → 鉴权后 404「接口不存在」（坏令牌 = 401 先行）；
-    // 非 GET 到 agent/* 而无具体路由接住 → 落到此定义的 fallback，methodGuardFirst 405 先行。
+    // R10.22-1：候选明细读口——外部 Agent 拉候选（分页，按状态过滤）
+    methods: ["GET"],
+    pattern: "agent/triage/candidates",
+    scope: "read",
+    methodGuardFirst: true,
+    handler: ({ db, query }) => {
+      const jobId = query.get("jobId") || "";
+      const status = query.get("status") || "";
+      const limit = Math.min(500, Math.max(1, Number(query.get("limit")) || 200));
+      const offset = Math.max(0, Number(query.get("offset")) || 0);
+      const record = jobId ? db.get<any>("discovery", jobId) : db.list<any>("discovery").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0];
+      if (!record) throw new AppError("采集批次不存在", 404, "NOT_FOUND");
+      let candidates = (record.candidates || []).filter((c: any) => !status || c.status === status);
+      const total = candidates.length;
+      const items = candidates.slice(offset, offset + limit).map((c: any) => ({
+        title: c.title, url: c.url, sourceName: c.sourceName, status: c.status,
+        reason: c.reason, attention: c.attention, groupId: c.groupId, observedAt: c.observedAt,
+      }));
+      return json({ jobId: record.jobId, planName: record.planName, at: record.at, items, total, offset, limit });
+    },
+  },
+  {
+    // 命名空间兜底（必须最后注册）
     methods: ["GET"],
     pattern: "agent/:rest...",
     scope: "read",

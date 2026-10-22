@@ -183,7 +183,7 @@ export const routes: RouteDef[] = [
         enabled: z.boolean().optional(),
         token: z.string().max(200).optional(),
         baseUrl: z.string().url().max(300).optional(),
-        builtinTierBudget: z.number().int().min(1).max(10000).optional(),
+        builtinTierBudget: z.number().int().min(0).max(10000).optional(),
         builtinMetricsBudget: z.number().int().min(1).max(100000).optional(),
         builtinCollectBudget: z.number().int().min(1).max(10000).optional(),
         autoMetrics: z.boolean().optional(),

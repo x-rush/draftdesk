@@ -250,11 +250,24 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     draftBody: z.string().max(100000).optional(),
   }).parse(input);
   if (!db.get<any>("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404, "NOT_FOUND");
-  // R10.11-1 P0：平台归一与 UI 口同口径——未知值 400 带允许列表（原旧回退让外部 Agent
-  // 主写口落库任意字符串，拍板口静默失效，与 R10.7 P0-4 同类事故在外部口的复现）
+  // R10.11-1 P0：平台归一与 UI 口同口径——未知值 400 带允许列表
   const platform = normalizePlatform(parsed.platform);
   if (!platform) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400);
   const category = parsed.category ? normalizeCategory(parsed.category) ?? parsed.category : undefined;
+  // R10.21-1 P0：组结构校验——仅当日 collectall 批已落盘且该批无组时触发（防半失败态）；
+  // 无批次（fresh clone/测试/纯 UI 操作）不阻断
+  const shDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const caDone = db.get<any>("meta", "collect-all-done:" + shDay);
+  const caGroups = db.get<any>("candidate-groups", "tg-collectall-" + shDay);
+  if (caDone && !caGroups && !parsed.id) throw new AppError("组结构未写回，先 PUT /agent/triage/groups", 400, "GROUPS_MISSING");
+  // R10.21-2 P0：48h 跨日去重——同标题（精确匹配）48h 内已写入 → 跳过
+  const cutoff48h = new Date(Date.now() - 48 * 3600000).toISOString();
+  const trimmedTitle = parsed.title.trim();
+  const duplicate = db.list<any>("outlines").find((o) =>
+    o.id !== parsed.id && String(o.title || "").trim() === trimmedTitle &&
+    String(o.createdAt || "") >= cutoff48h,
+  );
+  if (duplicate && !parsed.id) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
   const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
   const outline = existing
     ? { ...existing, clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx) }
