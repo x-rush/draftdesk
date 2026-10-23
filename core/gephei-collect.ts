@@ -13,6 +13,7 @@ import { termId, observeSuggestion, bumpSeenTermsVersion } from "./seen-terms";
 import { seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, seoApi, SeoQuotaError, parseManualGephei } from "./seo-source";
 import { TOOL_ROOTS, AI_ROOTS, rootYieldStats } from "./seen-dig";
 import { now, hash } from "./store";
+import { indexTermCluster } from "./vector-store";
 
 const DAY_MS = 86400000;
 
@@ -298,12 +299,16 @@ export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: 
       if (!detailRes.ok) throw new Error(`batch detail HTTP ${detailRes.status}`);
       const keywords = parseBatchKeywords(await detailRes.json());
       let injected = 0, skipped = 0;
+      const words: string[] = [];
       for (const k of keywords) {
         const clean = filterTrendWord(k.keyword);
         if (!clean) { skipped++; continue; }
         observeSuggestion(db, clean, "gephei-newwords:" + latest.id, { source: "gephei-newwords" });
+        words.push(clean);
         injected++;
       }
+      // R10.24-5：增量词入词簇向量索引（fire-and-forget，失败零影响新词注入）
+      void indexTermCluster(db, words).catch(() => {});
       db.put("meta", "geo-newwords-batch:" + latest.id, { at: new Date().toISOString(), injected, skipped });
       db.put("meta", "geo-newwords-done:" + day, { at: new Date().toISOString(), batch: latest.id, injected, skipped });
       console.log(`[geo-collect] 新词发现：批次 ${latest.id}（${keywords.length} 词）/ 注入 ${injected} / 过滤 ${skipped}`);

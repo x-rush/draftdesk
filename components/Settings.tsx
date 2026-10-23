@@ -140,7 +140,7 @@ export function Settings({
       <section className="form-section">
         <Field
           label="每日模型 token 预留上限"
-          hint="覆盖内置研究与讨论；保守预留不返还，可防止连续失败产生无上限调用。不是人民币账单。"
+          hint="覆盖判断与产出类模型调用（builtin 模式）；保守预留不返还，可防止连续失败产生无上限调用。不是人民币账单。"
         >
           <input
             type="number"
@@ -177,7 +177,7 @@ export function Settings({
             </table>
           );
         })()}
-        {metrics.length === 0 && <p className="muted" style={{ marginTop: 8 }}>暂无调用记录（有内置模型调用后出现）。</p>}
+        {metrics.length === 0 && <p className="muted" style={{ marginTop: 8 }}>暂无调用记录（产生模型调用后出现）。</p>}
         <p className="helper-text" style={{ marginBottom: 0 }}>
           零价值调用零容忍：已消费不重跑、空池跳过、联想/竞争度只做高分词。台账保留 35 天。
         </p>
@@ -371,7 +371,7 @@ export function Settings({
       </section>
 
       {/* ⑥ 执行方 */}
-      <p className="dash-label"><Bot size={14} /> 执行方与参与方<span className="dash-label-sub">谁来干研究：内置管线或外部 Agent 二选一</span></p>
+      <p className="dash-label"><Bot size={14} /> 执行方与参与方<span className="dash-label-sub">消费执行方：内置或外部 Agent 二选一</span></p>
       <section className="form-section">
         <Field label="消费执行方（保存前即时生效）">
           <Select
@@ -382,13 +382,13 @@ export function Settings({
               })
             }
           >
-            <option value="external">外部 Agent（内置初筛与自动回收停用）</option>
-            <option value="builtin">内置管线（每晚自动采集与分析）</option>
+            <option value="external">外部 Agent（内置分析与自动回收停用，语义初筛照跑）</option>
+            <option value="builtin">内置管线（每晚自动采集与全套分析）</option>
           </Select>
         </Field>
         <p className="helper-text" style={{ marginBottom: 0 }}>
-          当前：{(config.consumerMode || "external") === "external" ? "外部 Agent ｜ 内置初筛与自动回收已停用，改由外部 Agent 经接口写回。" : "内置管线 ｜ 每晚定时采集与分析、自动回收照常运行。"}
-          内置 AI 与外部 Agent 各自负责消费链路的不同环节；停用某来源后其已产出的内容仍可查。内置 AI 参与开关（triage / outline / draft / aiWriter 四开关）在审查台「内置 AI 参与开关（aiPolicy）」分区配置。
+          当前：{(config.consumerMode || "external") === "external" ? "外部 Agent ｜ 每日 01:00 采集与巡检照跑；内置 AI 分析（初筛/大纲/自动出卡）与内置自动回收停用，语义初筛由外部 Agent 02:00 执行并写回。" : "内置管线 ｜ 每晚定时采集与全套分析（初筛/大纲/自动出卡）、自动回收照常运行。"}
+          内置 AI 与外部 Agent 各自负责消费链路的不同环节；停用某来源后其已产出的内容仍可查。内置 AI 参与开关（triage / outline / draft / aiWriter 四开关，builtin 专属）在审查台「内置 AI 参与开关（aiPolicy）」分区配置。
         </p>
       </section>
 

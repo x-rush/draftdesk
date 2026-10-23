@@ -27,6 +27,10 @@ services:
       DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
       DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}
+      # 向量事件线（R10.23）：db1 与 RSSHub 缓存（db0）隔离；未配置时向量线整体降级 no-op
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      - redis
     restart: unless-stopped
     healthcheck:
       test:
@@ -56,9 +60,12 @@ services:
     depends_on:
       - redis
   redis:
-    # 集群共享 Redis：栈内服务的缓存层（当前消费方 RSSHub，后续服务可复用同一实例）。
-    # 无持久化需求（纯缓存，重启重建）；同样零端口暴露。
+    # 集群共享 Redis：RSSHub 缓存（db0）+ 向量事件线（db1，R10.23 组摘要/词簇向量）。
+    # 向量数据要跨重启存续（48h 语义去重窗口）→ AOF 持久化 + named volume；零端口暴露。
     image: redis:alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
     restart: unless-stopped
   searxng:
     # 本地元搜索：网页搜索「SearXNG 补位」后端（模型与设置里可选），零成本零密钥。
@@ -81,6 +88,7 @@ services:
 # （http://dailyhot:6688、http://searxng:8080），fresh clone 一条命令即可启动。
 volumes:
   searxng-cache:
+  redis-data:
   # name 固定为 draftdesk-data：compose 默认会加项目前缀（draftdesk_draftdesk-data），
   # 首次搬迁已按字面名建卷，固定名避免双卷分叉（事故现场：空卷被初始化成 70 行新库）。
   draftdesk-data: { driver: local, name: draftdesk-data }

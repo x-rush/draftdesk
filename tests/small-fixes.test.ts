@@ -27,6 +27,7 @@ test("归档 404 与重试已消费 409：不再静默 no-op", async () => {
     };
     const db = store();
     db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "consumerMode", "builtin"); // R10.24：本测试走内置入队路径，需显式声明 builtin
     // ① 归档：存在的批次 ok；不存在的 404
     db.put("activity-batches", "batch-fix-1", { id: "batch-fix-1", platform: "哔哩哔哩", count: 3, receivedAt: new Date().toISOString(), items: [] });
     const ok = await call("activity-batches/archive", "POST", { batchId: "batch-fix-1" });

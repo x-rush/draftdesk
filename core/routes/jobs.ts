@@ -19,6 +19,10 @@ export const routes: RouteDef[] = [
     methods: ["POST"],
     pattern: "jobs",
     handler: async ({ db, readBody }) => {
+      // R10.24-1：external 模式门控——内置分析任务链（认领后跑整理/提词/审核）停用
+      if ((db.get("config", "consumerMode") || "external") !== "builtin") {
+        return json({ ok: false, skipped: true, reason: "external 模式由外部 Agent 执行，内置分析任务已停用；如需内置链请切 consumerMode=builtin。" });
+      }
       const value = z
         .object({
           planId: z.string(),

@@ -8,6 +8,7 @@ import type { RouteContext, RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
 import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
+import { indexEventGroups, findSemanticDuplicate, searchVectors } from "../vector-store";
 
 const by = (ctx: RouteContext) => `agent:${ctx.connection!.name}`;
 
@@ -66,6 +67,8 @@ export const routes: RouteDef[] = [
         for (const cov of disc.sources || []) cov.selected = judgedBySource.get(cov.sourceId) || 0;
         db.put("discovery", parsed.jobId, disc);
       }
+      // R10.24-5：组摘要入向量事件线（fire-and-forget，失败零影响主写口）
+      void indexEventGroups(db, parsed.jobId, doc.groups as never).catch(() => {});
       return json({ ok: true, jobId: parsed.jobId, groups: doc.groups.length, at: nowIso, candidatesUpdated: disc ? (disc.candidates || []).filter((c: any) => c.attention).length : 0 });
     },
   },
@@ -202,6 +205,30 @@ export const routes: RouteDef[] = [
     participants: true,
     handler: async (ctx) => upsertOutline(ctx, await ctx.readBody()),
   },
+  {
+    // R10.24-5：向量事件线检索——外部 Agent 合并判断前 KNN 查历史同事件（topK=5）；
+    // index=eventline 组摘要 / termcluster 增量词。可选 sinceHours/untilHours 圈窗口。
+    methods: ["POST"],
+    pattern: "agent/vectors/search",
+    scope: "suggest",
+    participants: true,
+    handler: async ({ db, readBody }) => {
+      const parsed = z.object({
+        index: z.enum(["eventline", "termcluster"]),
+        text: z.string().min(1).max(2000),
+        topK: z.number().int().min(1).max(20).default(5),
+        sinceHours: z.number().int().min(1).max(8760).optional(),
+        untilHours: z.number().int().min(1).max(8760).optional(),
+      }).strict().parse(await readBody());
+      const nowSec = Math.floor(Date.now() / 1000);
+      const hits = await searchVectors(db, parsed.index, parsed.text, {
+        topK: parsed.topK,
+        sinceTs: parsed.sinceHours ? nowSec - parsed.sinceHours * 3600 : undefined,
+        untilTs: parsed.untilHours ? nowSec - parsed.untilHours * 3600 : undefined,
+      });
+      return json({ ok: true, index: parsed.index, degraded: hits === null, hits: (hits || []).map((h) => ({ title: h.title, jobId: h.jobId, attention: h.attention, similarity: Number(h.similarity.toFixed(4)), date: h.date })) });
+    },
+  },
 ];
 
 async function upsertCluster(ctx: RouteContext, input: unknown) {
@@ -268,6 +295,13 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     String(o.createdAt || "") >= cutoff48h,
   );
   if (duplicate && !parsed.id) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
+  // R10.23-3：跨日语义去重（48h 窗口不含当日）——与前两天组摘要相似度 >0.92 视为重复事件；
+  // 向量线降级时返回 null，照常写入（与标题级去重互补）
+  if (!parsed.id) {
+    const semantic = await findSemanticDuplicate(db, trimmedTitle);
+    if (semantic)
+      return json({ ok: true, duplicate: true, semantic: true, score: semantic.score, matchedEvent: { key: semantic.matchedEvent.key, title: semantic.matchedEvent.title, jobId: semantic.matchedEvent.jobId } }, 200);
+  }
   const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
   const outline = existing
     ? { ...existing, clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx) }

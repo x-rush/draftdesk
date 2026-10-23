@@ -49,6 +49,7 @@ export function Review() {
   const [persona, setPersona] = useState<any>(null);
   const [personaText, setPersonaText] = useState("");
   const [aiPolicy, setAiPolicy] = useState<any>(null);
+  const [consumerMode, setConsumerMode] = useState("external");
   const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "gzh", contentType: "长文", title: "" });
   const [clusters, setClusters] = useState<any[]>([]);
   // R10 第4段：今日总览（四段流水线一屏看全）+ 外部消费回执（超 24h 未跑提醒）
@@ -76,6 +77,7 @@ export function Review() {
         setPersona(p);
         setPersonaText(p ? JSON.stringify(p, null, 2) : "");
         setAiPolicy(await api<any>("aiPolicy"));
+        setConsumerMode(await api<any>("consumerMode").catch(() => "external"));
         setToday(await api<any>("summary/today").catch(() => null));
       } catch (e) { setError(formatApiError(e)); }
     })();
@@ -466,7 +468,7 @@ export function Review() {
       </details>
 
       <details className="fold-card review-form-fold">
-        <summary><h2 style={{ display: "inline", margin: 0 }}>内置 AI 参与开关（aiPolicy）</h2></summary>
+        <summary><h2 style={{ display: "inline", margin: 0 }}>内置 AI 参与开关（aiPolicy）</h2>{consumerMode !== "builtin" && <span className="pill" style={{ marginLeft: 8 }} title="consumerMode=builtin 时这些开关才生效">builtin 专属 · 当前模式下不生效</span>}</summary>
         <p className="muted">off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。triage = 采集批次的语义初筛（R9-6：AI 归类 + 注意力判级 + 双线草案，名额按组分配），off 时回退来源均衡分配。</p>
         {aiPolicy && (
           <div className="toolbar">

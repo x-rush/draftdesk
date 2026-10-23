@@ -237,3 +237,22 @@ curl -X PUT "$BASE/api/v1/agent/outlines" \
 - approved 选题写完 `draftBody` 后，把决策推进到 drafting：`PUT /api/v1/outlines/:id/decision`（无令牌 UI 口）或集群工具同义口。
 - **提示词矩阵**（平台模板 × 题材角度，与内置 AI 共用的单一来源）随 Skill 包分发：`skills/prompts/outline-matrix.md`——按「平台模板节 + 题材角度节 + 选题素材」组合，不硬编码 24 组合。
 - **按平台拍板**：`PUT /api/v1/outlines/:id/platform-decision`，body `{"platform":"gzh","decision":"approved"}`——写 `perPlatformDecision[platform]` 并同步同题同平台的行；同题 ×N 聚合组内各平台分别拍，互不连拍。聚合 `decision` 取最前进正向状态（published > drafting > approved > rejected > deferred > pending）。
+
+### 向量事件线（R10.23：idx:eventline 组摘要 / idx:termcluster 增量词）
+
+工作台把每日组摘要与增量词嵌入进 Redis（db1，text-embedding-v3 / 1024 维，嵌入调用量记在 meta `vector-embed:<日>`）。外部 Agent 两个集成点：
+
+1. **合并判断前 KNN 查历史同事件**（减少重复出题）：
+
+```bash
+curl -X POST "$BASE/api/v1/agent/vectors/search" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"index":"eventline","text":"AI播放器 本地模型爆火","topK":5}'
+# → {"ok":true,"index":"eventline","degraded":false,"hits":[{"title":"...","jobId":"collectall-2026-10-22","attention":"strong","similarity":0.95,"date":1760000000}]}
+```
+
+- `index`：`eventline`（组摘要）或 `termcluster`（增量词）；可选 `sinceHours`/`untilHours` 圈时间窗。
+- 相似度 = 1 - 余弦距离；≥0.90 视为疑似同事件，命中则挂线复用（不重新出题）。
+- `degraded:true` = 向量线不可用（照常处理，不做历史对齐）。
+
+2. **大纲重复抑制（服务端强制，无需 Agent 参与）**：`PUT /agent/outlines` 写入时，工作台自动对新标题与前 48h（不含当日）的组摘要做 KNN——相似度 >0.92 返回 `200 {"duplicate":true,"semantic":true,"score":0.95,"matchedEvent":{...}}` 跳过入库。与 48h 标题精确去重互补；当日向量不参与（当日大纲本就派生自当日组）。

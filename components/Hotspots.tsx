@@ -53,7 +53,7 @@ export function Hotspots({feed,sources,query,status,source,plan,busy,loading,con
     {loading&&!feed?.items.length?<Skeleton rows={3} label="热点加载中"/>:!feed?.items.length?<div className="lens-empty"><h2>当前筛选下没有热点</h2><p className="muted">去「研究策略」运行一次采集，或在上方刷新所选来源。</p><p>选择已启用来源刷新榜单，或清除搜索与状态筛选。来源读取失败可在「运行记录」和采集覆盖中核对。</p></div>:<div className="discovery-list">{feed.items.map(row=><article className="discovery-row" key={row.url}>
       <div className="row-content">
         <div className="row-meta">
-          <span className="pill">{row.status==="selected"?"曾进入分析":row.status==="filtered"?"被策略筛除":"待观察"}</span>
+          <span className="pill">{row.status==="selected"?"已归组":row.status==="filtered"?"被策略筛除":"待观察"}</span>
           <span>{row.sourceNames.join(" · ")}</span>
           <span>{date(row.lastSeen)}</span>
           {row.observations>1&&<span>观察 {row.observations} 次</span>}

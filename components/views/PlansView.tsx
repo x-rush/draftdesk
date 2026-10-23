@@ -66,7 +66,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                 <div className="term-actions">
                   {p.kind === "activities" ? (
                     <button className="primary" style={{ whiteSpace: "nowrap" }} onClick={() => navigate("activities")}>前往采集</button>
-                  ) : (
+                  ) : (data.config?.consumerMode || "external") === "builtin" ? (
                     <>
                       <button className="primary" disabled={busy || analyzeBusy === p.id || running} title="按本策略口径重读源并跑内置分析（与每日 01:00 全量采集相互独立，会重复消耗模型额度）" onClick={() => void (async () => {
                         setAnalyzeBusy(p.id);
@@ -77,7 +77,7 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                         } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
                       })()}><Play size={15} /> {analyzeBusy === p.id ? "分析入队中…" : "手动跑一次分析"}</button>
                     </>
-                  )}
+                  ) : null}
                   <details className="more-menu" data-popover>
                     <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}><ChevronDown size={13} /></summary>
                     <span className="menu-pop">

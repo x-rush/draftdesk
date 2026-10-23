@@ -126,10 +126,14 @@ export const routes: RouteDef[] = [
     },
   },
   {
-    // 手动触发内置分析（信息架构 v2 增补）：入队 job，worker 认领后跑整理/提词/审核链
+    // 手动触发内置分析（信息架构 v2 增补）：入队 job，worker 认领后跑整理/提词/审核链；
+    // R10.24-1：external 模式门控——内置分析全链停用，不假装接受
     methods: ["POST"],
     pattern: "plans/:id/analyze",
     handler: async ({ db, params }) => {
+      if ((db.get("config", "consumerMode") || "external") !== "builtin") {
+        return json({ ok: false, skipped: true, reason: "external 模式由外部 Agent 执行，内置分析已停用；如需内置链请切 consumerMode=builtin。" });
+      }
       const plan = db.get<any>("plans", params.id);
       if (!plan) throw new AppError("研究策略不存在", 404);
       if (plan.kind === "activities") throw new AppError("活动策略无内置分析；采集走登录浏览器流程。", 400);
