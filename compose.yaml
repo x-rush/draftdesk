@@ -27,8 +27,9 @@ services:
       DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
       DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}
-      # 向量事件线（R10.23）：db1 与 RSSHub 缓存（db0）隔离；未配置时向量线整体降级 no-op
-      REDIS_URL: redis://redis:6379/1
+      # 向量事件线（R10.23）：Redis 8 查询引擎仅支持 db0（FT.CREATE on db!=0 报错），
+      # 向量 key 前缀 dd:v:* 与 RSSHub 缓存键空间隔离；未配置时向量线整体降级 no-op
+      REDIS_URL: redis://redis:6379/
     depends_on:
       - redis
     restart: unless-stopped
