@@ -130,16 +130,17 @@ async function searchIndex(
     "PARAMS", "2", "q", vecBlob(vec),
     "DIALECT", "2",
   );
-  const total = Array.isArray(raw) ? Number(raw[0]) : 0;
+  // FT.SEARCH 原始回复为扁平交替：[total, key, [f, v, f, v, ...], key, [f, v, ...], ...]
+  //（无客户端规范化包装——ioredis 实测，2026-10-23 首日实弹修正）
+  const rows = Array.isArray(raw) ? raw : [];
   const hits: VectorHit[] = [];
-  for (let i = 1; i < (Array.isArray(raw) ? raw.length : 0); i++) {
-    const entry = raw[i];
-    if (!Array.isArray(entry) || entry.length < 2 || !Array.isArray(entry[1])) continue;
+  for (let i = 1; i + 1 < rows.length; i += 2) {
+    const flat = rows[i + 1];
+    if (!Array.isArray(flat)) continue;
     const f: Record<string, string> = {};
-    const flat = entry[1];
     for (let j = 0; j + 1 < flat.length; j += 2) f[String(flat[j])] = String(flat[j + 1]);
     hits.push({
-      key: String(entry[0]),
+      key: String(rows[i]),
       title: f.title || f.term || "",
       jobId: f.jobId || "",
       attention: f.attention || "",
@@ -147,7 +148,6 @@ async function searchIndex(
       similarity: 1 - Number(f.score || 1),
     });
   }
-  void total;
   return hits;
 }
 
