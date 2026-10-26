@@ -153,6 +153,31 @@ async function searchIndex(
 
 // —— 对外：写入（fire-and-forget 调用，失败只降级） ——
 
+// R10.26-4③：嵌入输入与查询侧同构——标题+首句（reason/appGap 的首个分句），
+// 富文本拼接会稀释余弦相似度使 0.92 阈值几乎不可达（真重复漏杀）
+function eventEmbedText(gr: { title: string; reason?: string; appGap?: string }): string {
+  const firstSentence = (s?: string) => (s ? String(s).split(/[。.!?！？\n]/)[0] : "");
+  return [gr.title, firstSentence(gr.reason), firstSentence(gr.appGap)].filter(Boolean).join("。").slice(0, 300);
+}
+
+// R10.26-4③：同 jobId 旧向量清理（整卡重写后旧组向量残留→次日误杀新大纲）+
+// 顺带清 7 天前过期向量（>48h 去重窗口，安全余量；防键空间无限增长）
+async function pruneEventVectors(c: RedisLike, jobId?: string): Promise<void> {
+  const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
+  let cursor = "0";
+  do {
+    const next = (await c.call("SCAN", cursor, "MATCH", "dd:v:eventline:*", "COUNT", "200")) as unknown as [string, string[]];
+    if (!Array.isArray(next)) break;
+    cursor = next[0];
+    const keys = next[1] || [];
+    for (const key of keys) {
+      if (jobId && key.startsWith("dd:v:eventline:" + jobId + ":")) { await c.call("DEL", key); continue; }
+      const fields = (await c.call("HMGET", key, "date")) as unknown as string[];
+      if (fields && Number(fields[0]) && Number(fields[0]) < cutoff) await c.call("DEL", key);
+    }
+  } while (cursor !== "0");
+}
+
 export async function indexEventGroups(
   db: import("./store").Store,
   jobId: string,
@@ -161,10 +186,7 @@ export async function indexEventGroups(
   const c = await getClient();
   if (!c || !groups.length) return;
   try {
-    const texts = groups.map((gr) =>
-      [gr.title, gr.reason, gr.appGap, (gr.angles || []).map((a) => `${a.platform}:${a.angle}`).join("；")]
-        .filter(Boolean).join("。").slice(0, 800),
-    );
+    const texts = groups.map(eventEmbedText);
     const vecs = await embedTexts(db, texts);
     const nowSec = Math.floor(Date.now() / 1000);
     for (let i = 0; i < groups.length; i++) {
@@ -175,6 +197,7 @@ export async function indexEventGroups(
         ["date", nowSec],
       ], ["title", "TEXT", "jobId", "TAG", "attention", "TAG", "date", "NUMERIC"]);
     }
+    await pruneEventVectors(c, jobId);
   } catch (e) {
     logOnce(`组摘要索引失败：${e instanceof Error ? e.message : e}`);
   }

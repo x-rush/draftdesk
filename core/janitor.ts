@@ -21,7 +21,7 @@ export const RETENTION = {
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; auditPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
@@ -29,6 +29,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   const seenPurged = purgeArchivedSeenTerms(db);
   const metricsPurged = purgeOldModelMetrics(db);
   const jobsPurged = purgeTerminalJobs(db);
+  const auditPurged = purgeBudgetAuditKeys(db);
   // 挂载期保险丝批 8：每日库完整性自检 + 全集合行数快照（设置页「昨日 vs 今日」异动看板）
   const integrity = integrityCheck(db);
   snapshotCollectionsReport(db);
@@ -37,8 +38,8 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   try { backup = runDailyBackup(db); }
   catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, integrity, backup, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, integrity, backup, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, integrity, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, integrity, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -82,7 +83,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, integrity, backup };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, auditPurged, integrity, backup };
   db.put("meta", "janitor", result);
   return result;
 }
@@ -137,15 +138,37 @@ export function purgeOldModelMetrics(db: Store): number {
   return purged;
 }
 
-// 终态任务出库（R10.25-5④）：completed/failed/cancelled 超 7 天直接删——
-// 运行记录页只看近期任务，历史终态无引用价值（job-context 产物不级联删，走 evidence retention）。
+// 终态任务出库（R10.25-5④ + R10.26-4④）：completed/failed/cancelled 超 7 天直接删；
+// 同键级联清四个伴生集合（job-context/job-draft/job-validation/job-verification——
+// 删 job 不删伴生会成永久孤儿，库与备份单调膨胀）。
 export function purgeTerminalJobs(db: Store): number {
   const cutoff = Date.now() - RETENTION.jobs.purgeTerminalAfterDays * 86400000;
   let purged = 0;
   for (const j of db.list<any>("jobs")) {
     if (!["completed", "failed", "cancelled"].includes(j.state)) continue;
     const at = Date.parse(j.finishedAt || j.updatedAt || "");
-    if (Number.isFinite(at) && at < cutoff) { db.del("jobs", j.id); purged++; }
+    if (Number.isFinite(at) && at < cutoff) {
+      db.del("jobs", j.id);
+      db.del("job-context", j.id);
+      db.del("job-draft", j.id);
+      db.del("job-validation", j.id);
+      db.del("job-verification", j.id);
+      purged++;
+    }
+  }
+  return purged;
+}
+
+// budget-audit 小时键出库（R10.26-4⑤）：每小时 1 条无上限增长（9 天 221 条）——
+// 清 7 天前小时键（键形如 budget-audit:YYYY-MM-DD, HH；kv.list 只回 body 拿不到键名，直接查 documents）
+export function purgeBudgetAuditKeys(db: Store): number {
+  const cutoffDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" })
+    .format(new Date(Date.now() - 7 * 86400000));
+  const rows = db.db.prepare("SELECT id FROM documents WHERE collection='meta' AND id LIKE 'budget-audit:%'").all() as Array<{ id: string }>;
+  let purged = 0;
+  for (const r of rows) {
+    const day = r.id.slice("budget-audit:".length, "budget-audit:".length + 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && day < cutoffDay) { db.del("meta", r.id); purged++; }
   }
   return purged;
 }

@@ -246,9 +246,14 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
       db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: terms.length, stamped, marked, skippedLang, note: `英文 ${terms.length} 词（中文 ${skippedLang} 词无数据跳过）；额度 ${seoBudgetLeft(db, "metrics")} 次剩余` });
       if (marked > 0) {
         // 出卡触发（W7-8 链路末端）：动态 import 避免与 opportunity.ts 的模块循环
-        const { generateOpportunities } = await import("./opportunity");
-        const r = generateOpportunities(db, { source: "auto" });
-        console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → 触发机会生成：新增 ${r.created} 卡`);
+        // R10.26-2 P0：external 模式不触发出卡——机会卡由外部 Agent 经 PUT /agent/opportunities 写回
+        if ((db.get<any>("config", "consumerMode") || "external") === "builtin") {
+          const { generateOpportunities } = await import("./opportunity");
+          const r = generateOpportunities(db, { source: "auto" });
+          console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → 触发机会生成：新增 ${r.created} 卡`);
+        } else {
+          console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → external 模式不触发出卡（外部 Agent 经 PUT /agent/opportunities 写回）`);
+        }
       }
       if (terms.length || marked) console.log(`[seo-metrics] 哥飞指标日更：补查 ${terms.length} 词（落库 ${stamped}，中文跳过 ${skippedLang}）/ 全门槛新出标 ${marked}`);
     } catch (e) {

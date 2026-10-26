@@ -403,37 +403,25 @@ export function writeAgentOpportunity(db: Store, draft: { title: string; oneLine
   return { ok: true, created: counters.created, merged: counters.merged };
 }
 
+// R10.26-2 P0：与 groupOpportunityDrafts 同口径——组出卡只出 appGap 应用卡，
+// 内联 angles 内容线出卡段已删（R10.25 只改了 groupOpportunityDrafts，此处是漏网；
+// 经 seo-gate 触发点可在 external 下重建已归档的内容线卡）。
 function generateFromGroups(db: Store, source: "auto" | "agent", counters: Counters) {
   const cutoff = Date.now() - TRIAGE_GROUPS_LOOKBACK_DAYS * 86400000;
   for (const record of db.list<TriageRecord>("candidate-groups")) {
     if (Date.parse(record.at || "") < cutoff) continue;
     for (const g of record.groups || []) {
       if (!g?.id || g.attention === "none") continue;
-      const angles = (g.angles || []).filter((a) => a?.platform && a?.angle).slice(0, 3);
       const appId = g.appGap ? "opp-" + hash(`app:grp:${g.id}`).slice(0, 20) : undefined;
-      const contentIds = angles.map((a) => "opp-" + hash(`site:grp:${g.id}:${a.platform}`).slice(0, 20));
+      if (!g.appGap || !appId) continue;
       const verdictReason = `注意力 ${ATTENTION_LABELS[g.attention]}（${(g.sources || []).join("/") || "AI 语义初筛"}）：${g.reason}`.slice(0, 160);
-      angles.forEach((a, i) => {
-        upsert(db, {
-          dedupeKey: `site:grp:${g.id}:${a.platform}`, kind: "site", signals: ["news"],
-          evidenceIds: [], url: g.representativeUrl, title: g.title.slice(0, 120),
-          oneLiner: `${PLATFORM_LABELS[a.platform] || a.platform}角度（AI 语义初筛）：${a.angle.slice(0, 100)}`,
-          form: undefined, // 内容线机会无产品形态
-          verdict: g.attention === "strong" ? "可以试试" : "待验证",
-          verdictReason, verifyPlan: VERIFY.site(g.title), source, platform: a.platform,
-          ...(appId ? { relatedIds: [appId] } : {}),
-        }, counters);
-      });
-      if (g.appGap && appId) {
-        upsert(db, {
-          dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
-          evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
-          oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
-          form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
-          verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
-          ...(contentIds.length ? { relatedIds: contentIds } : {}),
-        }, counters);
-      }
+      upsert(db, {
+        dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
+        evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
+        oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
+        form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
+        verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
+      }, counters);
     }
   }
 }

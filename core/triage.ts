@@ -376,7 +376,7 @@ export async function runTriage(
 
 // ---- 名额分配（R9-6①）：按组消费判级——strong 优先占满 → potential → none 永不占 selected ----
 // 纯函数：改写 candidates 的 status/reason/attention/groupId，返回入选 url（按组序）。
-export function applyTriageToCandidates(candidates: DiscoveryCandidate[], groups: TriageGroup[], limit: number): string[] {
+export function applyTriageToCandidates(candidates: DiscoveryCandidate[], groups: TriageGroup[], limit: number, opts: { preserveUnclaimed?: boolean } = {}): string[] {
   const byUrl = new Map<string, TriageGroup>();
   for (const g of groups) for (const url of g.memberUrls) if (!byUrl.has(url)) byUrl.set(url, g);
   const tier = { strong: 0, potential: 1, none: 2 } as const;
@@ -389,6 +389,10 @@ export function applyTriageToCandidates(candidates: DiscoveryCandidate[], groups
   for (const c of candidates) {
     if (c.status === "filtered") continue;
     const g = byUrl.get(c.url);
+    // R10.26-4①：preserveUnclaimed（external 写口增量合并）——本次未被任何组认领且
+    // 已有非 none 判级的候选保留原状（人工捞回/前批判级不被缩减重放清掉）；
+    // 被组认领的仍按组值覆盖（显式变更语义）
+    if (opts.preserveUnclaimed && !g && c.attention && c.attention !== "none") continue;
     const attention = g?.attention ?? "none";
     c.attention = attention;
     if (g) c.groupId = g.id;

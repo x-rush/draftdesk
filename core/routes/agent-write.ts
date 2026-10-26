@@ -39,37 +39,46 @@ export const routes: RouteDef[] = [
       if (!db.get("discovery", parsed.jobId)) throw new AppError("采集批次不存在，请确认 jobId。", 404, "NOT_FOUND");
       const record = db.get<any>("candidate-groups", "tg-" + parsed.jobId);
       const nowIso = now();
+      const incoming = parsed.groups.map((g) => ({
+        ...g,
+        memberUrls: g.memberUrls || [],
+        representativeUrl: g.representativeUrl || g.memberUrls?.[0] || "",
+        sources: g.sources || [],
+        angles: g.angles || [],
+      }));
+      // R10.26-4①：增量合并替代整卡替换——分片回写（如 150+50 组）不再抹掉前批；
+      // 同 id 组被新值覆盖（显式变更），未在本次出现的旧组保留
+      const incomingIds = new Set(incoming.map((g) => g.id));
+      const kept = ((record?.groups as any[]) || []).filter((g) => !incomingIds.has(g.id));
       const doc = {
         jobId: parsed.jobId,
         planName: record?.planName || "外部语义处理",
         day: record?.day || nowIso.slice(0, 10),
         at: nowIso,
-        groups: parsed.groups.map((g) => ({
-          ...g,
-          memberUrls: g.memberUrls || [],
-          representativeUrl: g.representativeUrl || g.memberUrls?.[0] || "",
-          sources: g.sources || [],
-          angles: g.angles || [],
-        })),
+        groups: [...kept, ...incoming],
         shards: 0, calls: 0, tokens: 0, merges: 0,
         source: "external" as const,
       };
-      db.put("candidate-groups", "tg-" + parsed.jobId, doc);
-      // R10.20-A2：回写 discovery 候选判级标记（attention/groupId/selected）——
-      // builtin 链靠 applyTriageToCandidates 做，external 写口补齐同款回写+覆盖率入模率回填
-      const disc = db.get<any>("discovery", parsed.jobId);
-      if (disc) {
-        const limit = disc.limit ?? 6;
-        const { applyTriageToCandidates } = await import("../triage");
-        applyTriageToCandidates(disc.candidates || [], doc.groups as any, limit);
-        const judgedBySource = new Map<string, number>();
-        for (const c of disc.candidates || []) if (c.attention) judgedBySource.set(c.sourceId, (judgedBySource.get(c.sourceId) || 0) + 1);
-        for (const cov of disc.sources || []) cov.selected = judgedBySource.get(cov.sourceId) || 0;
-        db.put("discovery", parsed.jobId, disc);
-      }
-      // R10.24-5：组摘要入向量事件线（fire-and-forget，失败零影响主写口）
-      void indexEventGroups(db, parsed.jobId, doc.groups as never).catch(() => {});
-      return json({ ok: true, jobId: parsed.jobId, groups: doc.groups.length, at: nowIso, candidatesUpdated: disc ? (disc.candidates || []).filter((c: any) => c.attention).length : 0 });
+      // R10.26-4①：两次落库包事务——组卡与候选判级要么全成要么全不成（中间崩溃无对账）。
+      // transaction 是同步回调，动态 import 提到事务外
+      const { applyTriageToCandidates } = await import("../triage");
+      db.transaction(() => {
+        db.put("candidate-groups", "tg-" + parsed.jobId, doc);
+        // R10.20-A2：回写 discovery 候选判级标记——preserveUnclaimed 保护既有判级/人工捞回
+        // 不被缩减重放清掉（重放只影响本次组认领的候选）
+        const disc = db.get<any>("discovery", parsed.jobId);
+        if (disc) {
+          const limit = disc.limit ?? 6;
+          applyTriageToCandidates(disc.candidates || [], doc.groups as any, limit, { preserveUnclaimed: true });
+          const judgedBySource = new Map<string, number>();
+          for (const c of disc.candidates || []) if (c.attention) judgedBySource.set(c.sourceId, (judgedBySource.get(c.sourceId) || 0) + 1);
+          for (const cov of disc.sources || []) cov.selected = judgedBySource.get(cov.sourceId) || 0;
+          db.put("discovery", parsed.jobId, disc);
+        }
+      });
+      // R10.24-5：组摘要入向量事件线（fire-and-forget，失败零影响主写口；写入前清同 jobId 旧向量防陈旧误杀）
+      void indexEventGroups(db, parsed.jobId, incoming as never).catch(() => {});
+      return json({ ok: true, jobId: parsed.jobId, groups: doc.groups.length, mergedKept: kept.length, at: nowIso, candidatesUpdated: (() => { const disc = db.get<any>("discovery", parsed.jobId); return disc ? (disc.candidates || []).filter((c: any) => c.attention).length : 0; })() });
     },
   },
   {
@@ -163,6 +172,8 @@ export const routes: RouteDef[] = [
     handler: async (ctx) => upsertOutline(ctx, await ctx.readBody()),
   },
   {
+    // R10.26-1 P0：级联删簇前保护拍板历史——簇内存在已拍板大纲（decision 非 pending）
+    // 一律 400 拒绝整批；全 pending 才允许级联删除（拍板记录内联在大纲行上，删大纲=删拍板）。
     methods: ["DELETE"],
     pattern: "agent/clusters/:id",
     scope: "suggest",
@@ -171,20 +182,28 @@ export const routes: RouteDef[] = [
       const { db, params } = ctx;
       const cluster = db.get("clusters", params.id);
       if (!cluster) throw new AppError("簇不存在", 404, "NOT_FOUND");
+      const mine = db.list<any>("outlines").filter((o) => o.clusterId === params.id);
+      const decided = mine.filter((o) => o.decision && o.decision !== "pending");
+      if (decided.length)
+        throw new AppError(`簇含已拍板大纲 ${decided.length} 条（${[...new Set(decided.map((o) => o.decision))].join("/")}），拍板历史不可级联删除；请先处理拍板项或仅删除 pending 大纲。`, 400, "DECIDED_OUTLINES");
       let outlinesRemoved = 0;
-      for (const o of db.list<any>("outlines")) if (o.clusterId === params.id) { db.del("outlines", o.id); outlinesRemoved++; }
+      for (const o of mine) { db.del("outlines", o.id); outlinesRemoved++; }
       db.del("clusters", params.id);
       return json({ ok: true, deleted: { cluster: params.id, outlines: outlinesRemoved }, by: by(ctx) });
     },
   },
   {
+    // R10.26-1 P0：单删大纲同款 decision 守卫——已拍板大纲不可删（拍板 API 将 404 成死账）
     methods: ["DELETE"],
     pattern: "agent/outlines/:id",
     scope: "suggest",
     participants: true,
     handler: (ctx) => {
       const { db, params } = ctx;
-      if (!db.get("outlines", params.id)) throw new AppError("大纲不存在", 404, "NOT_FOUND");
+      const outline = db.get<any>("outlines", params.id);
+      if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
+      if (outline.decision && outline.decision !== "pending")
+        throw new AppError(`大纲已拍板（${outline.decision}），不可删除；如需移除请先在审查台处理拍板项。`, 400, "DECIDED_OUTLINE");
       db.del("outlines", params.id);
       return json({ ok: true, deleted: params.id, by: by(ctx) });
     },
@@ -281,24 +300,31 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   const platform = normalizePlatform(parsed.platform);
   if (!platform) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400);
   const category = parsed.category ? normalizeCategory(parsed.category) ?? parsed.category : undefined;
-  // R10.21-1 P0：组结构校验——仅当日 collectall 批已落盘且该批无组时触发（防半失败态）；
-  // 无批次（fresh clone/测试/纯 UI 操作）不阻断
-  const shDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
-  const caDone = db.get<any>("meta", "collect-all-done:" + shDay);
-  const caGroups = db.get<any>("candidate-groups", "tg-collectall-" + shDay);
-  if (caDone && !caGroups && !parsed.id) throw new AppError("组结构未写回，先 PUT /agent/triage/groups", 400, "GROUPS_MISSING");
-  // R10.21-2 P0：48h 跨日去重——同标题（精确匹配）48h 内已写入 → 跳过
+  // R10.21-1 P0 + R10.26-4② 收紧：组校验从「当日键」改「近 48h 最新 collectall 批」——
+  // 堵跨零点窗（00:00-01:00 当日键未写、昨日批被放行）与停摆日；无批次仍不阻断（fresh clone/测试/UI）
+  const recentBatch = db.list<any>("discovery")
+    .filter((d) => String(d.jobId || "").startsWith("collectall-"))
+    .sort((a, b) => String(b.jobId).localeCompare(String(a.jobId)))[0];
+  if (recentBatch && Date.now() - Date.parse(recentBatch.at || "") < 48 * 3600000) {
+    const recentGroups = db.get<any>("candidate-groups", "tg-" + recentBatch.jobId);
+    if (!recentGroups && !parsed.id) throw new AppError(`组结构未写回（批次 ${recentBatch.jobId}），先 PUT /agent/triage/groups`, 400, "GROUPS_MISSING");
+  }
+  // R10.21-2 P0 + R10.26-4② 收紧：48h 标题去重——NFC 归一+小写+全角转半角+剥零宽字符+
+  // 压缩空白后比对（全角变体/大小写/零宽空格不再放行）；更新路径（带 id）同跑查重（排除自身）
+  const normalizeTitle = (t: string) => t
+    .normalize("NFC").toLowerCase()
+    .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)) // 全角→半角（！-～）
+    .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, ""); // 空格全剥：中英混排「GPT-6首测/GPT-6 首测」同题
   const cutoff48h = new Date(Date.now() - 48 * 3600000).toISOString();
-  const trimmedTitle = parsed.title.trim();
+  const normalizedTitle = normalizeTitle(parsed.title);
   const duplicate = db.list<any>("outlines").find((o) =>
-    o.id !== parsed.id && String(o.title || "").trim() === trimmedTitle &&
+    o.id !== parsed.id && normalizeTitle(String(o.title || "")) === normalizedTitle &&
     String(o.createdAt || "") >= cutoff48h,
   );
-  if (duplicate && !parsed.id) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
-  // R10.23-3：跨日语义去重（48h 窗口不含当日）——与前两天组摘要相似度 >0.92 视为重复事件；
-  // 向量线降级时返回 null，照常写入（与标题级去重互补）
-  if (!parsed.id) {
-    const semantic = await findSemanticDuplicate(db, trimmedTitle);
+  if (duplicate) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
+  // R10.23-3 + R10.26-4②：跨日语义去重（48h 窗口不含当日）——更新路径同跑（排除自身簇的干扰由窗口保证）
+  {
+    const semantic = await findSemanticDuplicate(db, parsed.title.trim());
     if (semantic)
       return json({ ok: true, duplicate: true, semantic: true, score: semantic.score, matchedEvent: { key: semantic.matchedEvent.key, title: semantic.matchedEvent.title, jobId: semantic.matchedEvent.jobId } }, 200);
   }

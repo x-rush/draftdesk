@@ -355,7 +355,7 @@ test("tick：aiPolicy.triage=off 不自动补跑；auto 日上限 3 次", async 
 });
 
 // ---- 机会引擎组卡（R9-6⑤⑥）----
-test("generateFromGroups：双线卡（内容线每角度一张+app 卡）、互挂 relatedIds、幂等、none 不出卡、老批次不回捞", () => {
+test("generateFromGroups：R10.26 口径只出 appGap 应用卡（无内容线/无互挂）、幂等、none 与老批次不出", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-triage-opp-"));
   let db: Store | undefined;
   try {
@@ -372,19 +372,15 @@ test("generateFromGroups：双线卡（内容线每角度一张+app 卡）、互
     const old: TriageRecord = { ...record, jobId: "j0", at: new Date(Date.now() - 5 * 86400000).toISOString(), groups: [group("grp-old", "strong", ["https://old/1"], { angles: [{ platform: "gzh", angle: "老角度" }] })] };
     db.put("candidate-groups", "tg-j0", old);
     const first = generateOpportunities(db!, { source: "agent" });
-    assert.equal(first.created, 3, "2 内容卡 + 1 应用卡（none 组与老批次不出）");
+    assert.equal(first.created, 1, "R10.26：只出 1 张 appGap 应用卡（内容线走大纲链路；none 组与老批次不出）");
     const byKey = (k: string) => db!.get<any>("opportunities", "opp-" + hash(k).slice(0, 20));
     const gzh = byKey("site:grp:grp-aaa:gzh");
-    const tbh = byKey("site:grp:grp-aaa:tiebuhao");
     const app = byKey("app:grp:grp-aaa");
-    assert.ok(gzh && tbh && app, "三张卡按 dedupeKey 落库");
-    assert.equal(gzh.platform, "gzh");
-    assert.equal(gzh.verdict, "可以试试", "strong → 可以试试");
-    assert.match(gzh.verdictReason, /注意力 强（百度\/微博）/);
-    assert.deepEqual(gzh.relatedIds, [app.id], "内容卡挂应用卡");
-    assert.deepEqual(app.relatedIds, [gzh.id, tbh.id], "应用卡挂两张内容卡");
+    assert.equal(gzh, undefined, "内容线卡不再产出");
+    assert.ok(app, "应用卡按 dedupeKey 落库");
     assert.equal(app.kind, "app");
     assert.equal(app.form, "web-app", "R10 六值");
+    assert.deepEqual(app.relatedIds, undefined, "互挂已随内容线卡移除");
     assert.ok(app.verifyPlan[0].includes("对比工具"), "appGap 进验证计划首条");
     assert.equal(app.url, "https://a/1", "代表条目 url");
     // 幂等：重跑不重出
