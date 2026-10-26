@@ -49,7 +49,7 @@ const nav = [
   ["ideas", "应用机会", FlaskConical],
   ["activities", "创作活动", Compass],
   ["decisions", "审查台", ClipboardCheck],
-  ["plans", "研究策略", Layers],
+  ["plans", "分析口径", Layers],
   ["sources", "数据源", BookOpen],
   ["runs", "运行记录", Play],
   ["connections", "外部接入", Plug],
@@ -88,8 +88,8 @@ const headings: Record<string, [string, string]> = {
   activities: ["找到值得参与的创作活动", "AI、Vibe Coding 与可参与的创作激励；先核对规则，再选择内容方向。"],
   chat: ["让观点多走一步", "带着证据讨论，整理成可继续编辑的内容或应用方案。"],
   plans: [
-    "设计你的研究节奏",
-    "目标、来源、关键词和预算，共同决定每天的研究质量。",
+    "分析口径在此配置",
+    "external 模式下分析由外部 Agent 执行，这里只维护口径（源过滤/受众/预算）。",
   ],
   sources: [
     "从可靠的线索开始",
@@ -278,7 +278,7 @@ export function Workbench() {
                 </nav>
               )}
               {view === "discover" && ws.discoveryMode === "queue" && <OutlineQueueView ws={ws} data={data} />}
-              {view === "activities" && <p className="dash-label"><Compass size={14} /> 采集与整理<span className="dash-label-sub">四平台来源 → 三步向导 → AI 初筛 → 活动列表（通过核验可推进为选题）</span></p>}
+              {view === "activities" && <p className="dash-label"><Compass size={14} /> 采集与整理<span className="dash-label-sub">{(data.config?.consumerMode || "external") === "builtin" ? "四平台来源 → 三步向导 → AI 初筛 → 活动列表" : "四平台来源 → 三步向导 → 归组入池 → 活动列表（AI 分析由外部 Agent 执行）"}</span></p>}
               {(["library", "activities"].includes(view) || view === "discover") && <DiscoverView ws={ws} data={data} />}
               {view === "trends" && <SeoWorkspaceView ws={ws} data={data} />}
               {view === "ideas" && <SiteEvaluatorView ws={ws} data={data} />}

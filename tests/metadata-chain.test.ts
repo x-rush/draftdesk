@@ -30,8 +30,10 @@ function cleanup(dir: string) {
 }
 
 test("元数据全链：parser→落库构造→视图投影→agent 投影 四字段不丢", () => {
+  // ④ 的 agentHotspots 有 14 天窗口——观测时间用相对时刻（昨天），避免硬编码日期越窗腐烂
+  const seenAt = new Date(Date.now() - 86400000).toISOString();
   // ① parser 层
-  const items = parseBilibiliPopular(bilibiliPayload, "2026-10-10T00:00:00.000Z");
+  const items = parseBilibiliPopular(bilibiliPayload, seenAt);
   assert.equal(items.length, 2);
   assert.equal(items[0].mediaType, "video");
   assert.equal(items[0].coverUrl, "https://i0.hdslb.com/bfs/archive/meta.jpg");
@@ -51,13 +53,13 @@ test("元数据全链：parser→落库构造→视图投影→agent 投影 四�
   assert.equal(withPublished.publishedAt, "2026-10-01T00:00:00.000Z");
 
   // ③ 视图投影（hotspotFeed）：新行携带元数据；同 URL 更新时最新观测优先
-  const record: DiscoveryRecord = { jobId: "j1", at: "2026-10-10T00:01:00.000Z", planName: "热词与内容机会", mode: "analysis", limit: 100, candidates: [candidate], sources: [] };
+  const record: DiscoveryRecord = { jobId: "j1", at: seenAt, planName: "热词与内容机会", mode: "analysis", limit: 100, candidates: [candidate], sources: [] };
   const feed = hotspotFeed([record], new URLSearchParams("hotspotConsumed=include"));
   assert.equal(feed.items.length, 1);
   assert.equal(feed.items[0].mediaType, "video");
   assert.equal(feed.items[0].coverUrl, candidate.coverUrl);
   assert.equal(feed.items[0].author, "链路测试UP");
-  const newer: DiscoveryRecord = { ...record, jobId: "j2", at: "2026-10-10T00:02:00.000Z", candidates: [{ ...candidate, observedAt: "2026-10-10T00:02:00.000Z", author: "更新后的UP" }] };
+  const newer: DiscoveryRecord = { ...record, jobId: "j2", at: seenAt, candidates: [{ ...candidate, observedAt: seenAt, author: "更新后的UP" }] };
   const feedMerged = hotspotFeed([newer, record], new URLSearchParams("hotspotConsumed=include"));
   assert.equal(feedMerged.items[0].author, "更新后的UP", "同 URL 更新时元数据应随最新观测");
 

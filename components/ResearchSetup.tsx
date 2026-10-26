@@ -162,7 +162,7 @@ export function PlanEditor({
           ))}
         </div>
         {p.kind!=="activities"&&<p className="muted">每日 01:00 由全量采集统一执行（全部启用源一次采回）；本策略不再单独定时——
-          它定义分析口径（源过滤/受众/预算），供「手动跑一次分析」与外部 Agent 消费使用。</p>}
+          它定义分析口径（源过滤/受众/预算），供分析执行方消费（external=外部 Agent，builtin=内置分析）。</p>}
         {error && (
           <p className="error" role="alert">
             {error}

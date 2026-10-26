@@ -187,6 +187,8 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 **④ 审查台（唯一拍板口）**：导航四环节（采集→初筛→消费→审查台）；今日总览卡（采集 N→待拍 N→待查词→外部消费回执）。SkillsView 定位=方法论手册（高级层级）。
 
+**挖掘类 tick 豁免（R10.25-1 总纲修订）**：external 模式=内置 AI 零调用的**唯一豁免**是四个采集侧数据增强 tick——判定回填（judgeBackfillTick）/题材标注（outlineCategoryTick）/新站六类判定（siteLaunchesTick）/词判定（seenJudgeTick），cheap 档（~10 次/12 万 tokens/日），消耗入 model-metrics 台账（设置页「预算与成本看板」公开可查）。属词库与新站的采集侧增强，非消费链。
+
 ## 语义初筛（R9-6：归类 + 注意力判级 + 双线草案）
 
 采集批次入库后，内置 AI 对**规则放行的存活池**做一次语义初筛（分片 cheap 调用 + 片间合并），产出三件事：
@@ -200,7 +202,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - **总开关**：`config.aiPolicy.triage`（off/cheap/full，审查台「内置 AI 参与开关」可改；off=回退来源均衡分配，不跑 AI）。计划级 `plan.aiPolicy` 可微调：`enabled`（缺省 trends 类计划开）/`attentionCriteria`（追加判级标准，优先级最高）/`groupGranularity`（coarse=同大事件并组，fine=只有同一事件才并组）。
 - **触发**：正常批次在采集时内联跑（初筛，不受 consumerMode 门控）；失败批次标「待语义初筛」由 worker tick 自动补跑（日上限 3 批）。显式补跑：`POST /api/v1/triage/generate`（可带 `{"jobId":"…"}` 定向；**不要带令牌**，本机无鉴权口）。
 - **读结果**：`GET /api/v1/triage/groups?jobId=…`（组+成员+判级+草案）；`GET /api/v1/triage/status?jobId=…`（done/failed/pending）。
-- **组卡（双线）**：外部 Agent 点 `POST /api/v1/opportunities/generate`（同样不带令牌）时，近 3 天批次的组自动出卡——每角度一张内容线卡（`site:grp:*`，strong→可以试试/potential→待验证）+ 有 appGap 的组一张应用卡（`app:grp:*`）；双卡经 `relatedIds` 互挂。
+- **组卡（双线）**：`POST /api/v1/opportunities/from-group`（UI 组卡按钮在用，`{jobId,groupId}`）——有 appGap 的组一张应用卡（`app:grp:*`）；内容线选题走 outlines（大纲链路），不再产出内容线机会卡（R10.25 口径）。外部 Agent 写卡走 `PUT /agent/opportunities`（form 必填六值）。
 - **分工边界**：内置 AI 出「组+判级+双线草案」；**外部 Agent（小拾）对组做主分析**（哪些组值得写、写什么角度、app 路线深挖——草案是输入不是替代）+ 质量巡检（抽查归类准确性，归错组超标报用户调 prompt/aiPolicy）；拍板只在审查台。跨日重复组（同一事件分属两天批次）是已知形态，小拾主分析时在拍板建议里注明「与 X 日某组同事件」。
 
 ## ⑧ 大纲提交（选题体系 · 第六轮批 B）

@@ -3,9 +3,9 @@
 // 也是来源之一（老大 2026-10-18 10:44 原话）；机会生成属采集侧衍生，不受消费
 // 模式门控（互斥的是「分析消费」，不是「信号扫描」）。config.autoOpportunityGenerate
 // 可关（默认开；关闭后只保留组级手动转卡 from-group）。
-// · external（默认，我们的现状）：外部 Agent 点 POST /opportunities/generate 触发生成；
-//   consumerMode=external 时 worker 不自动跑（内置 AI 只管采集与初筛，不做机会生成）。
-// · builtin：worker 每日 opportunityTick 自动跑一次（同一套规则，仅执行者不同）。
+// R10.25-4②：HTTP 批量触发口 POST /opportunities/generate 已删（从未接线）；
+// 自动链=seo-gate/triage/collect-all 内部调用 + builtin opportunityTick。
+// R10.25 口径：组出卡只出 appGap 应用卡，内容线选题走 outlines 大纲链路。
 // 初筛联动（§1⑥）：watch 池 TTL（引用≥2 晋升 / 超 14 天未引用降级）+
 // plan.platformAffinity 平台适配（实测/教程→笔记线、深度/分析→长文线）二次精筛 watch 池。
 import type { Store } from "./store";
@@ -368,33 +368,20 @@ export function upsertOpportunityDrafts(db: Store, drafts: Draft[], source: "aut
   return { created: counters.created, merged: counters.merged };
 }
 
-// 单组出卡草稿（R10.7 P0-2/P0-5）：generateFromGroups 与「转机会卡」写口共用——
-// 内容线每角度一张 + appGap 应用卡，relatedIds 互挂（id 由 dedupeKey 确定性预计算）。
+// 单组出卡草稿（R10.7 P0-2/P0-5）：generateFromGroups 与「转机会卡」写口共用。
+// R10.25 口径：内容线选题走 outlines（大纲链路），不再产内容线机会卡——
+// 只出 appGap 应用卡（id 由 dedupeKey 确定性预计算）。
 export function groupOpportunityDrafts(g: NonNullable<TriageRecord["groups"][number]>, source: "auto" | "agent" = "agent") {
-  const angles = (g.angles || []).filter((a) => a?.platform && a?.angle).slice(0, 3);
   const appId = g.appGap ? "opp-" + hash(`app:grp:${g.id}`).slice(0, 20) : undefined;
-  const contentIds = angles.map((a) => "opp-" + hash(`site:grp:${g.id}:${a.platform}`).slice(0, 20));
+  if (!g.appGap || !appId) return [];
   const verdictReason = `注意力 ${ATTENTION_LABELS[g.attention]}（${(g.sources || []).join("/") || "AI 语义初筛"}）：${g.reason}`.slice(0, 160);
-  // R10.11-4④：同组同平台多角度 dedupeKey 加角度指纹（原同平台第二角度覆盖第一角度）
-  const drafts: Draft[] = angles.map((a) => ({
-    dedupeKey: `site:grp:${g.id}:${a.platform}:${hash(a.angle).slice(0, 8)}`, kind: "site", signals: ["news"],
-    evidenceIds: [], url: g.representativeUrl, title: g.title.slice(0, 120),
-    oneLiner: `${PLATFORM_LABELS[a.platform] || a.platform}角度（AI 语义初筛）：${a.angle.slice(0, 100)}`,
-    form: undefined,
-    verdict: g.attention === "strong" ? "可以试试" : "待验证",
-    verdictReason, verifyPlan: VERIFY.site(g.title), platform: a.platform, source,
-    ...(appId ? { relatedIds: [appId] } : {}),
-  }));
-  if (g.appGap && appId) {
-    drafts.push({
-      dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
-      evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
-      oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
-      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
-      verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
-      ...(contentIds.length ? { relatedIds: contentIds } : {}),
-    });
-  }
+  const drafts: Draft[] = [{
+    dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
+    evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
+    oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
+    form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
+    verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
+  }];
   return drafts;
 }
 

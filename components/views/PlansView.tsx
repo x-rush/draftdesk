@@ -16,6 +16,44 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const plans = data.plans || [];
   const enabledSources = (data.sources || []).filter((s) => s.enabled !== false).length;
   const activeRuns = data.stats?.activePlanIds?.length ?? 0;
+  const builtin = (data.config?.consumerMode || "external") === "builtin";
+
+  // R10.25-2：external 下本页只剩「分析口径配置」一个真实作用（供外部 Agent 与采集过滤读取）——
+  // 统计条/新建向导/多策略卡网格/手动分析按钮全部隐藏（builtin 才显示）。
+  if (!builtin) {
+    const primary = plans.find((p) => p.kind !== "activities") || plans[0];
+    return (
+      <>
+        <p className="dash-label"><Compass size={14} /> 分析口径配置<span className="dash-label-sub">供外部 Agent 语义处理与采集过滤读取；分析执行在 external 模式下由外部 Agent（02:00）完成</span></p>
+        {primary ? (
+          <article className="plan-card">
+            <div className="plan-card-head">
+              <span className="pill">{kindPlanLabels[primary.kind]}</span>
+              <span className="pill" title="口径只读消费：01:00 全量采集 + 外部 Agent 语义处理">分析口径 · 外部 Agent 消费</span>
+            </div>
+            <h3 className="plan-name"><Layers size={16} />{primary.name}</h3>
+            <p className="plan-goal">{primary.goal}</p>
+            <details className="row-fold">
+              <summary>口径详情（目标 / 来源 / 关键词 / 预算）</summary>
+              <PlanPreview plan={primary} sources={data.sources} />
+            </details>
+            <div className="plan-foot">
+              <div className="term-actions">
+                <details className="more-menu" data-popover>
+                  <summary className="button" aria-label="调整分析口径" style={{ padding: "7px 11px" }}><ChevronDown size={13} /></summary>
+                  <span className="menu-pop">
+                    <button onClick={() => setPlan(primary)}>调整口径</button>
+                  </span>
+                </details>
+              </div>
+            </div>
+          </article>
+        ) : (
+          <p className="muted">暂无分析口径；切到 builtin 模式可新建策略。</p>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -66,18 +104,16 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
                 <div className="term-actions">
                   {p.kind === "activities" ? (
                     <button className="primary" style={{ whiteSpace: "nowrap" }} onClick={() => navigate("activities")}>前往采集</button>
-                  ) : (data.config?.consumerMode || "external") === "builtin" ? (
-                    <>
-                      <button className="primary" disabled={busy || analyzeBusy === p.id || running} title="按本策略口径重读源并跑内置分析（与每日 01:00 全量采集相互独立，会重复消耗模型额度）" onClick={() => void (async () => {
-                        setAnalyzeBusy(p.id);
-                        try {
-                          const r = await api<{ triggered: boolean; running: boolean }>("plans/" + p.id + "/analyze", {});
-                          setNotice(r.triggered ? "已入队：按本策略口径重读源 + 内置分析（整理→提词→审核）。" : "该策略已有分析在运行。");
-                          await ws.refresh();
-                        } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
-                      })()}><Play size={15} /> {analyzeBusy === p.id ? "分析入队中…" : "手动跑一次分析"}</button>
-                    </>
-                  ) : null}
+                  ) : (
+                    <button className="primary" disabled={busy || analyzeBusy === p.id || running} title="按本策略口径重读源并跑内置分析（与每日 01:00 全量采集相互独立，会重复消耗模型额度）" onClick={() => void (async () => {
+                      setAnalyzeBusy(p.id);
+                      try {
+                        const r = await api<{ triggered: boolean; running: boolean }>("plans/" + p.id + "/analyze", {});
+                        setNotice(r.triggered ? "已入队：按本策略口径重读源 + 内置分析（整理→提词→审核）。" : "该策略已有分析在运行。");
+                        await ws.refresh();
+                      } catch (e) { setNotice((e as Error).message); } finally { setAnalyzeBusy(""); }
+                    })()}><Play size={15} /> {analyzeBusy === p.id ? "分析入队中…" : "手动跑一次分析"}</button>
+                  )}
                   <details className="more-menu" data-popover>
                     <summary className="button" aria-label={`更多操作：${p.name}`} style={{ padding: "7px 11px" }}><ChevronDown size={13} /></summary>
                     <span className="menu-pop">

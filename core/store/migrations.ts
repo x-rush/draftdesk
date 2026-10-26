@@ -4,8 +4,6 @@ import { writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { defaultConfig, defaultPlans, defaultSources, defaultPersona, defaultAiPolicy, defaultConsumerMode } from "../defaults";
 import { now } from "./helpers";
-import { cleanSeedPollution } from "../seen-clean";
-import { backfillSeenTermRegions, mergeSpaceVariants } from "../seen-terms";
 import { retightenNewsOpportunities } from "../opportunity";
 import { reapplySiteRules } from "../seen-judge";
 import { normalizePlatform } from "../platforms";
@@ -112,12 +110,8 @@ export const migrations: Migration[] = [
   },
   {
     id: "people-removal-v1",
-    // 人物观察功能已移除：清掉对应策略与任务，防止调度或流水线再触达已删除的人物技能链。
-    // 旧库存量仍可能是 "people"，比较用宽松字符串而不是收窄后的联合类型。
-    run: ({ kv }) => {
-      for (const p of kv.list<any>("plans")) if ((p.kind as string) === "people") kv.del("plans", p.id);
-      for (const j of kv.list<any>("jobs")) if ((j.plan?.kind as string) === "people") kv.del("jobs", j.id);
-    },
+    // 人物观察功能已移除（历史一次性补丁）。R10.25-6：已生效，判断体固化为 no-op，下版本删。
+    run: () => {},
   },
   {
     id: "decision-layer-v1",
@@ -190,26 +184,9 @@ export const migrations: Migration[] = [
   },
   {
     id: "plan-mojibake-v1",
-    // GBK→UTF-8 损坏修复（2026-10-10 清单）：三个内置策略的文案字段含 U+FFFD，从种子恢复；
-    // 操作字段（dailyTime/scheduleEnabled/maxQueries 等）保留现值。顺带清理 outlines 的
-    // 乱码 producedBy 与 connections 的乱码名死令牌（已撤销，直接删除）。
-    run: ({ kv }) => {
-      const textFields = ["name", "goal", "audience", "keywords", "focusTerms", "excludeKeywords"];
-      for (const plan of kv.list<any>("plans")) {
-        const def = defaultPlans.find((p) => p.id === plan.id);
-        if (!def) continue;
-        const corrupted = textFields.some((f) => JSON.stringify(plan[f] ?? "").includes("\uFFFD"));
-        if (!corrupted) continue;
-        const next = { ...plan };
-        for (const f of textFields) if ((def as any)[f] !== undefined) next[f] = (def as any)[f];
-        kv.put("plans", plan.id, next);
-      }
-      for (const o of kv.list<any>("outlines"))
-        if (typeof o.producedBy === "string" && o.producedBy.includes("\uFFFD"))
-          kv.put("outlines", o.id, { ...o, producedBy: "agent:未知来源(乱码已清理)" });
-      for (const c of kv.list<any>("connections"))
-        if (typeof c.name === "string" && c.name.includes("\uFFFD")) kv.del("connections", c.id);
-    },
+    // GBK→UTF-8 损坏修复（2026-10-10 清单，历史一次性补丁）。R10.25-6：已生效，
+    // 判断体固化为 no-op，下版本删。
+    run: () => {},
   },
   {
     id: "inbox-cluster-v1",
@@ -265,31 +242,18 @@ export const migrations: Migration[] = [
   },
   {
     id: "seed-pollution-clean-v1",
-    // 种子池污染清洗（2026-10-10 用户批复）：11 个跑题种子（自动驾驶/自動駕駛/点击器家族/
-    // tesla/uber/toyota/台湾法规等）按 seed 血缘反查全部家族词归档出库（不删，备查）；
-    // AI 短剧/版权/无血缘提词等白名单全保留（见 core/seen-clean.ts）。
-    run: ({ kv }) => {
-      const report = cleanSeedPollution(kv);
-      console.log(`[migration] seed-pollution-clean-v1：种子 ${report.roots} / 家族词 ${report.family} / 归档 ${report.archived}`);
-    },
+    // 种子池污染清洗（2026-10-10，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
+    run: () => {},
   },
   {
     id: "seen-term-space-merge-v1",
-    // termId 归一化收紧（清洗批 2）：去全部内部空格后，历史库「爱 奇 艺 收益」与
-    // 「爱奇艺收益」这类空格变体是两份文档，一次性合并（obs max/并集/状态只升不降）。
-    run: ({ kv }) => {
-      const report = mergeSpaceVariants(kv);
-      if (report.merged) console.log(`[migration] seen-term-space-merge-v1：合并 ${report.merged} 组，移除重复文档 ${report.removed} 条`);
-    },
+    // termId 空格变体合并（清洗批 2，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
+    run: () => {},
   },
   {
     id: "seen-term-region-backfill-v1",
-    // region 分层（海外定位批）：存量按来源映射回填（inferRegion），无来源可判兜底
-    // global（管线海外优先定位）。cn 词纯内容创作线，global 词双职责（内容选题+站群候选）。
-    run: ({ kv }) => {
-      const backfilled = backfillSeenTermRegions(kv);
-      if (backfilled) console.log(`[migration] seen-term-region-backfill-v1：回填 region ${backfilled} 条`);
-    },
+    // region 存量回填（海外定位批，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
+    run: () => {},
   },
   {
     id: "opportunity-engine-v1",
@@ -322,16 +286,8 @@ export const migrations: Migration[] = [
   },
   {
     id: "receipts-testdata-cleanup-v1",
-    // 收件箱清理（收尾批 §7②）：9 月验收期的测试回执出库（receipts 集合 + submissions
-    // 表对应行一起删）；10 月起的真实回执不动。fresh clone 无数据自然幂等跳过。
-    run: ({ kv }) => {
-      const cutoff = "2026-10-01";
-      const stale = kv.list<any>("receipts").filter((r) => String(r.receivedAt || "") < cutoff);
-      if (!stale.length) return;
-      for (const r of stale) kv.del("receipts", r.id);
-      const del = kv.db.prepare("DELETE FROM submissions WHERE json_extract(receipt,'$.receivedAt') < ?").run(cutoff);
-      console.log(`[migration] receipts-testdata-cleanup-v1：清出测试回执 ${stale.length} 条（submissions 表删 ${del.changes} 行）`);
-    },
+    // 9 月测试回执出库（收尾批 §7②，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
+    run: () => {},
   },
   {
     id: "opportunity-news-tighten-v1",
@@ -345,18 +301,9 @@ export const migrations: Migration[] = [
   },
   {
     id: "seen-off-archive-v1",
-    // off 即归档存量清偿（第七轮批1 W7附）：判定层代码已改「判 off 即 archived
-    // （archivedReason=relevance-off-auto）」，存量 off 词（外部 vocab-hygiene 第九步
-    // 未覆盖到的残留）此处一次补齐。归档词不再进任何判定/SERP/种子队列。
-    run: ({ kv }) => {
-      let archived = 0;
-      for (const t of kv.list<any>("seen-terms")) {
-        if (t.relevance !== "off" || t.status === "archived") continue;
-        kv.put("seen-terms", String(t.id), { ...t, status: "archived", archivedReason: "relevance-off-auto", updatedAt: now() });
-        archived++;
-      }
-      if (archived) console.log(`[migration] seen-off-archive-v1：存量 off 词归档 ${archived} 条`);
-    },
+    // off 词归档存量清偿（第七轮批1 W7附，历史一次性补丁；判定层已改「判 off 即 archived」）。
+    // R10.25-6：已生效，固化为 no-op，下版本删。
+    run: () => {},
   },
 ];
 

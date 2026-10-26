@@ -55,7 +55,7 @@ test("off 即归档（W7附）：judgeSeenTerm 判 off 同步 archived + relevan
   }
 });
 
-test("存量迁移 seen-off-archive-v1：off 词补归档，其他档位不动", () => {
+test("存量迁移 seen-off-archive-v1：已固化为 no-op 占位（R10.25-6）——归档职责在判定层「判 off 即 archived」", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-w7mig-"));
   let db: Store | undefined;
   try {
@@ -63,14 +63,11 @@ test("存量迁移 seen-off-archive-v1：off 词补归档，其他档位不动",
     db.put("seen-terms", "存量off词", mkTerm("存量off词", { relevance: "off", offTopic: true }));
     db.put("seen-terms", "存量strong词", mkTerm("存量strong词", { relevance: "strong" }));
     const m = migrations.find((x) => x.id === "seen-off-archive-v1");
-    assert.ok(m, "迁移已注册");
+    assert.ok(m, "迁移号占位保留");
     m!.run({ kv: db.kv as any, directory: dir });
-    assert.equal(db.get<any>("seen-terms", "存量off词").status, "archived");
-    assert.equal(db.get<any>("seen-terms", "存量off词").archivedReason, "relevance-off-auto");
+    // no-op 语义：迁移不再搬数据（活库存量已于 W7 附清偿；新 off 词由判定层直接落 archived）
+    assert.notEqual(db.get<any>("seen-terms", "存量off词").status, "archived", "固化后迁移不触碰数据");
     assert.equal(db.get<any>("seen-terms", "存量strong词").status, "rising", "非 off 词不动");
-    // 幂等：meta 键守卫由 runMigrations 负责，此处直接重跑也不重复破坏（off+archived 跳过）
-    m!.run({ kv: db.kv as any, directory: dir });
-    assert.equal(db.get<any>("seen-terms", "存量off词").archivedReason, "relevance-off-auto");
   } finally {
     db?.close();
     cleanup(dir);

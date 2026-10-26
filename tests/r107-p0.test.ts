@@ -78,14 +78,20 @@ test("P0-5：PUT /agent/opportunities（suggest 令牌写 form 六值；未知 f
   assert.ok(all.some((o) => o.title === "Agent 深挖卡" && o.form === "web-app" && o.source === "agent"), "外部写卡落库");
   const bad = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/opportunities", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ title: "x", oneLiner: "y", form: "web" }) }), ["agent", "opportunities"]);
   assert.equal(bad.status, 400, "旧值 form 拒绝（严格六值）");
-  // from-group：用 P0-2 的 job9/g1（无角度无 appGap → 400；再造一组带双线）
+  // from-group：g1 带 appGap → 只出应用卡 1 张（R10.25 口径：内容线走大纲链路不再出卡）
   db.put("candidate-groups", "tg-job9", { jobId: "job9", planName: "p", day: "d", at: "", shards: 1, calls: 1, tokens: 1, merges: 0,
     groups: [{ id: "g1", title: "强组", attention: "strong", reason: "r", memberUrls: ["https://a/1"], representativeUrl: "https://a/1", sources: ["S"], angles: [{ platform: "gzh", angle: "深度" }], appGap: "做个工具" }] });
   const fg = await request("opportunities/from-group", { jobId: "job9", groupId: "g1" });
   assert.equal(fg.status, 200);
   const fgb = await fg.json();
-  assert.equal(fgb.created, 2, "内容线 1 + 应用 1");
+  assert.equal(fgb.created, 1, "R10.25：内容线不出卡，仅应用卡 1 张");
   assert.ok(db.list<any>("opportunities").some((o) => o.dedupeKey === "app:grp:g1"));
+  assert.ok(!db.list<any>("opportunities").some((o) => String(o.dedupeKey).startsWith("site:grp:g1")), "内容线卡不再产出");
+  // 无 appGap 的组 → 400（引导走大纲链路）
+  db.put("candidate-groups", "tg-job9b", { jobId: "job9b", planName: "p", day: "d", at: "", shards: 1, calls: 1, tokens: 1, merges: 0,
+    groups: [{ id: "g1", title: "纯内容组", attention: "strong", reason: "r", memberUrls: ["https://b/1"], representativeUrl: "https://b/1", sources: ["S"], angles: [{ platform: "gzh", angle: "教程" }] }] });
+  const fgn = await request("opportunities/from-group", { jobId: "job9b", groupId: "g1" });
+  assert.equal(fgn.status, 400, "无 appGap → 400 引导大纲链路");
 });
 
 test("R10.11-1 P0：agent 口 PUT /agent/outlines 平台归一——未知值 400（旧回退曾落库任意字符串）、gzh 201", async () => {

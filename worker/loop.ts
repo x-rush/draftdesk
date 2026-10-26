@@ -39,11 +39,14 @@ export function startWorkerLoop(db: Store) {
         await collectAllTick(db);
         seenTermsTick(db, requestModel);
         // 判定吞吐扩容（第五轮 §5）：relevance 回填判定日多批（积压 7112 → 48h <2000 的反推口径）
+        // 【采集侧豁免·R10.25-1】external 模式下保留：词库判级属采集侧数据增强（cheap 档），
+        // 消耗入 model-metrics 台账公开可查——非「内置 AI 零调用」总纲的违例。
         judgeBackfillTick(db, requestModel);
         seenDiggingTick(db);
         // 词根探针（第五轮批 2b）：34 工具词根+AI 词根轮转喂联想，≤48 词/日不冲判定重档
         rootProbeTick(db);
-        // 选题题材标注（第六轮批 A；R9-1 改可持续）：每日增量标注无 category 大纲（cheap 档，不受 consumerMode 门控）
+        // 选题题材标注（第六轮批 A；R9-1 改可持续）：每日增量标注无 category 大纲（cheap 档）
+        // 【采集侧豁免·R10.25-1】external 模式下保留：题材标注属采集侧数据增强。
         outlineCategoryTick(db, requestModel);
         // 资讯类簇强制覆盖贴图号（R8-2①）：库内克隆不耗模型，两模式都跑
         ensureTiebuhaoClones(db);
@@ -52,6 +55,7 @@ export function startWorkerLoop(db: Store) {
         // 双端兜底链（第六轮批 B §2④）：builtin 模式 approved → 自动第一版大纲 → drafting；
         // external 模式此 tick 零动作（大纲由外部 Agent 写）。
         outlineDraftTick(db, requestModel);
+        // 【采集侧豁免·R10.25-1】external 模式下保留：词判定属采集侧数据增强（cheap 档）。
         seenJudgeTick(db);
         // 哥飞指标日更（第七轮批3 W7-8；批4 双门控：autoMetrics 勾选才调付费接口，月池 30+obs≥5）
         seoMetricsTick(db);
@@ -62,10 +66,11 @@ export function startWorkerLoop(db: Store) {
         trendsRisingTick(db);
         benchmarkSitesTick(db);
         linkProspectsTick(db);
-        // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定（初筛，不受 consumerMode 门控）
+        // 新站发现（第五轮 §2）：Show HN + PH 结构化抓取 + cheap 档六类判定
+        // 【采集侧豁免·R10.25-1】external 模式下保留：新站六类判定属采集侧数据增强。
         siteLaunchesTick(db, requestModel);
         // 机会引擎（第五轮）：watch 池 TTL 是初筛的一部分（不受 consumerMode 影响）；
-        // 机会自动生成仅 builtin 模式（external 由外部 Agent 经 /opportunities/generate 触发）。
+        // 机会自动生成仅 builtin 模式（external 由外部 Agent 经 PUT /agent/opportunities 写卡）。
         watchTtlTick(db);
         // 预算自检（R9-7①）：每小时对账当日预留 vs 台账实耗，泄漏回收+告警（自带小时闸）
         budgetAuditTick(db);

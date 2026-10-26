@@ -12,7 +12,7 @@ function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
 }
 
-test("plan-mojibake-v1 迁移：损坏文案从种子恢复，操作字段保留；outlines 归属清理；死令牌删除；收集箱簇就位", () => {
+test("plan-mojibake-v1 迁移：已固化为 no-op 占位（R10.25-6）——重开不再触碰数据，编码守护由 body() 中间件承担", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-mojibake-"));
   let db: Store | undefined, db2: Store | undefined;
   try {
@@ -21,30 +21,19 @@ test("plan-mojibake-v1 迁移：损坏文案从种子恢复，操作字段保留
     db.put("plans", plan.id, {
       ...plan,
       goal: "发现\uFFFD\uFFFD有关的 AI 变化，提出\uFFFD选题",
-      keywords: ["剪映\uFFFD字幕"],
       dailyTime: "09:30",
       scheduleEnabled: true,
     });
-    db.put("outlines", "out-moji", { id: "out-moji", clusterId: "clu-inbox", platform: "公众号", contentType: "长文", title: "乱码归属大纲", decision: "pending", producedBy: "agent:乱码\uFFFD\uFFFD\uFFFD名", createdAt: new Date().toISOString() });
-    db.put("connections", "c-moji", { id: "c-moji", name: "乱码\uFFFD令牌", digest: "dead", scopes: ["submit"], createdAt: new Date().toISOString(), lastUsedAt: null, revoked: true });
-    // 模拟旧库升级：损坏发生在迁移之后，清掉迁移标记让重开时重跑（一次性幂等语义不变）
+    // 模拟旧库升级路径：清迁移标记重开
     db.del("meta", "plan-mojibake-v1");
-    db.del("meta", "inbox-cluster-v1");
     db.close();
 
     db2 = new Store(dir);
-    const restored = db2.get<any>("plans", "daily-editorial")!;
-    const def = defaultPlans.find((p) => p.id === "daily-editorial")!;
-    assert.equal(restored.goal, def.goal, "goal 未从种子恢复");
-    assert.deepEqual(restored.keywords, def.keywords, "keywords 未从种子恢复");
-    assert.equal(restored.dailyTime, "09:30", "用户操作字段不得被迁移覆盖");
-    assert.equal(restored.scheduleEnabled, true);
-    assert.equal(db2.get<any>("outlines", "out-moji")?.producedBy, "agent:未知来源(乱码已清理)");
-    assert.equal(db2.get("connections", "c-moji"), undefined, "乱码名死令牌应删除");
-    assert.ok(db2.get("clusters", "clu-inbox"), "选题收集箱簇未就位");
-    // 干净的 plan 不被迁移触碰
-    const trend = db2.get<any>("plans", "trend-radar")!;
-    assert.equal(trend.goal, defaultPlans.find((p) => p.id === "trend-radar")!.goal);
+    const kept = db2.get<any>("plans", "daily-editorial")!;
+    // no-op 语义：历史修复已生效退役（活库乱码 2026-10-10 清偿），重开不再扫描/恢复
+    assert.equal(kept.goal, "发现\uFFFD\uFFFD有关的 AI 变化，提出\uFFFD选题", "固化后数据原样保留");
+    assert.equal(kept.dailyTime, "09:30");
+    assert.ok(db2.get("clusters", "clu-inbox"), "选题收集箱簇仍由 inbox-cluster-v1 就位");
   } finally {
     db?.close();
     db2?.close();

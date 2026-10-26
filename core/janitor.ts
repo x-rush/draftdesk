@@ -15,16 +15,20 @@ export const RETENTION = {
   modelMetrics: { purgeAfterDays: 35 },
   // 毒标题台账（第三轮 4）：诊断数据留 30 天。
   toxicSamples: { purgeAfterDays: 30 },
+  // 研究任务（R10.25-5④）：终态 job（completed/failed/cancelled）7 天后出库——
+  // builtin 停摆后 jobs 无清理机制堆积（77 条全是历史终态）；external 模式也跑（与消费模式无关）。
+  jobs: { purgeTerminalAfterDays: 7 },
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   const today = stamp.slice(0, 10);
   if (db.get<any>("meta", "janitor")?.day === today) return null;
   // consumerMode=external：消费与回收由外部 Agent 负责，内置 janitor 停用（§4.2 干净分解）。
   const seenPurged = purgeArchivedSeenTerms(db);
   const metricsPurged = purgeOldModelMetrics(db);
+  const jobsPurged = purgeTerminalJobs(db);
   // 挂载期保险丝批 8：每日库完整性自检 + 全集合行数快照（设置页「昨日 vs 今日」异动看板）
   const integrity = integrityCheck(db);
   snapshotCollectionsReport(db);
@@ -33,8 +37,8 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   try { backup = runDailyBackup(db); }
   catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, integrity, backup, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, integrity, backup, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, integrity, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, integrity, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -78,7 +82,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, integrity, backup };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, integrity, backup };
   db.put("meta", "janitor", result);
   return result;
 }
@@ -129,6 +133,19 @@ export function purgeOldModelMetrics(db: Store): number {
     .format(new Date(Date.now() - RETENTION.toxicSamples.purgeAfterDays * 86400000));
   for (const t of db.list<any>("toxic-samples")) {
     if (String(t.id).slice(0, 10) < toxicCutoff) { db.del("toxic-samples", t.id); purged++; }
+  }
+  return purged;
+}
+
+// 终态任务出库（R10.25-5④）：completed/failed/cancelled 超 7 天直接删——
+// 运行记录页只看近期任务，历史终态无引用价值（job-context 产物不级联删，走 evidence retention）。
+export function purgeTerminalJobs(db: Store): number {
+  const cutoff = Date.now() - RETENTION.jobs.purgeTerminalAfterDays * 86400000;
+  let purged = 0;
+  for (const j of db.list<any>("jobs")) {
+    if (!["completed", "failed", "cancelled"].includes(j.state)) continue;
+    const at = Date.parse(j.finishedAt || j.updatedAt || "");
+    if (Number.isFinite(at) && at < cutoff) { db.del("jobs", j.id); purged++; }
   }
   return purged;
 }

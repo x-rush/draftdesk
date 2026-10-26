@@ -31,12 +31,10 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   const cAll = counts?.total ?? opportunities.length;
   const cSignal = (key: string) => counts?.bySignal?.[key] ?? opportunities.filter((o) => (o.signals || []).includes(key)).length;
   const cKind = (key: string) => counts?.byKind?.[key] ?? opportunities.filter((o) => o.kind === key).length;
-  const cContentLine = counts?.contentLine ?? opportunities.filter((o) => o.kind === "site" && !o.form).length;
   const cForm = (key: string) => counts?.byForm?.[key] ?? opportunities.filter((o) => o.form === key).length;
   const [signal, setSignal] = useState("");
   const [source, setSource] = useState("");
   const [form, setForm] = useState("");
-  const [generating, setGenerating] = useState(false);
   // R10.17：筛选 active 时走后端查询（前端 300 缓存里 form=site-group 为 0 张的根因修复）
   const [serverItems, setServerItems] = useState<any[] | null>(null);
   const [serverLoading, setServerLoading] = useState(false);
@@ -55,20 +53,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   }, [form, signal, source]);
   // kind 筛选（第六轮批 B §2.5①）+ form 形态筛选（第七轮批2 W7-5）
   const filtered = hasFilter ? (serverItems ?? []) : opportunities;
-  const auto = opportunities.filter((o) => o.source === "auto").length;
-
-  async function generate() {
-    setGenerating(true);
-    try {
-      const res = await api<{ ok: boolean; created: number; merged: number; note: string }>("opportunities/generate", { source: "auto" });
-      setNotice(res.note);
-      await ws.refresh();
-    } catch (e) {
-      setNotice("生成失败：" + (e as Error).message);
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   return (
     <>
@@ -78,7 +62,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
           {Object.entries(FORM_LABELS).map(([key, label]) => (
             <button key={key} className={form === key ? "active" : ""} onClick={() => setForm(key)}>{label} {cForm(key)}</button>
           ))}
-          <button className={form === "content-line" ? "active" : ""} onClick={() => setForm("content-line")}>内容线 {cContentLine}</button>
         </nav>
       </div>
       <details className="fold-card" style={{ marginBottom: 8 }}>
@@ -94,13 +77,10 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
           <option value="agent">agent（外部 Agent 生成）</option>
           <option value="auto">auto（内置 tick 生成）</option>
         </Select>
-        <button className="button-secondary" disabled={busy || generating} onClick={() => void generate()}>
-          <Sparkles size={13} /> {generating ? "生成中…" : "按四信号源生成"}
-        </button>
         </div>
       </details>
       <p className="muted" style={{ fontSize: 12 }}>
-        共 {cAll} 张——内容线 {cContentLine} · 产品形态 {cAll - cContentLine}（Web应用/站群/移动App/小程序/工具站/开源引流）——高级筛选：信号源/来源；去重：同词或同证据集一张卡。
+        共 {cAll} 张——产品形态（Web应用/站群/移动App/小程序/工具站/开源引流）——高级筛选：信号源/来源；去重：同词或同证据集一张卡。
       </p>
       {filtered.length === 0 ? (
         hasFilter ? (
@@ -111,7 +91,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
             {!serverLoading && (
               <>
                 <p className="muted" style={{ fontSize: 12 }}>
-                  生效筛选：{[form && `形态=${form === "content-line" ? "内容线" : form}`, signal && `信号=${signal}`, source && `来源=${source}`].filter(Boolean).join(" · ")}
+                  生效筛选：{[form && `形态=${form}`, signal && `信号=${signal}`, source && `来源=${source}`].filter(Boolean).join(" · ")}
                 </p>
                 <button className="button-secondary" onClick={() => { setForm(""); setSignal(""); setSource(""); }}>清除筛选</button>
               </>
@@ -119,8 +99,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
           </div>
         ) :
         <Empty title="还没有机会卡。">
-          点「按四信号源生成」跑一轮规则扫描（small-products 候选 / news 产物配套缺口推演 / 官方新品 / verdict=推荐 蓝海词）。
-          consumerMode=builtin 时 worker 每天也会自动生成一次。
+          机会引擎每日随采集自动扫描四信号源（small-products 候选 / news 产物配套缺口推演 / 官方新品 / verdict=推荐 蓝海词）；外部 Agent 也可经 PUT /agent/opportunities 直接写卡。内容线选题走大纲链路（审查台）。
         </Empty>
       ) : (
         <div className="discovery-list">
@@ -185,8 +164,8 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                   {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}
                 </p>
                 {o.relatedIds?.length ? (
-                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }} title="语义初筛双线互挂（R9-6⑥）：内容线卡与应用卡互相引用，拍板时一并看双线价值">
-                    ⇄ 双线互挂：
+                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }} title="关联卡（R9-6 双线互挂遗留的存量应用卡；新卡不再互挂，内容线走大纲链路）">
+                    ⇄ 关联卡：
                     {o.relatedIds.map((rid: string) => {
                       const other = opportunities.find((x) => x.id === rid);
                       return other ? (

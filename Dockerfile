@@ -16,7 +16,3 @@ COPY --from=build /app/skills ./skills
 COPY --from=build /app/public ./public
 EXPOSE 3000
 CMD ["node","server.js"]
-
-FROM build AS worker
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
-CMD ["npm","run","worker"]
