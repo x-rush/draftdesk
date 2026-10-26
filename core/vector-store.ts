@@ -20,11 +20,11 @@ type VectorHit = {
 };
 
 type RedisLike = { call: (...args: Array<string | Buffer | number>) => Promise<unknown> };
-type VectorState = { client: RedisLike | null; resolved: boolean; degraded: boolean };
+type VectorState = { client: RedisLike | null; resolved: boolean; degraded: boolean; failedAt: number };
 
 const g = globalThis as unknown as { __draftdeskVectors?: VectorState };
 function state(): VectorState {
-  return (g.__draftdeskVectors ||= { client: null, resolved: false, degraded: false });
+  return (g.__draftdeskVectors ||= { client: null, resolved: false, degraded: false, failedAt: 0 });
 }
 function logOnce(msg: string) {
   if (state().degraded) return;
@@ -35,7 +35,10 @@ function logOnce(msg: string) {
 async function getClient(): Promise<RedisLike | null> {
   if (!process.env.REDIS_URL) return null;
   const s = state();
-  if (s.resolved) return s.client;
+  // R10.27-F5：连接失败负缓存 10 分钟（原 resolved:true 永不重试直至进程重启——
+  // Redis 短暂重启后整进程向量线瘫痪）；成功即恢复正常路径
+  if (s.client) return s.client;
+  if (s.resolved && Date.now() - (s.failedAt || 0) < 10 * 60000) return null;
   s.resolved = true;
   try {
     const { default: Redis } = await import("ioredis");
@@ -48,14 +51,23 @@ async function getClient(): Promise<RedisLike | null> {
     c.on("error", () => {}); // 断连事件走命令级降级，不允许未处理 error 事件炸进程
     await c.connect();
     s.client = c as RedisLike;
+    s.failedAt = 0;
     return s.client;
   } catch (e) {
+    s.failedAt = Date.now();
     logOnce(`Redis 连接失败：${e instanceof Error ? e.message : e}`);
     return null;
   }
 }
 
 // —— 嵌入（百炼 compatible-mode；失败抛给调用方降级，用量记 meta 供日报引用） ——
+
+const g2 = globalThis as unknown as { __ddEmbedFailAt?: number };
+// R10.27-F15：嵌入失败负缓存 10 分钟——API 降质时每条大纲固定 +30s 超时且互相拖垮限流；
+// 窗口内语义查重直接降级跳过（写入照常，大纲打 semanticDedupSkipped 标记）
+function embedBlocked(): boolean {
+  return !!g2.__ddEmbedFailAt && Date.now() - g2.__ddEmbedFailAt < 10 * 60000;
+}
 
 export async function embedTexts(db: import("./store").Store, texts: string[]): Promise<Float32Array[]> {
   const cfg = db.config();
@@ -243,7 +255,7 @@ export async function searchVectors(
   opts: SearchOptions = {},
 ): Promise<VectorHit[] | null> {
   const c = await getClient();
-  if (!c || !text.trim()) return null;
+  if (!c || !text.trim() || embedBlocked()) return null;
   try {
     // R10.27-A#2：查询嵌入与索引侧同构（同为 300 字裁剪口径，缓解富文本稀释）
     const [vec] = await embedTexts(db, [text.slice(0, 300)]);
@@ -251,21 +263,25 @@ export async function searchVectors(
     const name = index === "eventline" ? "idx:eventline" : "idx:termcluster";
     return await searchIndex(c, name, vec, opts);
   } catch (e) {
+    g2.__ddEmbedFailAt = Date.now(); // R10.27-F15：失败即开 10 分钟负缓存
     logOnce(`向量检索失败：${e instanceof Error ? e.message : e}`);
     return null;
   }
 }
 
 // R10.23-3：跨日语义去重——与前 48h（截至今日零点、不含当日）组摘要相似度 >0.92 视为重复事件。
-// 返回 null = 无重复或向量线降级（调用方照常写入）。
+// 返回 null = 无重复；{degraded:true} = 向量线不可用（调用方写入时打标记，R10.27-F）。
 export async function findSemanticDuplicate(
   db: import("./store").Store,
   title: string,
-): Promise<{ matchedEvent: VectorHit; score: number } | null> {
+): Promise<{ matchedEvent: VectorHit; score: number } | { degraded: true } | null> {
+  const c = await getClient();
+  if (!c || embedBlocked()) return { degraded: true };
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const startToday = Math.floor(Date.parse(day + "T00:00:00+08:00") / 1000);
   const hits = await searchVectors(db, "eventline", title, { topK: 1, sinceTs: startToday - 48 * 3600, untilTs: startToday - 1 });
-  if (!hits?.length) return null;
+  if (hits === null) return { degraded: true };
+  if (!hits.length) return null;
   const best = hits[0];
   return best.similarity > DUPLICATE_SIMILARITY
     ? { matchedEvent: best, score: Number(best.similarity.toFixed(4)) }

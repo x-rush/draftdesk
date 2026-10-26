@@ -82,7 +82,7 @@ curl -s -X POST "$BASE/api/v1/agent/consume" \
 | 读热榜/证据/产物 | read | GET /agent/hotspots、evidence、artifacts、stats |
 | 读簇/大纲 | read | GET /agent/clusters、outlines（支持 `limit`≤100 与 `cursor` 偏移分页，响应带 `nextCursor`/`total`） |
 | 消费标记 | consume | POST /agent/consume、/agent/unconsume |
-| 建簇 | suggest | PUT /agent/clusters |
+| 建簇 | suggest | PUT /agent/clusters（建簇不受 GROUPS_MISSING 闸约束——闸只锚大纲写口） |
 | 写大纲 | suggest | PUT /agent/outlines（带 id 更新也跑 48h 查重） |
 | **写组结构** | suggest | PUT /agent/triage/groups（external 语义处理主写口，增量合并） |
 | **写归档** | suggest | PUT /agent/triage/archive（判 none 组进归档队列） |
@@ -236,6 +236,7 @@ curl -X PUT "$BASE/api/v1/agent/outlines" \
   }'
 ```
 
+- ⚠️ **路径 id 怪癖**：`PUT /agent/outlines/<任意子路径>`（含 `/:id/draft`）都落大纲处理器且**以 body.id 为准**——按 REST 惯例带路径 id 而 body 无 id 会**新建**而非更新；更新一律 body 带 id。
 - approved 选题写完 `draftBody` 后，把决策推进到 drafting：`PUT /api/v1/outlines/:id/decision`（无令牌 UI 口）或集群工具同义口。
 - **提示词矩阵**（平台模板 × 题材角度，与内置 AI 共用的单一来源）随 Skill 包分发：`skills/prompts/outline-matrix.md`——按「平台模板节 + 题材角度节 + 选题素材」组合，不硬编码 24 组合。
 - **按平台拍板**：`PUT /api/v1/outlines/:id/platform-decision`，body `{"platform":"gzh","decision":"approved"}`——写 `perPlatformDecision[platform]` 并同步同题同平台的行；同题 ×N 聚合组内各平台分别拍，互不连拍。聚合 `decision` 取最前进正向状态（published > drafting > approved > rejected > deferred > pending）。

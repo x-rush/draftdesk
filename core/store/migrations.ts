@@ -109,11 +109,6 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "people-removal-v1",
-    // 人物观察功能已移除（历史一次性补丁）。R10.25-6：已生效，判断体固化为 no-op，下版本删。
-    run: () => {},
-  },
-  {
     id: "decision-layer-v1",
     // 决策层重构（P1）：quality=证据可信度（字段名保留，语义正名）；decision=人的拍板状态机。
     // 存量映射：saved=true→approved（decidedBy=human），其余 pending；saved 布尔废弃；archived 保留为终态标记。
@@ -183,12 +178,6 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "plan-mojibake-v1",
-    // GBK→UTF-8 损坏修复（2026-10-10 清单，历史一次性补丁）。R10.25-6：已生效，
-    // 判断体固化为 no-op，下版本删。
-    run: () => {},
-  },
-  {
     id: "inbox-cluster-v1",
     // 选题收集箱：无簇来源（热点推进/讨论生成大纲）的大纲统一挂这里（信息架构 v2-A 批复）。
     run: ({ kv }) => {
@@ -241,21 +230,6 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "seed-pollution-clean-v1",
-    // 种子池污染清洗（2026-10-10，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
-    run: () => {},
-  },
-  {
-    id: "seen-term-space-merge-v1",
-    // termId 空格变体合并（清洗批 2，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
-    run: () => {},
-  },
-  {
-    id: "seen-term-region-backfill-v1",
-    // region 存量回填（海外定位批，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
-    run: () => {},
-  },
-  {
     id: "opportunity-engine-v1",
     // 机会引擎（第五轮 §1）：三策略按「题材×数据源」搭配矩阵补源（只增不删，缺源才补），
     // 并落 platformAffinity 平台适配标签（机会引擎二次精筛 watch 池的平台权重）。
@@ -285,11 +259,6 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "receipts-testdata-cleanup-v1",
-    // 9 月测试回执出库（收尾批 §7②，历史一次性补丁）。R10.25-6：已生效，固化为 no-op，下版本删。
-    run: () => {},
-  },
-  {
     id: "opportunity-news-tighten-v1",
     // news 卡收紧复检（批 1 收尾②，老大「宁可少不可滥」）：存量 news/newtech 卡按
     // 收紧后的 launch gate 重跑，纯营销话术标题（Introducing/Meet/Now available…）
@@ -298,12 +267,6 @@ export const migrations: Migration[] = [
       const r = retightenNewsOpportunities(kv as unknown as Parameters<typeof retightenNewsOpportunities>[0]);
       if (r.checked) console.log(`[migration] opportunity-news-tighten-v1：复检 ${r.checked} 张 news/newtech 卡，降档 ${r.demoted} 张`);
     },
-  },
-  {
-    id: "seen-off-archive-v1",
-    // off 词归档存量清偿（第七轮批1 W7附，历史一次性补丁；判定层已改「判 off 即 archived」）。
-    // R10.25-6：已生效，固化为 no-op，下版本删。
-    run: () => {},
   },
 ];
 

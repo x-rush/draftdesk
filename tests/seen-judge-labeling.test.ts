@@ -62,11 +62,11 @@ test("存量迁移 seen-off-archive-v1：已固化为 no-op 占位（R10.25-6）
     db = new Store(dir);
     db.put("seen-terms", "存量off词", mkTerm("存量off词", { relevance: "off", offTopic: true }));
     db.put("seen-terms", "存量strong词", mkTerm("存量strong词", { relevance: "strong" }));
+    // R10.27：七个 no-op 占位迁移已整体删除（migrations 数组不再注册）——
+    // 归档职责完全在判定层「判 off 即 archived」，迁移链不再承担
     const m = migrations.find((x) => x.id === "seen-off-archive-v1");
-    assert.ok(m, "迁移号占位保留");
-    m!.run({ kv: db.kv as any, directory: dir });
-    // no-op 语义：迁移不再搬数据（活库存量已于 W7 附清偿；新 off 词由判定层直接落 archived）
-    assert.notEqual(db.get<any>("seen-terms", "存量off词").status, "archived", "固化后迁移不触碰数据");
+    assert.equal(m, undefined, "迁移已删除（R10.27-D）");
+    assert.notEqual(db.get<any>("seen-terms", "存量off词").status, "archived", "无迁移触碰数据");
     assert.equal(db.get<any>("seen-terms", "存量strong词").status, "rising", "非 off 词不动");
   } finally {
     db?.close();

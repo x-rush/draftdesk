@@ -489,11 +489,6 @@ export function Review() {
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
               </Select>
             </Field>
-            <Field label="写作方">
-              <Select aria-label="aiWriter 档位" disabled={consumerMode !== "builtin"} value={aiPolicy.aiWriter} onChange={(e) => void saveAiPolicy({ ...aiPolicy, aiWriter: e.target.value })}>
-                {["builtin", "external", "both"].map((v) => <option key={v} value={v}>{v}</option>)}
-              </Select>
-            </Field>
           </div>
         )}
       </details>

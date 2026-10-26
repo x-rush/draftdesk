@@ -8,7 +8,7 @@ import { normalizePlatform, PLATFORM_KEYS } from "../platforms";
 import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
 
 export const routes: RouteDef[] = [
-  { methods: ["GET"], pattern: "clusters", handler: ({ db }) => json({ items: db.list("clusters").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) }) },
+  { methods: ["GET"], pattern: "clusters", handler: ({ db }) => json({ items: (db.list("clusters") as any[]).filter((c) => c.status !== "archived").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) }) },
   { methods: ["GET"], pattern: "outlines", handler: ({ db }) => json({ items: db.list("outlines").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)) }) },
   {
     methods: ["POST"],

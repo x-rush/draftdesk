@@ -100,7 +100,6 @@ export function ensureTiebuhaoClones(db: Store): number {
       decision: "pending" as const,
       perPlatformDecision: undefined,
       draftBody: undefined,
-      draftRef: undefined,
       publishedRef: undefined,
       decidedAt: stamp,
       decidedBy: o.decidedBy || "builtin",

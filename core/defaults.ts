@@ -206,7 +206,7 @@ export const defaultAiPolicy = {
   triage: "cheap" as const,
   outline: "off" as const,
   draft: "off" as const,
-  aiWriter: "external" as const,
+  aiWriter: "external" as const, // R10.27-C7：预留字段（当前无运行时消费方；builtin 大纲链若分写作方时启用）
 };
 
 // 消费执行方（追加需求 §4.2 二选一）：external=内置初筛/聚合/大纲/janitor 全部停，由外部 Agent 经接口写回；

@@ -6,6 +6,7 @@
 // · 第十三步（每月 15 日）外链反推：find_link_prospects 按高分词查竞品外链来源站落
 //   link-prospects（外部 Agent 分析注册时间+流量识别隐秘赚钱产品）
 // · 第十四步（每周日随十一步）探针根词周期复验：7/30 天无新词产出的根词降频
+// R10.27-S4 节奏表：trendsRisingTick=周日；benchmarkSitesTick=每月 1 日；linkProspectsTick=每月 15 日；newWordsTick=每日（免费批次）。四入口共一文件按数据域（哥飞挖需求）聚合。
 //   （写 root-probe-slowdown 名单，nextRootBatch 轮转剔除；名单 30 天后重新评估）
 // 全部日/周/月闸幂等；collect 池预算尽自动停；开关关闭=零调用。
 import type { Store } from "./store";

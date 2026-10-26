@@ -1,7 +1,7 @@
 "use client";
 // 工作台外壳（PHASE 5 拆分后）：侧边导航 / 顶栏 / 视图路由 / 抽屉挂载。
 // 状态与交互在 useWorkspaceData；六个视图各自成文件——本文件不再含视图内联 JSX。
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePopoverAutoClose } from "./usePopoverAutoClose";
 import { newlyFinished, type JobActivity } from "../core/workspace-ui";
 import { Hotspots } from "./Hotspots";
@@ -118,6 +118,14 @@ export function Workbench() {
   const titles = headings[view], running = data?.stats.running || 0;
   const external = (data?.config.consumerMode || "external") === "external";
   const [builtinGroupOpen, setBuiltinGroupOpen] = useState(false);
+  // U4（第四轮审查）：长列表页（采集 28 屏/审查台 28 屏/机会 67 屏）浮动「回到顶部」
+  const [showTop, setShowTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 1200);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const pendingOutlines = ws.outlines.filter((o) => o.decision === "pending").length;
   const navGroupsInUse = external ? externalNavGroups : navGroups;
   return (
@@ -364,6 +372,9 @@ export function Workbench() {
         >
           <MessageContent text={skill.content} />
         </Drawer>
+      )}
+      {showTop && (
+        <button aria-label="回到顶部" title="回到顶部" className="back-to-top" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>↑</button>
       )}
     </div>
   );

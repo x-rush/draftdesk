@@ -1,3 +1,4 @@
+// [历史工具·R10.27 归档级] 一次性手动迁移脚本（README 历史段提及）；产物 legacy-research 集合仅供人工查阅，无活跃读口。
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { Store, now } from "../core/store";

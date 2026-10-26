@@ -69,7 +69,8 @@ test("R10.24-1③ planMode 路由读实值（活库矫正为 collect 后 GET 即
 test("R10.24-5 向量线降级：无 REDIS_URL 时检索/去重/索引全部 no-op", async () => {
   const db = store();
   assert.equal(await searchVectors(db, "eventline", "测试文本"), null);
-  assert.equal(await findSemanticDuplicate(db, "任何标题"), null);
+  // R10.27-F：降级语义显式化——findSemanticDuplicate 无 Redis 返回 {degraded:true}（写入方打标记用）
+  assert.deepEqual(await findSemanticDuplicate(db, "任何标题"), { degraded: true });
   await indexEventGroups(db, "j1", [{ id: "g1", title: "t" }]); // 不抛即通过
 });
 

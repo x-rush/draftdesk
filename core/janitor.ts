@@ -21,15 +21,19 @@ export const RETENTION = {
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; auditPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; auditPurged?: number; legacyPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
-  const today = stamp.slice(0, 10);
+  // R10.27-F：每日节流键统一上海日（原 UTC 日与 snapshotCollectionsReport 的上海日口径分裂，
+  // 凌晨窗口可能双写/漏写 collections-report）
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   if (db.get<any>("meta", "janitor")?.day === today) return null;
-  // consumerMode=external：消费与回收由外部 Agent 负责，内置 janitor 停用（§4.2 干净分解）。
+  // R10.27-F：external 模式下本函数仍执行采集侧清理（seen/metrics/jobs/budget-audit/meta 键族
+  // + 完整性自检 + 快照 + 备份）；仅 hotspots/evidence 回收与簇归档（下方 builtin 段）停用——由外部 Agent 负责。
   const seenPurged = purgeArchivedSeenTerms(db);
   const metricsPurged = purgeOldModelMetrics(db);
   const jobsPurged = purgeTerminalJobs(db);
   const auditPurged = purgeBudgetAuditKeys(db);
+  const legacyPurged = purgeLegacyIntake(db);
   // 挂载期保险丝批 8：每日库完整性自检 + 全集合行数快照（设置页「昨日 vs 今日」异动看板）
   const integrity = integrityCheck(db);
   snapshotCollectionsReport(db);
@@ -38,8 +42,8 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   try { backup = runDailyBackup(db); }
   catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, integrity, backup, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, integrity, backup, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, integrity, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, integrity, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -83,7 +87,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, auditPurged, integrity, backup };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, integrity, backup };
   db.put("meta", "janitor", result);
   return result;
 }
@@ -154,6 +158,20 @@ export function purgeTerminalJobs(db: Store): number {
       db.del("job-validation", j.id);
       db.del("job-verification", j.id);
       purged++;
+    }
+  }
+  return purged;
+}
+
+// legacy 迁入清理（R10.27-C1）：POST /migrate-local 的 legacy 集合与脚本 legacy-research——
+// 一次性迁移 decision-layer-v1 已转正存量，后续再迁入的 30 天后出库（无 reader，防永久滞留）
+export function purgeLegacyIntake(db: Store): number {
+  const cutoff = new Date().toISOString().slice(0, 10);
+  let purged = 0;
+  for (const c of ["legacy", "legacy-research"]) {
+    for (const doc of db.list<any>(c)) {
+      const at = String(doc.receivedAt || doc.migratedAt || doc.createdAt || "").slice(0, 10);
+      if (at && at < cutoff) { db.del(c, doc.id || doc.term || ""); purged++; }
     }
   }
   return purged;

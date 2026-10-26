@@ -173,7 +173,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                           [{other.kind === "app" ? "应用" : "内容"}] {other.title.slice(0, 26)}{other.title.length > 26 ? "…" : ""}
                         </button>
                       ) : (
-                        <span key={rid} className="muted">（关联卡未生成）</span>
+                        <span key={rid} className="muted">（关联卡已归档——R10.25 内容线卡移档）</span>
                       );
                     })}
                   </p>

@@ -188,7 +188,6 @@ export type Artifact = ArtifactDraft & {
   decidedBy?: "human" | "agent";
   decidedAt?: string;
   platforms?: string[];
-  draftRef?: string;
   publishedRef?: string;
   rejectReason?: string;
   suggestions?: DecisionSuggestion[];
@@ -209,7 +208,7 @@ export type ContentCluster = {
 export type ContentOutline = {
   id: string;
   clusterId: string;
-  platform: string; // 五平台枚举键（gzh/tiebuhao/xhs-note/xhs-video/threads，见 core/platforms.ts；存量旧值已迁移）
+  platform: string; // 九平台枚举键（PLATFORM_KEYS 唯一定义，xhs-video 后置）
   category?: string; // 题材六值键（newtech/news/oss/selfproduct/thinking/hot，第六轮批 A LLM 标注）
   contentType: string;
   title: string;
@@ -220,7 +219,6 @@ export type ContentOutline = {
   perPlatformDecision?: Record<string, DecisionState>; // 按平台拍板（第六轮批 B）：{gzh: approved, xhs-note: pending…}，decision 字段保留为聚合视图
   decidedBy?: "human" | "agent";
   decidedAt?: string;
-  draftRef?: string;
   publishedRef?: string;
   rejectReason?: string;
   suggestions?: DecisionSuggestion[];
@@ -390,7 +388,7 @@ export const configSchema = z
     tavilyKey: z.string().max(500).optional(),
     clearApiKey: z.boolean().optional(),
     clearTavilyKey: z.boolean().optional(),
-    // 网页搜索后端：tavily=仅 Tavily（缺省，兼容旧行为）；searxng=仅本地 SearXNG；
+    // 网页搜索后端：hybrid=Tavily 先行+SearXNG 补位（缺省）；searxng=仅本地 SearXNG；
     // hybrid=Tavily 先行，结果不足或失败时由 SearXNG 补位。
     webSearchProvider: z.enum(["tavily", "searxng", "hybrid"]).optional(),
     searxngUrl: z

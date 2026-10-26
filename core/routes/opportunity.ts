@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError } from "../store";
-import { SIGNAL_LABELS, KIND_LABELS } from "../opportunity";
+import { SIGNAL_LABELS, KIND_LABELS, groupOpportunityDrafts, upsertOpportunityDrafts } from "../opportunity";
 import { FORM_LABELS } from "../platforms";
 
 export const routes: RouteDef[] = [
@@ -19,11 +19,9 @@ export const routes: RouteDef[] = [
       const record = db.get<any>("candidate-groups", "tg-" + parsed.jobId);
       const group = record && (record.groups || []).find((g: any) => g.id === parsed.groupId);
       if (!group) throw new AppError("组不存在（批次未初筛或组已恢复）。", 404);
-      const { groupOpportunityDrafts } = await import("../opportunity");
       // R10.25 口径：groupOpportunityDrafts 只出 appGap 应用卡（内容线走大纲链路）
       const drafts = groupOpportunityDrafts(group);
       if (!drafts.length) throw new AppError("该组无 appGap 应用缺口，无可出的卡；内容线选题请走大纲链路（生成大纲）。", 400);
-      const { upsertOpportunityDrafts } = await import("../opportunity");
       const r = upsertOpportunityDrafts(db, drafts, "agent");
       return json({ ok: true, ...r, note: `新增 ${r.created} 张${r.merged ? `、合并 ${r.merged} 张信号` : ""}（应用 ${drafts.length} 条草案；内容线走大纲链路）。` });
     },

@@ -34,7 +34,7 @@ export async function body(req: Request, maxLength = 1000000) {
     length += part.value.length;
     if (length > maxLength) {
       await reader.cancel();
-      throw new AppError("请求超过 1 MB。", 413);
+      throw new AppError("请求体超过 1 MB——组写回请分批（单批 ≤200 组且精简 memberUrls），或缩小单条 payload。", 413, "PAYLOAD_TOO_LARGE");
     }
     chunks.push(part.value);
   }

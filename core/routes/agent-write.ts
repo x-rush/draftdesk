@@ -327,16 +327,19 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     String(o.createdAt || "") >= cutoff48h,
   );
   if (duplicate) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
-  // R10.23-3 + R10.26-4②：跨日语义去重（48h 窗口不含当日）——更新路径同跑（排除自身簇的干扰由窗口保证）
+  // R10.23-3 + R10.26-4②：跨日语义去重（48h 窗口不含当日）——更新路径同跑；
+  // R10.27-F：向量线降级时照常写入但在大纲 doc 打 semanticDedupSkipped 标记（可观测，日报可查）
+  let semanticSkipped = false;
   {
     const semantic = await findSemanticDuplicate(db, parsed.title.trim());
-    if (semantic)
+    if (semantic && "degraded" in semantic) semanticSkipped = true;
+    else if (semantic)
       return json({ ok: true, duplicate: true, semantic: true, score: semantic.score, matchedEvent: { key: semantic.matchedEvent.key, title: semantic.matchedEvent.title, jobId: semantic.matchedEvent.jobId } }, 200);
   }
   const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
   const outline = existing
-    ? { ...existing, clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx) }
-    : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now() };
+    ? { ...existing, clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) }
+    : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now(), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) };
   db.put("outlines", outline.id, outline);
   return json(outline, existing ? 200 : 201);
 }

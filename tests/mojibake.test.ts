@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Store } from "../core/store";
+import { migrations } from "../core/store/migrations";
 import { defaultPlans } from "../core/defaults";
 
 function cleanup(dir: string) {
@@ -24,12 +25,13 @@ test("plan-mojibake-v1 迁移：已固化为 no-op 占位（R10.25-6）——重
       dailyTime: "09:30",
       scheduleEnabled: true,
     });
-    // 模拟旧库升级路径：清迁移标记重开
+    // 模拟旧库升级路径：清迁移标记重开（R10.27：迁移已整体删除，标记清理只是残留键无害）
     db.del("meta", "plan-mojibake-v1");
     db.close();
 
     db2 = new Store(dir);
     const kept = db2.get<any>("plans", "daily-editorial")!;
+    assert.equal(migrations.find((x) => x.id === "plan-mojibake-v1"), undefined, "迁移已删除（R10.27-D）");
     // no-op 语义：历史修复已生效退役（活库乱码 2026-10-10 清偿），重开不再扫描/恢复
     assert.equal(kept.goal, "发现\uFFFD\uFFFD有关的 AI 变化，提出\uFFFD选题", "固化后数据原样保留");
     assert.equal(kept.dailyTime, "09:30");
