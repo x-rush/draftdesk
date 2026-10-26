@@ -223,8 +223,10 @@ export async function trafficTierOf(host: string, db: Store, doFetch: typeof fet
     const tier = visitsToTier(monthly);
     cacheTraffic(db, id, tier, monthly, "sw");
     return tier;
-  } catch {
-    db.put("web-traffic", id, { at: new Date().toISOString() });
+  } catch (e) {
+    // R10.27-S24：失败墓碑打日志并带 fail 标记——读方可区分「已查无档」与「查询失败被缓存」
+    console.warn(`[seen-judge] 流量档查询失败（${id} 写入 fail 墓碑）:`, e instanceof Error ? e.message : e);
+    db.put("web-traffic", id, { at: new Date().toISOString(), fail: true });
     return undefined;
   }
 }
@@ -380,6 +382,63 @@ function hasSuggestDemand(term: string, suggestions: string[]): boolean {
 // 全程 fire-and-forget；每词一次 SERP + 一次 suggest（hasDemand 判定），500ms 基础间隔，
 // 失败指数退避 1s→2s→4s→8s 封顶（挤过限流窗口），成功复位。
 // 「立即整理」（seen-dig-manual）晚于当日完成键时越过批闸重跑——失败词同池重试。
+// R10.27-S12：单词条 SERP 判定的成功路径主体（自 seenJudgeTick 拆出，纯搬移）——
+// 形态查询/竞争观测/site 发现/词库回写；失败路径（计数+退避）留在 tick 闭包（跨词状态）
+async function applySerpJudgement(
+  db: Store, t: any,
+  deps: { doFetch: typeof fetch; outer: AbortSignal; swBudget: { left: number } },
+): Promise<void> {
+  const { doFetch, outer, swBudget } = deps;
+  const { engine, results } = await searchSerp(db, t.term, doFetch, outer);
+  const platformResults = results.map((r, i) => ({ ...r, rank: i + 1, platform: platformOf(r.host) })).filter((r) => r.platform);
+  const hosts = new Set(platformResults.map((r) => r.host));
+  // 形态查询（批 2b §4.8③）：不带 site: 的普通查询，论坛/视频占比的原料。失败静默，不阻塞判定主流程。
+  let webResults: SerpHit[] = [];
+  try { webResults = await searchSearxngRaw(db, `"${t.term}"`, doFetch, outer); } catch { /* 静默 */ }
+  // 竞争观测结构化（第七轮 W7-2/W7-3）：前 10 首页数 + 前 3 名流量档位。
+  const serpSource = webResults.length ? webResults : results;
+  const serpTop10Home = top10HomeCount(serpSource);
+  let serpTop3Tier: TrafficTier | undefined;
+  try {
+    const hosts3 = [...new Set(serpSource.slice(0, 3).map((r) => r.host))];
+    serpTop3Tier = maxTrafficTier(hosts3.map((h) => cachedTier(db, h)));
+    if (!serpTop3Tier && hosts3.length) {
+      if (seoSourceEnabled(db)) serpTop3Tier = await gepheiTierOf(t.term, hosts3, db, doFetch, outer);
+      if (!serpTop3Tier) serpTop3Tier = maxTrafficTier(await Promise.all(hosts3.map((h) => trafficTierOf(h, db, doFetch, swBudget))));
+    }
+  } catch { /* 静默 */ }
+  // suggest 需求判定：失败不阻塞（按有需求处理，不误标品牌词）
+  let demand = true;
+  try { demand = hasSuggestDemand(t.term, await fetchSuggest(t.term, "en", doFetch, outer)); } catch { /* 静默 */ }
+  for (const r of platformResults) {
+    const rule = matchSiteRule(r.host);
+    const brand = rule?.kind === "brand" || !demand;
+    mergeSiteDiscovery(db, r.host, r.platform!, t.term, r.rank, brand, !demand ? "suggest 无该词" : rule?.kind === "brand" ? rule.reason : undefined);
+    if (rule?.kind === "portfolio") {
+      const p = db.get<any>("site-discoveries", r.host);
+      if (p && !p.portfolio) db.put("site-discoveries", r.host, { ...p, portfolio: true, portfolioReason: rule.reason, updatedAt: new Date().toISOString() });
+    }
+  }
+  const prev = db.get<any>("seen-terms", String(t.id));
+  if (prev) {
+    db.put("seen-terms", String(t.id), {
+      ...prev,
+      serpDedicated: platformResults.length,
+      serpInternal: hosts.size,
+      serpHosts: [...hosts].slice(0, 10),
+      serpAll: results.slice(0, 24).map((r) => ({ host: r.host, url: r.url.slice(0, 120), title: r.title.slice(0, 80) })),
+      serpWeb: webResults.slice(0, 15).map((r) => ({ host: r.host, url: r.url.slice(0, 120) })),
+      serpTop10Home,
+      ...(serpTop3Tier ? { serpTop3Tier } : {}),
+      serpEngine: engine,
+      serpCheckedAt: new Date().toISOString(),
+      serpFailDays: 0,
+      updatedAt: new Date().toISOString(),
+    });
+    bumpSeenTermsVersion(db);
+  }
+}
+
 export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { backoffBaseMs?: number; now?: Date; intervalMs?: number } = {}) {
   const nowDate = opts.now ?? new Date();
   const today = nowDate.toISOString().slice(0, 10);
@@ -421,60 +480,7 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
       const outer = AbortSignal.timeout(40 * 60000);
       await new Limiter(opts.intervalMs ?? DDG_INTERVAL_MS, 1).run(batch.map((t) => async () => {
         try {
-          const { engine, results } = await searchSerp(db, t.term, doFetch, outer);
-          consecutiveFailures = 0;
-          const platformResults = results.map((r, i) => ({ ...r, rank: i + 1, platform: platformOf(r.host) })).filter((r) => r.platform);
-          const hosts = new Set(platformResults.map((r) => r.host));
-          // 形态查询（批 2b §4.8③）：不带 site: 的普通查询，论坛/视频占比的原料
-          //（带过滤查询的结果里结构性没有论坛站）。失败静默，不阻塞判定主流程。
-          let webResults: SerpHit[] = [];
-          try { webResults = await searchSearxngRaw(db, `"${t.term}"`, doFetch, outer); } catch { /* 静默 */ }
-          // 竞争观测结构化（第七轮 W7-2/W7-3）：前 10 首页数 + 前 3 名流量档位。
-          // 档位探测链：web-traffic 缓存 → 哥飞权威补位（serp 接口，配置时）→ Similarweb 监测哨。
-          const serpSource = webResults.length ? webResults : results;
-          const serpTop10Home = top10HomeCount(serpSource);
-          let serpTop3Tier: TrafficTier | undefined;
-          try {
-            const hosts = [...new Set(serpSource.slice(0, 3).map((r) => r.host))];
-            serpTop3Tier = maxTrafficTier(hosts.map((h) => cachedTier(db, h)));
-            if (!serpTop3Tier && hosts.length) {
-              if (seoSourceEnabled(db)) serpTop3Tier = await gepheiTierOf(t.term, hosts, db, doFetch, outer);
-              if (!serpTop3Tier) serpTop3Tier = maxTrafficTier(await Promise.all(hosts.map((h) => trafficTierOf(h, db, doFetch, swBudget))));
-            }
-          } catch { /* 静默 */ }
-          // suggest 需求判定：失败不阻塞（按有需求处理，不误标品牌词）
-          let demand = true;
-          try { demand = hasSuggestDemand(t.term, await fetchSuggest(t.term, "en", doFetch, outer)); } catch { /* 静默 */ }
-          for (const r of platformResults) {
-            const rule = matchSiteRule(r.host);
-            const brand = rule?.kind === "brand" || !demand;
-            mergeSiteDiscovery(db, r.host, r.platform!, t.term, r.rank, brand, !demand ? "suggest 无该词" : rule?.kind === "brand" ? rule.reason : undefined);
-            if (rule?.kind === "portfolio") {
-              const p = db.get<any>("site-discoveries", r.host);
-              if (p && !p.portfolio) db.put("site-discoveries", r.host, { ...p, portfolio: true, portfolioReason: rule.reason, updatedAt: new Date().toISOString() });
-            }
-            sites++;
-          }
-          const prev = db.get<any>("seen-terms", String(t.id));
-          if (prev) {
-            db.put("seen-terms", String(t.id), {
-              ...prev,
-              serpDedicated: platformResults.length,
-              serpInternal: hosts.size,
-              serpHosts: [...hosts].slice(0, 10),
-              // 全量结果摘要（批 2b §4.8③）：三派生字段的原料（存量词只有 serpHosts）
-              serpAll: results.slice(0, 24).map((r) => ({ host: r.host, url: r.url.slice(0, 120), title: r.title.slice(0, 80) })),
-              serpWeb: webResults.slice(0, 15).map((r) => ({ host: r.host, url: r.url.slice(0, 120) })),
-              // 结构化竞争观测（第七轮 W7-2）：新观测词带字段，存量不回填
-              serpTop10Home,
-              ...(serpTop3Tier ? { serpTop3Tier } : {}),
-              serpEngine: engine,
-              serpCheckedAt: new Date().toISOString(),
-              serpFailDays: 0,
-              updatedAt: new Date().toISOString(),
-            });
-            bumpSeenTermsVersion(db);
-          }
+          await applySerpJudgement(db, t, { doFetch, outer, swBudget });
           queried++;
         } catch (e) {
           failed++;

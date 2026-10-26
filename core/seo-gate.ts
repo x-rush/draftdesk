@@ -5,6 +5,7 @@
 //   全门槛达标自动出标+域名清单+出卡触发；autoMetrics 授权门控+metrics 月池（批4）
 // 依赖方向：seo-gate → seo-source / seen-terms / store（opportunity 出卡为动态 import，避免循环）
 import type { Store } from "./store";
+import { generateOpportunities } from "./opportunity";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { GEPHEI_TTL_MS, seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, fetchKeywordMetrics, seoApi } from "./seo-source";
 
@@ -106,7 +107,9 @@ export async function siteGateAutoMark(db: Store, doFetch: typeof fetch = fetch,
           ready.push({ t, word, metrics: {} });
         }
       }
-    } catch {
+    } catch (e) {
+      // R10.27-S24：补查失败不再静默置空——区分「真无数据」与「查询挂了」，下游判定可排障
+      console.warn(`[seo-metrics] 哥飞指标补查失败（${deferred.length} 词指标置空，等待下次日更）:`, e instanceof Error ? e.message : e);
       for (const { t, word } of deferred) ready.push({ t, word, metrics: {} });
     }
   }
@@ -248,8 +251,7 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
         // 出卡触发（W7-8 链路末端）：动态 import 避免与 opportunity.ts 的模块循环
         // R10.26-2 P0：external 模式不触发出卡——机会卡由外部 Agent 经 PUT /agent/opportunities 写回
         if ((db.get<any>("config", "consumerMode") || "external") === "builtin") {
-          const { generateOpportunities } = await import("./opportunity");
-          const r = generateOpportunities(db, { source: "auto" });
+                    const r = generateOpportunities(db, { source: "auto" });
           console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → 触发机会生成：新增 ${r.created} 卡`);
         } else {
           console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → external 模式不触发出卡（外部 Agent 经 PUT /agent/opportunities 写回）`);

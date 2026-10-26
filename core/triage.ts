@@ -23,36 +23,14 @@ export function defaultTriagePlan() {
   };
 }
 import type { ModelMessage } from "./model";
+import { generateOpportunities } from "./opportunity";
 
-export type Attention = "strong" | "potential" | "none";
-export const ATTENTION_LABELS: Record<Attention, string> = { strong: "强", potential: "潜力", none: "无" };
-// 内容角度只落这四个内容平台（五平台里 xhs-video 后置、无内容角度位）
-// R10：内容角度平台扩 8 值（xhs-video 视频后置，不进角度草案）
-export const ANGLE_PLATFORMS = ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"] as const;
+// R10.27-C#19/#20：类型与共享 schema 移至 triage-types.ts（环解耦+单一来源）；此处 re-export 兼容既有引用
+export { ATTENTION_LABELS, ANGLE_PLATFORMS, triageAnglesSchema } from "./triage-types";
+export type { Attention, TriageGroup, TriageRecord } from "./triage-types";
+import { ATTENTION_LABELS, ANGLE_PLATFORMS, triageAnglesSchema } from "./triage-types";
+import type { Attention, TriageGroup, TriageRecord } from "./triage-types";
 
-export type TriageGroup = {
-  id: string;
-  title: string;
-  attention: Attention;
-  reason: string;
-  memberUrls: string[];
-  representativeUrl: string;
-  sources: string[];
-  angles: { platform: string; angle: string }[];
-  appGap?: string;
-};
-// candidate-groups 集合：一个采集批次一条归组记录（tg-{jobId}）。
-export type TriageRecord = {
-  jobId: string;
-  planName: string;
-  day: string;
-  at: string;
-  groups: TriageGroup[];
-  shards: number;
-  calls: number;
-  tokens: number;
-  merges: number;
-};
 
 // 计划级策略（R9-6②）：enabled 缺省=trends 类开、其余关；判级标准与归类粒度拼进 prompt。
 export type PlanTriagePolicy = { enabled?: boolean; attentionCriteria?: string; groupGranularity?: "coarse" | "fine" };
@@ -147,7 +125,7 @@ const shardOutputSchema = z.object({
         title: z.string().max(80).optional(),
         attention: z.string().max(30).optional(),
         reason: z.string().max(300).optional(),
-        angles: z.array(z.object({ platform: z.string().max(30), angle: z.string().max(150) })).max(8).optional(),
+        angles: triageAnglesSchema.optional(),
         appGap: z.string().max(300).optional(),
       }),
     )
@@ -543,7 +521,6 @@ export async function triageTick(db: Store, runner: TriageRunner = defaultTriage
     // R10.2 追加：补跑路径与内联路径同款归档（判 none 组进 triage-archive，不静默留池）
     const archived = archiveNoneGroups(db, target.jobId, record);
     // R10.7 P0-5：补跑路径同样自动转卡（不受 consumerMode 门控）
-    const { generateOpportunities } = await import("./opportunity");
     generateOpportunities(db, { source: "auto" });
     console.log(`[triage] ${target.planName} 批 ${target.jobId.slice(0, 8)}：${record.groups.length} 组（强 ${record.groups.filter((g) => g.attention === "strong").length}/潜 ${record.groups.filter((g) => g.attention === "potential").length}）${archived.archived ? `，归档 ${archived.archived} 组（${archived.candidates} 条）` : ""}，${record.shards} 片 ${record.calls} 调用 ${record.tokens} tokens${explicit ? "（显式请求）" : ""}`);
   } catch (error) {

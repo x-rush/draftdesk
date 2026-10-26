@@ -8,6 +8,7 @@
 // · 采集完内联跑 triage（默认全开，config.aiPolicy.triage）——判级/归组/双线草案复用
 //   R9-6 管线；none 组进归档队列（triage-archive 集合，可查可恢复），不静默留池。
 import type { Store } from "./store";
+import { generateOpportunities } from "./opportunity";
 import { now } from "./store";
 import type { Source } from "./schema";
 import type { DiscoveryCandidate, DiscoveryRecord, SourceCoverage } from "./discovery";
@@ -53,7 +54,25 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
   // 每日凌晨一次：01:00（上海）起跑；nowDate 可注入（测试避开 00:00-01:00 的静默窗）
   const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", hour: "2-digit", hourCycle: "h23" }).format(nowDate));
   if (hour < 1) return;
+  // R10.27-C#18：running 锁 + 失败退避——原实现失败后 done 键未写，worker 下一轮（1.5s）
+  // 立即全量重采无退避；与其他 tick「失败即当日放弃」语义相反。现统一：失败写 done+error
+  // 当日放弃（次日自然重试），running 锁 30 分钟防循环重入（loop 改并发也安全）
   const jobId = collectAllJobId(day);
+  const running = db.get<any>("meta", "collect-all-running");
+  if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
+  db.put("meta", "collect-all-running", { at: new Date().toISOString() });
+  try {
+    await runCollectAll(db, { day, doneKey, jobId, runner, reader, nowDate });
+  } catch (e) {
+    console.error("[collect-all] 全量采集失败（当日放弃，次日重试）:", e instanceof Error ? e.message : e);
+    db.put("meta", doneKey, { at: now(), error: String(e instanceof Error ? e.message : e).slice(0, 200) });
+  } finally {
+    db.del("meta", "collect-all-running");
+  }
+}
+
+async function runCollectAll(db: Store, ctx: { day: string; doneKey: string; jobId: string; runner: TriageRunner; reader: SourceReader; nowDate: Date }): Promise<void> {
+  const { day, doneKey, jobId, runner, reader, nowDate } = ctx;
   if (db.get("discovery", jobId)) { db.put("meta", doneKey, { at: now(), skipped: "already-collected" }); return; }
   const sources = db.list<Source>("sources").filter((s) => s.enabled && s.type !== "web");
   const candidates: DiscoveryCandidate[] = [];
@@ -132,8 +151,7 @@ export async function collectAllTick(db: Store, runner: TriageRunner = defaultTr
         }
         console.log(`[collect-all] 语义初筛：${triage.groups.length} 组（强 ${triage.groups.filter((g) => g.attention === "strong").length}/潜 ${triage.groups.filter((g) => g.attention === "potential").length}），归档 ${archived.archived} 组（${archived.candidates} 条）`);
         // R10.20-A3：appGap 转卡在 builtin 门内（R10.19 后 external 由 Agent 直接写机会卡）
-        const { generateOpportunities } = await import("./opportunity");
-        const gen = generateOpportunities(db, { source: "auto" });
+                const gen = generateOpportunities(db, { source: "auto" });
         if (gen.created) console.log(`[collect-all] 机会卡自动生成：新增 ${gen.created} / 合并 ${gen.merged}`);
       }
     } catch (e) {

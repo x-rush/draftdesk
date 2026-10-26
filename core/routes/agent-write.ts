@@ -3,6 +3,7 @@
 // 走「先鉴权后 405」还是「先 405 后鉴权」，都由它决定（见重构清单保序矩阵）。
 import { z } from "zod";
 import { PLATFORM_KEYS, normalizePlatform, normalizeCategory } from "../platforms";
+import { triageAnglesSchema } from "../triage-types";
 import { randomUUID } from "node:crypto";
 import type { RouteContext, RouteDef } from "../http/router";
 import { json } from "../http/middleware";
@@ -32,7 +33,7 @@ export const routes: RouteDef[] = [
           memberUrls: z.array(z.string().max(2048)).max(100).optional(),
           representativeUrl: z.string().max(2048).optional(),
           sources: z.array(z.string().max(80)).max(10).optional(),
-          angles: z.array(z.object({ platform: z.string().max(30), angle: z.string().max(150) })).max(8).optional(),
+          angles: triageAnglesSchema.optional(),
           appGap: z.string().max(300).optional(),
         })).min(1).max(200),
       }).strict().parse(await readBody());

@@ -15,7 +15,7 @@ import { urlKey } from "./hotspots";
 import { judgeVerdict, platformOf } from "./seen-judge";
 import { valueScoreOf } from "./seo-gate";
 import { termId } from "./seen-terms";
-import { ATTENTION_LABELS, type TriageRecord } from "./triage";
+import { ATTENTION_LABELS, type TriageRecord } from "./triage-types"; // R10.27-C#19：从 types 载体导入（triage↔opportunity 环解耦）
 import { FORM_MONETIZATION, FORM_KEYS, normalizeForm, PLATFORM_LABELS } from "./platforms";
 import type { OpportunityForm } from "./platforms";
 

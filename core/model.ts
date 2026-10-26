@@ -236,7 +236,8 @@ function renderSchemaTemplate(schemaJson: string): string {
     return (root.properties ? Object.entries(root.properties) : [])
       .map(([key, child]) => render(child, key, (root.required || []).includes(key), 0).join("\n"))
       .join("\n");
-  } catch {
+  } catch (e) {
+    console.warn('[model] schema 模板渲染失败（结构化约束丢失，幻觉率上升）:', e instanceof Error ? e.message : e);
     return "";
   }
 }
@@ -275,7 +276,8 @@ function exampleFromSchema(schemaJson: string): unknown {
       return null;
     };
     return build(root);
-  } catch {
+  } catch (e) {
+    console.warn('[model] schema 示例生成失败（示例不注入，幻觉率上升）:', e instanceof Error ? e.message : e);
     return null;
   }
 }

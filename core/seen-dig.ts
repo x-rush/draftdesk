@@ -281,7 +281,7 @@ export async function runProviderExpansion(db: Store, provider: SuggestProvider,
 
 // 扩展 provider 汇总：并行跑（不同站点互不限流），单词失败静默不拖累其他线。
 export async function runExtraSuggestProviders(db: Store, doFetch: DoFetch = fetch, providers: SuggestProvider[] = SUGGEST_PROVIDERS, limiterOpts: { intervalMs?: number; concurrency?: number } = {}): Promise<Record<string, { requests: number; failed: number; newTerms: number; updated: number; terms: number }>> {
-  const entries = await Promise.all(providers.map(async (p) => [p.id, await runProviderExpansion(db, p, doFetch, limiterOpts).catch(() => ({ requests: 0, failed: 0, newTerms: 0, updated: 0, terms: 0 }))] as const));
+  const entries = await Promise.all(providers.map(async (p) => [p.id, await runProviderExpansion(db, p, doFetch, limiterOpts).catch((e) => { console.warn(`[seen-dig] provider ${p.id} 整体失败（计入 failed=1）:`, e instanceof Error ? e.message : e); return { requests: 1, failed: 1, newTerms: 0, updated: 0, terms: 0 }; })] as const));
   return Object.fromEntries(entries);
 }
 

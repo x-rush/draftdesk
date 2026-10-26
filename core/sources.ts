@@ -533,7 +533,7 @@ export async function collect(
       db.put("discovery",jobId,record);
     }
     const cutoff=Date.now()-14*86400000;
-    for(const old of db.list<DiscoveryRecord>("discovery"))if(Date.parse(old.at)<cutoff)db.db.prepare("DELETE FROM documents WHERE collection=? AND id=?").run("discovery",old.jobId);
+    for(const old of db.list<DiscoveryRecord>("discovery"))if(Date.parse(old.at)<cutoff)db.del("discovery",old.jobId);
   }
   const evidence = unique.map((e) =>
     db.addEvidence(e, "builtin-collector/1.0.0"),
