@@ -1,9 +1,9 @@
-// HTTP 唯一入口：解析 path → 查路由表 → 按 scope 保序执行（鉴权/participants/方法守卫）→ 统一错误处理。
+// HTTP 唯一入口：解析 path → 查路由表 → 按 scope 保序执行（鉴权/方法守卫）→ 统一错误处理。
 // 保序矩阵与旧 if 链逐条对齐（见重构清单）：改这里 = 改对外行为，务必先跑测试与实测。
 import { z } from "zod";
 import { store } from "../store";
 import { AppError } from "../errors";
-import { json, checkRequest, body, enforceParticipants } from "./middleware";
+import { json, checkRequest, body } from "./middleware";
 import { RouteRegistry, type HttpMethod, type RouteContext, type RouteDef } from "./router";
 import { routes as agentWriteRoutes } from "../routes/agent-write";
 import { routes as agentRoutes } from "../routes/agent";
@@ -100,7 +100,7 @@ export async function handle(req: Request, path: string[]) {
     // read / consume / suggest：方法守卫与鉴权的先后按命名空间保序
     if (def.methodGuardFirst && !def.methods.includes(method)) throw new AppError(METHOD_MSG, 405);
     const connection = db.authenticate((req.headers.get("authorization") || "").replace(/^Bearer /, ""), scope, route);
-    if (def.participants) enforceParticipants(db, connection);
+    // R10.27-B#11：participants 来源级管控已拆除（配置零写入方、面板未挂载、保存必 400——整套从未生效）
     if (!def.methodGuardFirst && !def.methods.includes(method)) throw new AppError(METHOD_MSG, 405);
     return await def.handler({ ...ctx, connection });
   } catch (e) {

@@ -23,7 +23,6 @@ export interface RouteDef {
   // "agent/clusters" 精确匹配；":id" 单段参数；":rest..." 收尾通配（零段或多段）
   pattern: string;
   scope?: Scope;
-  participants?: boolean;
   // true=方法不符先 405 再鉴权（read/consume 命名空间现状）；
   // false/缺省=先鉴权再 405（suggest 命名空间现状：POST clusters 无令牌 = 401）
   methodGuardFirst?: boolean;

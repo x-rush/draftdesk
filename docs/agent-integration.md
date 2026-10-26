@@ -83,11 +83,18 @@ curl -s -X POST "$BASE/api/v1/agent/consume" \
 | 读簇/大纲 | read | GET /agent/clusters、outlines（支持 `limit`≤100 与 `cursor` 偏移分页，响应带 `nextCursor`/`total`） |
 | 消费标记 | consume | POST /agent/consume、/agent/unconsume |
 | 建簇 | suggest | PUT /agent/clusters |
-| 写大纲 | suggest | PUT /agent/outlines |
+| 写大纲 | suggest | PUT /agent/outlines（带 id 更新也跑 48h 查重） |
+| **写组结构** | suggest | PUT /agent/triage/groups（external 语义处理主写口，增量合并） |
+| **写归档** | suggest | PUT /agent/triage/archive（判 none 组进归档队列） |
+| **写机会卡** | suggest | PUT /agent/opportunities（form 六值必填） |
+| **向量检索** | suggest | POST /agent/vectors/search；GET /agent/vectors/status?jobId=（索引对账） |
+| **候选明细** | read | GET /agent/triage/candidates?jobId=&status=&limit=&offset= |
+| 分类目录 | read | GET /agent/activity-categories、/agent/hotspot-categories |
 | 写建议 | read | POST /agent/suggestions |
 | 写草稿正文 | suggest | PUT /agent/decisions/:id/draft |
+| 删 pending 大纲/簇 | suggest | DELETE /agent/outlines/:id、/agent/clusters/:id（仅全 pending；见下） |
 | **拍板 decision** | ❌ 永不可写 | 只能由人在审查台完成，接口层无此路由 |
-| 删数据 | ❌ 不可删除 | 消费只改可见性，unconsume 可撤销 |
+| 删已拍板内容 | ❌ 不可删除 | decision 非 pending 的大纲及其簇 400 拒绝（拍板历史保护）；消费只改可见性，unconsume 可撤销 |
 
 `decision` 字段不在任何 agent 写入面的 zod schema 里——塞进去会被 `.strict()` 校验拒绝返回 400 Unrecognized key。
 
@@ -109,15 +116,9 @@ curl -s -X POST "$BASE/api/v1/agent/consume" \
 
 ## ⑤ 开关语义
 
-participants 配置（config 集合 participants 字段）按来源控制读写：
-
-| 字段 | 效果 |
-|---|---|
-| enabled=false | 该来源的写回请求直接 403「来源已停用」（服务端强制） |
-| canWrite=false | 只能读，不能写 clusters/outlines/suggestions |
-| canRead=false | 完全禁用（包括读） |
-
-未登记的来源默认放行（向后兼容）。
+R10.27 起按令牌 scope 控权（participants 来源级管控已整体拆除——配置零写入方、从未生效）：
+读=read / 写=suggest / 消费回执=consume / 提交=submit，令牌铸造时勾选，撤销即时生效。
+删除保护另见 §②：已拍板（decision 非 pending）的大纲与所在簇不可删除。
 
 ---
 
@@ -141,8 +142,7 @@ participants 配置（config 集合 participants 字段）按来源控制读写�
 | 400 | BATCH_TOO_LARGE | 簇展开后 >5000 条 |
 | 401 | UNAUTHENTICATED | 令牌缺失/拼错/已撤销 |
 | 403 | SCOPE_MISMATCH | 令牌无所需 scope |
-| 403 | PERMISSION_DENIED | 来源只读（canWrite=false）|
-| 403 | SOURCE_DISABLED | 来源被停用（enabled=false）|
+
 | 404 | NOT_FOUND | 路径或产物 ID 不存在 |
 | 409 | CONFLICT | 同 ID 不同内容（回传幂等冲突）|
 | 410 | GONE | unconsume 超过 30 天撤销窗口 |
@@ -195,7 +195,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 1. **归类**：同一事件/主题的跨源候选并为「组」（candidate-groups 集合，`tg-{jobId}` 一批一条）；组 id 幂等，重复触发不重算。
 2. **注意力判级**：strong / potential / none + 一句话理由——none（体育/时政/民生噪音）**永不占 selected 名额**；名额按组分配（strong 优先占满 → potential 补位）。
-3. **双线草案**：有注意力的组给四平台内容角度（platform ∈ plan.platformAffinity）与 web/app 配套缺口路线（appGap）。
+3. **双线草案**：有注意力的组给多平台内容角度（platform ∈ 策略 platformAffinity）与 web/app 配套缺口路线（appGap）。
 
 候选条目新增 `attention` 与 `groupId` 字段，判级理由写入 `reason`（`GET /agent/hotspots` 直读可见）。
 
@@ -214,7 +214,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - `platform` 五值枚举：`gzh`（公众号）/ `tiebuhao`（贴图号）/ `xhs-note`（小红书笔记）/ `xhs-video`（小红书视频笔记）/ `threads`。旧值（公众号/小红书/Threads）与中文标签提交时自动归一。
 - `category` 六值枚举：`newtech`（AI 新技术）/ `news`（新资讯）/ `oss`（开源工具）/ `selfproduct`（自研产品）/ `thinking`（个人思考）/ `hot`（社会热点）。
 - **资讯类簇强制覆盖贴图号（R8-2①）**：category=news/newtech 的簇，产出大纲时 tiebuhao 版必须覆盖（哪怕其他平台未拍）——图卡形态：3-6 张图卡、首图即观点、每张文案 ≤54 字、视觉风格关键词 3-5 个。内置侧 outlineDraftTick 已自动为同簇缺失 tiebuhao 的资讯行克隆补贴（ensureTiebuhaoClones），外部 Agent 编排时同规则执行。
-- **机会引擎整理职责（R9-3，人不整理只拍板）**：opportunities 池的整理/去重/合并/遗弃建议由 AI/外部 Agent 巡检完成——platform 适配产出的多平台卡（同 url 不同 platform 的 site:ev:* 卡）按簇聚合、可标遗弃建议（老大批板后执行）。watch 候选命中多平台时每平台一张卡（dedupeKey 带 platform 后缀），trend-radar.platformAffinity=[gzh,tiebuhao,xhs-note,threads] 四平台。
+- **机会引擎整理职责（R9-3，人不整理只拍板）**：opportunities 池的整理/去重/合并/遗弃建议由 AI/外部 Agent 巡检完成——platform 适配产出的多平台卡（同 url 不同 platform 的 site:ev:* 卡）按簇聚合、可标遗弃建议（老大批板后执行）。watch 候选命中多平台时每平台一张卡（dedupeKey 带 platform 后缀）；适配平台随策略 platformAffinity（当前 trend-radar 口径 gzh/xhs-note）。
 
 ### 提交大纲
 

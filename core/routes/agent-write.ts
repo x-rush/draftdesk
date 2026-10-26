@@ -8,7 +8,7 @@ import type { RouteContext, RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
 import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
-import { indexEventGroups, findSemanticDuplicate, searchVectors } from "../vector-store";
+import { indexEventGroups, findSemanticDuplicate, searchVectors, vectorIndexStatus } from "../vector-store";
 
 const by = (ctx: RouteContext) => `agent:${ctx.connection!.name}`;
 
@@ -147,7 +147,6 @@ export const routes: RouteDef[] = [
     methods: ["PUT"],
     pattern: "agent/decisions/:id/draft/:rest...",
     scope: "suggest",
-    participants: true,
     // 方法不符走「405 先行」：旧链里该形态的写路由由 method!==PUT 判定进入 read 块
     methodGuardFirst: true,
     handler: async ({ db, params, readBody }) => {
@@ -161,14 +160,12 @@ export const routes: RouteDef[] = [
     methods: ["PUT"],
     pattern: "agent/clusters",
     scope: "suggest",
-    participants: true,
     handler: async (ctx) => upsertCluster(ctx, await ctx.readBody()),
   },
   {
     methods: ["PUT"],
     pattern: "agent/outlines",
     scope: "suggest",
-    participants: true,
     handler: async (ctx) => upsertOutline(ctx, await ctx.readBody()),
   },
   {
@@ -177,7 +174,6 @@ export const routes: RouteDef[] = [
     methods: ["DELETE"],
     pattern: "agent/clusters/:id",
     scope: "suggest",
-    participants: true,
     handler: (ctx) => {
       const { db, params } = ctx;
       const cluster = db.get("clusters", params.id);
@@ -197,7 +193,6 @@ export const routes: RouteDef[] = [
     methods: ["DELETE"],
     pattern: "agent/outlines/:id",
     scope: "suggest",
-    participants: true,
     handler: (ctx) => {
       const { db, params } = ctx;
       const outline = db.get<any>("outlines", params.id);
@@ -214,14 +209,12 @@ export const routes: RouteDef[] = [
     methods: ["PUT"],
     pattern: "agent/clusters/:rest...",
     scope: "suggest",
-    participants: true,
     handler: async (ctx) => upsertOutline(ctx, await ctx.readBody()),
   },
   {
     methods: ["PUT"],
     pattern: "agent/outlines/:rest...",
     scope: "suggest",
-    participants: true,
     handler: async (ctx) => upsertOutline(ctx, await ctx.readBody()),
   },
   {
@@ -230,7 +223,6 @@ export const routes: RouteDef[] = [
     methods: ["POST"],
     pattern: "agent/vectors/search",
     scope: "suggest",
-    participants: true,
     handler: async ({ db, readBody }) => {
       const parsed = z.object({
         index: z.enum(["eventline", "termcluster"]),
@@ -246,6 +238,18 @@ export const routes: RouteDef[] = [
         untilTs: parsed.untilHours ? nowSec - parsed.untilHours * 3600 : undefined,
       });
       return json({ ok: true, index: parsed.index, degraded: hits === null, hits: (hits || []).map((h) => ({ title: h.title, jobId: h.jobId, attention: h.attention, similarity: Number(h.similarity.toFixed(4)), date: h.date })) });
+    },
+  },
+  {
+    // R10.27-A#3：向量索引对账读口——批次期望/实写计数（缺失组可查，外部 Agent 凭此补跑）
+    methods: ["GET"],
+    pattern: "agent/vectors/status",
+    scope: "read",
+    handler: ({ db, query }) => {
+      const jobId = z.string().min(1).max(64).parse(query.get("jobId") || "");
+      const status = vectorIndexStatus(db, jobId);
+      if (!status) return json({ ok: true, jobId, marked: false });
+      return json({ ok: true, jobId, marked: true, ...status });
     },
   },
 ];
@@ -300,11 +304,12 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   const platform = normalizePlatform(parsed.platform);
   if (!platform) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400);
   const category = parsed.category ? normalizeCategory(parsed.category) ?? parsed.category : undefined;
-  // R10.21-1 P0 + R10.26-4② 收紧：组校验从「当日键」改「近 48h 最新 collectall 批」——
-  // 堵跨零点窗（00:00-01:00 当日键未写、昨日批被放行）与停摆日；无批次仍不阻断（fresh clone/测试/UI）
+  // R10.21-1 P0 + R10.26-4②：组校验锚「近 48h 最新 collectall 批」——堵跨零点窗与停摆日。
+  // R10.27-A#6 复核：不扩到任意前缀——计划批在 external 下已无产生口（手动分析 R10.24 封死），
+  // 扩面会破坏「fresh clone/测试自建批次不阻断」约定（consumer-v3 类场景），按设计保留 collectall 口径。
   const recentBatch = db.list<any>("discovery")
     .filter((d) => String(d.jobId || "").startsWith("collectall-"))
-    .sort((a, b) => String(b.jobId).localeCompare(String(a.jobId)))[0];
+    .sort((a, b) => Date.parse(b.at || "") - Date.parse(a.at || ""))[0];
   if (recentBatch && Date.now() - Date.parse(recentBatch.at || "") < 48 * 3600000) {
     const recentGroups = db.get<any>("candidate-groups", "tg-" + recentBatch.jobId);
     if (!recentGroups && !parsed.id) throw new AppError(`组结构未写回（批次 ${recentBatch.jobId}），先 PUT /agent/triage/groups`, 400, "GROUPS_MISSING");

@@ -189,6 +189,7 @@ export async function indexEventGroups(
     const texts = groups.map(eventEmbedText);
     const vecs = await embedTexts(db, texts);
     const nowSec = Math.floor(Date.now() / 1000);
+    let indexed = 0;
     for (let i = 0; i < groups.length; i++) {
       await hsetVector(c, "idx:eventline", "dd:v:eventline:", `${jobId}:${groups[i].id}`, vecs[i], [
         ["title", groups[i].title.slice(0, 300)],
@@ -196,11 +197,23 @@ export async function indexEventGroups(
         ["attention", groups[i].attention || ""],
         ["date", nowSec],
       ], ["title", "TEXT", "jobId", "TAG", "attention", "TAG", "date", "NUMERIC"]);
+      indexed++;
     }
     await pruneEventVectors(c, jobId);
+    // R10.27-A#3：完整性标记（期望/实写计数落 meta）——次日对账与排障凭此可查，
+    // 嵌入失败（本函数 catch）不写标记=状态停留在上一批，区别于「写成功」
+    db.put("meta", "vector-index:" + jobId, { at: new Date().toISOString(), expected: groups.length, indexed });
   } catch (e) {
+    db.put("meta", "vector-index:" + jobId, { at: new Date().toISOString(), expected: groups.length, indexed: 0, error: String(e instanceof Error ? e.message : e).slice(0, 160) });
     logOnce(`组摘要索引失败：${e instanceof Error ? e.message : e}`);
   }
+}
+
+// R10.27-A#3：对账读口——批次向量的期望/实写状态（供外部 Agent 每日校验与补跑决策）
+export function vectorIndexStatus(db: import("./store").Store, jobId: string): { expected: number; indexed: number; error?: string; at?: string } | null {
+  const mark = db.get<any>("meta", "vector-index:" + jobId);
+  if (!mark) return null;
+  return { expected: mark.expected, indexed: mark.indexed, ...(mark.error ? { error: mark.error } : {}), ...(mark.at ? { at: mark.at } : {}) };
 }
 
 export async function indexTermCluster(db: import("./store").Store, words: string[]): Promise<void> {
@@ -232,7 +245,8 @@ export async function searchVectors(
   const c = await getClient();
   if (!c || !text.trim()) return null;
   try {
-    const [vec] = await embedTexts(db, [text.slice(0, 800)]);
+    // R10.27-A#2：查询嵌入与索引侧同构（同为 300 字裁剪口径，缓解富文本稀释）
+    const [vec] = await embedTexts(db, [text.slice(0, 300)]);
     if (!vec) return null;
     const name = index === "eventline" ? "idx:eventline" : "idx:termcluster";
     return await searchIndex(c, name, vec, opts);

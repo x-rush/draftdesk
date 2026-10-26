@@ -65,14 +65,3 @@ function assertNoReplacementChar(value: unknown) {
   }
 }
 
-// participants 服务端强制：enabled=false → 写入 403 SOURCE_DISABLED；canWrite=false → 写入 403 PERMISSION_DENIED。
-// 未登记的来源默认放行（向后兼容）。
-export function enforceParticipants(db: any, connection: { name: string }) {
-  const participants = db.get("config", "participants");
-  const producerKey = `agent:${connection.name}`;
-  const pCfg = participants?.[producerKey];
-  if (pCfg?.enabled === false)
-    throw new AppError(`来源已停用：${producerKey}（participants.enabled=false）`, 403, "SOURCE_DISABLED");
-  if (pCfg?.canWrite === false)
-    throw new AppError(`来源只读：${producerKey}（participants.canWrite=false）`, 403, "PERMISSION_DENIED");
-}

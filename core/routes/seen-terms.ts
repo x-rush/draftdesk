@@ -45,7 +45,6 @@ export const routes: RouteDef[] = [
     methods: ["PUT"],
     pattern: "agent/seen-terms",
     scope: "suggest",
-    participants: true,
     handler: async ({ db, connection, readBody }) => {
       const parsed = upsertSchema.parse(await readBody());
       const by = `agent:${connection!.name}`;

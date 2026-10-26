@@ -161,16 +161,37 @@ export function purgeTerminalJobs(db: Store): number {
 
 // budget-audit 小时键出库（R10.26-4⑤）：每小时 1 条无上限增长（9 天 221 条）——
 // 清 7 天前小时键（键形如 budget-audit:YYYY-MM-DD, HH；kv.list 只回 body 拿不到键名，直接查 documents）
+// R10.27-B#14 扩面：各 tick 的 done:日期 键族与 seo-api-used:*:日期 预算池键同窗清理。
 export function purgeBudgetAuditKeys(db: Store): number {
   const cutoffDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" })
     .format(new Date(Date.now() - 7 * 86400000));
-  const rows = db.db.prepare("SELECT id FROM documents WHERE collection='meta' AND id LIKE 'budget-audit:%'").all() as Array<{ id: string }>;
+  const patternDay = (id: string, prefixes: string[]) => {
+    for (const p of prefixes) {
+      if (!id.startsWith(p)) continue;
+      const rest = id.slice(p.length);
+      const m = rest.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    }
+    return null;
+  };
+  const rows = db.db.prepare(
+    "SELECT id FROM documents WHERE collection='meta' AND (id LIKE 'budget-audit:%' OR id LIKE '%-done:%' OR id LIKE 'seo-api-used:%' OR id LIKE 'triage-auto:%')",
+  ).all() as Array<{ id: string }>;
   let purged = 0;
   for (const r of rows) {
-    const day = r.id.slice("budget-audit:".length, "budget-audit:".length + 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && day < cutoffDay) { db.del("meta", r.id); purged++; }
+    const day = r.id.startsWith("budget-audit:")
+      ? r.id.slice("budget-audit:".length, "budget-audit:".length + 10)
+      : r.id.startsWith("triage-auto:")
+        ? r.id.slice("triage-auto:".length, "triage-auto:".length + 10)
+        : patternDay(r.id, ["seo-api-used:tier:", "seo-api-used:metrics:", "seo-api-used:collect:"]) || patternDaySuffix(r.id);
+    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day) && day < cutoffDay) { db.del("meta", r.id); purged++; }
   }
   return purged;
+}
+// X-done:YYYY-MM-DD 形态（done 在中间）：定位最后一个 done: 后的日期段
+function patternDaySuffix(id: string): string | null {
+  const m = id.match(/-done:(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
 }
 
 // 库完整性自检（保险丝批 8）：每日 PRAGMA integrity_check；异常 console 告警并记录结果。
