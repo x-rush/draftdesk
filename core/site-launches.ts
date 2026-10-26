@@ -7,6 +7,7 @@
 // tick 每日一道闸，fire-and-forget；抓取/分类失败静默入台账，次日重试。
 import { XMLParser } from "fast-xml-parser";
 import type { Store } from "./store";
+import { tickGuard } from "./tick-guard";
 import { now } from "./store";
 import { termId } from "./seen-terms";
 
@@ -275,9 +276,10 @@ export function siteLaunchesTick(db: Store, runModel: ModelRunner, doFetch: type
   const manual = db.get<any>("meta", "site-launches-manual");
   const byManual = !!manual?.at && (!done || manual.at > done.at);
   if (done && !byManual) return;
-  const running = db.get<any>("meta", "site-launches-running");
-  if (running && Date.now() - Date.parse(running.at) < 20 * 60000) return;
-  db.put("meta", "site-launches-running", { at: new Date().toISOString() });
+  // R10.27-C#17：守卫统一（键与 TTL 保持原值）
+  const guard = tickGuard(db, { key: "site-launches", lockTtlMs: 20 * 60000, day: "utc" });
+  if (guard.locked) return;
+  guard.acquire();
   void (async () => {
     try {
       const outer = AbortSignal.timeout(8 * 60000);
@@ -303,7 +305,7 @@ export function siteLaunchesTick(db: Store, runModel: ModelRunner, doFetch: type
       db.del("meta", "site-launches-manual");
       console.log(`[site-launches] 新站发现完成：新增 ${added}（PH 抽不到域名跳过 ${phSkipped}）/ 分类 ${classified}（失败批 ${failedBatches}）/ 撞词 ${clashed} / 交叉 ${crossLinked}${hnFailed ? ` / HN 失败:${hnFailed}` : ""}${phFailed ? ` / PH 失败:${phFailed}` : ""}`);
     } finally {
-      db.del("meta", "site-launches-running");
+      guard.release();
     }
   })();
 }

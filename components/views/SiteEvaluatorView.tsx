@@ -53,6 +53,11 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   }, [form, signal, source]);
   // kind 筛选（第六轮批 B §2.5①）+ form 形态筛选（第七轮批2 W7-5）
   const filtered = hasFilter ? (serverItems ?? []) : opportunities;
+  // R10.27-C#15：渲染真分页——此前 300 张全 DOM（页面高 67 屏，mobile 74 千像素）；
+  // 数据通道（300 缓存供 chips/关联卡查找）不动，只治渲染爆炸
+  const [visible, setVisible] = useState(50);
+  useEffect(() => { setVisible(50); }, [form, signal, source]);
+  const shown = filtered.slice(0, visible);
 
   return (
     <>
@@ -103,7 +108,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
         </Empty>
       ) : (
         <div className="discovery-list">
-          {filtered.map((o) => (
+          {shown.map((o) => (
             <article className="discovery-row" key={o.id}>
               <div className="row-content">
                 <div className="row-meta">
@@ -188,6 +193,14 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
               </div>
             </article>
           ))}
+
+          {filtered.length > shown.length && (
+            <div style={{ textAlign: "center", padding: "18px 0" }}>
+              <button className="button-secondary" onClick={() => setVisible((v) => v + 50)}>
+                加载更多（已显示 {shown.length}/{filtered.length}）
+              </button>
+            </div>
+          )}
         </div>
       )}
     </>
@@ -225,7 +238,7 @@ function SiteLaunchesTab({ siteLaunches, onJumpSites }: { siteLaunches: any[]; o
         </Empty>
       ) : (
         <div className="discovery-list">
-          {filtered.map((l) => (
+          {filtered.slice(0, 100).map((l) => (
             <article className="discovery-row" key={l.host}>
               <div className="row-content">
                 <div className="row-meta">
@@ -343,7 +356,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
             <span className="muted">portfolio 个人作品集降权折叠 · 撞词 = 命中词命中我们热词库高分词</span>
           </div>
           <div className="discovery-list">
-            {siteSorted.map((s) => (
+            {siteSorted.slice(0, 100).map((s) => (
               <article className="discovery-row" key={s.host}>
                 <div className="row-content">
                   <div className="row-meta">

@@ -3,6 +3,7 @@
 // meta 键守卫，标完置位不再跑；新增大纲的 category 由提交方（外部 Agent/内置）带出。
 // 分类属初筛（采集的一部分），不受 consumerMode 门控。
 import type { Store } from "./store";
+import { tickGuard } from "./tick-guard";
 import { now } from "./store";
 import { CATEGORY_LABELS, normalizeCategory } from "./platforms";
 
@@ -62,9 +63,10 @@ export function outlineCategoryTick(db: Store, runModel: ModelRunner, nowDate: D
     db.put("meta", doneKey, { at: nowDate.toISOString(), note: "无待标注大纲" });
     return;
   }
-  const running = db.get<any>("meta", "outline-category-running");
-  if (running && Date.now() - Date.parse(running.at) < 20 * 60000) return;
-  db.put("meta", "outline-category-running", { at: new Date().toISOString() });
+  // R10.27-C#17：守卫统一（键与 TTL 保持原值）
+  const guard = tickGuard(db, { key: "outline-category", lockTtlMs: 20 * 60000, day: "utc" });
+  if (guard.locked) return;
+  guard.acquire();
   void (async () => {
     try {
       const outer = AbortSignal.timeout(10 * 60000);
@@ -75,7 +77,7 @@ export function outlineCategoryTick(db: Store, runModel: ModelRunner, nowDate: D
       db.put("meta", doneKey, { at: nowDate.toISOString(), error: String(e instanceof Error ? e.message : e).slice(0, 160) });
       console.error("[outline-category] 标注失败（次日重试）:", e instanceof Error ? e.message : e);
     } finally {
-      db.del("meta", "outline-category-running");
+      guard.release();
     }
   })();
 }

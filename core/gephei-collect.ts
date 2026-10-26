@@ -15,6 +15,7 @@ import { seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, seoApi, SeoQuot
 import { TOOL_ROOTS, AI_ROOTS, rootYieldStats } from "./seen-dig";
 import { now, hash } from "./store";
 import { indexTermCluster } from "./vector-store";
+import { tickGuard } from "./tick-guard";
 
 const DAY_MS = 86400000;
 
@@ -96,9 +97,10 @@ export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDa
   if (db.get("meta", "geo-trends-done:" + dayKey)) return;
   if (!seoSourceEnabled(db)) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
-  const running = db.get<any>("meta", "geo-trends-running");
-  if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
-  db.put("meta", "geo-trends-running", { at: new Date().toISOString() });
+  // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
+  const guard = tickGuard(db, { key: "geo-trends", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  if (guard.locked) return;
+  guard.acquire();
   void (async () => {
     try {
       // 轮转：geo-trends-cursor 与 root-probe-cursor 同款语义；慢根名单同享（第十四步降频）
@@ -138,7 +140,7 @@ export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDa
       console.error("[geo-collect] 趋势日更失败（次日重试）:", e instanceof Error ? e.message : e);
       db.put("meta", "geo-trends-done:" + dayKey, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
     } finally {
-      db.del("meta", "geo-trends-running");
+      guard.release();
     }
   })();
 }
@@ -151,9 +153,10 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
   // 双重门控（批4 W7-11⑤）：标杆站月更为付费接口，需「允许自动月更标杆站与外链反推」授权
   if (!seoSourceOf(db).autoCollect) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
-  const running = db.get<any>("meta", "geo-benchmark-running");
-  if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
-  db.put("meta", "geo-benchmark-running", { at: new Date().toISOString() });
+  // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
+  const guard = tickGuard(db, { key: "geo-benchmark", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  if (guard.locked) return;
+  guard.acquire();
   void (async () => {
     try {
       ensureBenchmarkSeeds(db);
@@ -198,7 +201,7 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
       console.error("[geo-collect] 标杆站月更失败（下月重试）:", e instanceof Error ? e.message : e);
       db.put("meta", "geo-benchmark-done:" + month, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
     } finally {
-      db.del("meta", "geo-benchmark-running");
+      guard.release();
     }
   })();
 }
@@ -211,9 +214,10 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
   // 双重门控（批4 W7-11⑤）：外链反推为付费接口，同上需授权勾选
   if (!seoSourceOf(db).autoCollect) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
-  const running = db.get<any>("meta", "geo-links-running");
-  if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
-  db.put("meta", "geo-links-running", { at: new Date().toISOString() });
+  // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
+  const guard = tickGuard(db, { key: "geo-links", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  if (guard.locked) return;
+  guard.acquire();
   void (async () => {
     try {
       // 官方合同：find_link_prospects=卖链站市场快照（8万+ Guest Post 挂牌），按筛选器拉榜单——
@@ -249,7 +253,7 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
       console.error("[geo-collect] 外链反推失败（下半月重试）:", e instanceof Error ? e.message : e);
       db.put("meta", "geo-links-done:" + half, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
     } finally {
-      db.del("meta", "geo-links-running");
+      guard.release();
     }
   })();
 }
@@ -275,9 +279,10 @@ export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: 
   const day = nowDate.toISOString().slice(0, 10);
   if (db.get("meta", "geo-newwords-done:" + day)) return;
   if (!seoSourceEnabled(db)) return; // token 出口唯一；免费接口也只在数据源开启时跑
-  const running = db.get<any>("meta", "geo-newwords-running");
-  if (running && Date.now() - Date.parse(running.at) < 30 * 60000) return;
-  db.put("meta", "geo-newwords-running", { at: new Date().toISOString() });
+  // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
+  const guard = tickGuard(db, { key: "geo-newwords", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  if (guard.locked) return;
+  guard.acquire();
   void (async () => {
     try {
       // 最新一批（哥飞新词发现管线每日多批，当日批优先；已消费批次幂等跳过）
@@ -317,7 +322,7 @@ export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: 
       console.error("[geo-collect] 新词发现失败（次日重试）:", e instanceof Error ? e.message : e);
       db.put("meta", "geo-newwords-done:" + day, { at: new Date().toISOString(), error: String((e as Error)?.message || e).slice(0, 160) });
     } finally {
-      db.del("meta", "geo-newwords-running");
+      guard.release();
     }
   })();
 }
