@@ -28,22 +28,6 @@ function isSameShanghaiDay(iso: string | undefined): boolean {
   } catch { return false; }
 }
 
-// 热度解析：热榜 metric.value 形如 "1,234,567" / "+1.2万" / "12.3K"；解析失败按 0
-function heatOf(c: DiscoveryCandidate): number {
-  const raw = c.metric?.value;
-  if (!raw) return 0;
-  const m = String(raw).replace(/[,，\s+]/g, "").match(/^([\d.]+)(万|w|k|K)?/);
-  if (!m) return 0;
-  const n = Number(m[1]);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(m[2] === "万" || m[2] === "w" ? n * 10000 : m[2] ? n * 1000 : n);
-}
-
-function recencyOf(c: DiscoveryCandidate): number {
-  const t = Date.parse(c.publishedAt || c.observedAt || "");
-  return Number.isFinite(t) ? t : 0;
-}
-
 type SourceReader = typeof readSourceEvidence;
 // reader 可注入（测试用 mock 源数据；生产缺省真实读取）
 export async function collectAllTick(db: Store, runner: TriageRunner = defaultTriageRunner, reader: SourceReader = readSourceEvidence, nowDate: Date = new Date()): Promise<void> {

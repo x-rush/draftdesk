@@ -91,12 +91,14 @@ export function triageMergeMessages(groups: { gid: string; title: string; attent
 
 // ---- 分片：按源聚片（同源候选同片），超长源顺延切分；片数封顶，溢出并入末片 ----
 export const SHARD_SIZE = 60;
-export const MAX_SHARDS = 16;
 export const MIN_CANDIDATES = 8;
-// 初筛池：规则筛除（filtered）的候选不进 AI——判级只对规则放行的存活池做，省 token 且口径一致；
-// 池子封顶 16 片×60：病态大批次截断保出片数与 token 上界（实测 trend-radar 批 ~680 条，绰绰有余）。
+// 初筛池：规则筛除（filtered）的候选不进 AI——判级只对规则放行的存活池做，省 token 且口径一致。
+// R10.30-A：删闸后 filtered 锐减，池≈非 filtered 全量——上限 960→2000（≈34 片）。
+// MAX_SHARDS=16 旧常量随 960 口径退役删除（片数上界现由池护栏决定）。
+// 语义=初筛成本护栏（非数据截断语义，老大裁决）：覆盖当前批量级（实测 10-27 批 watch 108，
+// 热日推演 1000+），超限批按片序前 2000 进补跑；采集侧 watch 全量保留不受此影响（R10.28 口径）。
 export function triagePoolOf(candidates: DiscoveryCandidate[]): DiscoveryCandidate[] {
-  return candidates.filter((c) => c.status !== "filtered").slice(0, MAX_SHARDS * SHARD_SIZE);
+  return candidates.filter((c) => c.status !== "filtered").slice(0, 2000);
 }
 // 分片按候选原序连续填充：collect 按源迭代入列，同源候选天然同片（片界除外）；
 // 跨源重复集中在片间，由合并轮归并。

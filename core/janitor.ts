@@ -166,13 +166,17 @@ export function purgeTerminalJobs(db: Store): number {
 // legacy 迁入清理（R10.27-C1）：POST /migrate-local 的 legacy 集合与脚本 legacy-research——
 // 一次性迁移 decision-layer-v1 已转正存量，后续再迁入的 30 天后出库（无 reader，防永久滞留）
 export function purgeLegacyIntake(db: Store): number {
-  // R10.29-2：30 天偏移（原 cutoff=今天→迁入次日即删，与注释「30 天后出库」不符）
+  // R10.29-2：30 天偏移（原 cutoff=今天→迁入次日即删）
   const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  // R10.30-C：kv.list 只回 body 拿不到键名（body 无 id/term 字段→原实现永远删空键、
+  // 计数虚报，R10.29-2 因此白修）——LIKE 直查 documents 表取真键（同 purgeBudgetAuditKeys 先例）
   let purged = 0;
   for (const c of ["legacy", "legacy-research"]) {
-    for (const doc of db.list<any>(c)) {
+    const rows = db.db.prepare("SELECT id, body FROM documents WHERE collection=?").all(c) as Array<{ id: string; body: string }>;
+    for (const r of rows) {
+      const doc = JSON.parse(r.body) as { receivedAt?: string; migratedAt?: string; createdAt?: string };
       const at = String(doc.receivedAt || doc.migratedAt || doc.createdAt || "").slice(0, 10);
-      if (at && at < cutoff) { db.del(c, doc.id || doc.term || ""); purged++; }
+      if (at && at < cutoff) { db.del(c, r.id); purged++; }
     }
   }
   return purged;

@@ -171,3 +171,23 @@ test("R10.29-1 回归：indexEventGroups 执行序——DEL(jobId) 全部先于 
     delete process.env.REDIS_URL;
   }
 });
+
+test("R10.30 验收：池护栏 2000 边界 + legacy 30 天真删", async () => {
+  const db = store();
+  const { triagePoolOf } = await import("../core/triage");
+  const { purgeLegacyIntake } = await import("../core/janitor");
+  const mk = (i: number, status = "watch") => ({ url: `https://p/${i}`, sourceId: "s", status }) as never;
+  assert.equal(triagePoolOf(Array.from({ length: 1000 }, (_, i) => mk(i))).length, 1000, "1000 条全量进池");
+  assert.equal(triagePoolOf(Array.from({ length: 2001 }, (_, i) => mk(i))).length, 2000, "2001 条护栏截 2000");
+  assert.equal(triagePoolOf(Array.from({ length: 50 }, (_, i) => mk(i, "filtered"))).length, 0, "filtered 不进池");
+  // legacy 边界（R10.30-C 真删）
+  const d = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+  db.db.prepare("INSERT INTO documents(collection,id,body) VALUES('legacy','k29',?)").run(JSON.stringify({ receivedAt: d(29) }));
+  db.db.prepare("INSERT INTO documents(collection,id,body) VALUES('legacy','k31',?)").run(JSON.stringify({ receivedAt: d(31) }));
+  const n = purgeLegacyIntake(db);
+  const has29 = !!db.db.prepare("SELECT 1 FROM documents WHERE collection='legacy' AND id='k29'").get();
+  const has31 = !!db.db.prepare("SELECT 1 FROM documents WHERE collection='legacy' AND id='k31'").get();
+  assert.ok(has29, "29 天前保留");
+  assert.ok(!has31, "31 天前真删（非空键虚报）");
+  assert.equal(n, 1, "计数=实际删除数");
+});

@@ -77,7 +77,7 @@ test("分片 prompt：判级 few-shot 示例在位；criteria 双位置强调；
 });
 
 // ---- 分片打包 ----
-test("分片：连续填充（同源天然同片）、每片 ≤60、池子封顶 960", () => {
+test("分片：连续填充（同源天然同片）、每片 ≤60、池护栏 2000（R10.30-A）", () => {
   const big = Array.from({ length: 70 }, (_, i) => cand(i, "a"));
   const big2 = Array.from({ length: 70 }, (_, i) => cand(i, "b"));
   const small = Array.from({ length: 30 }, (_, i) => cand(i, "c"));
@@ -85,11 +85,12 @@ test("分片：连续填充（同源天然同片）、每片 ≤60、池子封�
   assert.deepEqual(shards.map((s) => s.length), [60, 60, 50], "170 条 → 3 片");
   assert.ok(shards[0].every((c) => c.sourceId === "a"), "第一片整片源 a");
   assert.equal(shards[1][0].sourceId, "a", "a 的尾部在第二片开头");
-  // 池子封顶：病态大批次截断到 16×60
+  // R10.30-A：池护栏 2000（初筛成本护栏，非数据截断）——1560 条全量进池；2001+ 截 2000
   const flood: DiscoveryCandidate[] = [];
   for (let s = 0; s < 26; s++) for (let i = 0; i < 60; i++) flood.push(cand(i, `src${s}`));
-  assert.equal(triagePoolOf(flood).length, 960, "池子封顶 960");
-  assert.equal(shardCandidates(triagePoolOf(flood)).length, 16, "封顶后恰 16 片");
+  assert.equal(flood.length, 1560);
+  assert.equal(triagePoolOf(flood).length, 1560, "1560 条全量进池（<2000 护栏）");
+  assert.equal(shardCandidates(triagePoolOf(flood)).length, 26, "1560 条→26 片（每片 ≤60 连续填充）");
 });
 
 // ---- 模型输出归一 ----
