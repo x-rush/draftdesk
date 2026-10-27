@@ -77,10 +77,10 @@ test("collectAll：超 300 按当日新>热度精简；none 组归档可恢复",
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
   const record = db.get<any>("discovery", "collectall-" + day);
   const watch = record.candidates.filter((c: any) => c.status === "watch");
-  assert.equal(watch.length, 300, "精简到 300");
-  const trimmed = record.candidates.filter((c: any) => c.reason?.includes("精简上限"));
-  assert.equal(trimmed.length, 20);
-  assert.ok(watch.some((c: any) => c.metric), "高热度条目优先保留");
+  // R10.28：精简闸已删——当日 watch 全量保留（原断言 300/trimmed 20 按新口径改写）
+  assert.equal(watch.length, 320, "当日 watch 全量保留（零精简）");
+  assert.equal(record.candidates.filter((c: any) => c.reason?.includes("精简上限")).length, 0, "零 filtered-by-limit");
+  assert.ok(watch.some((c: any) => c.metric), "含热度条目（不再参与去留排序）");
   // none 归档 + 恢复
   const triage = { jobId: record.jobId, planName: COLLECT_ALL_PLAN_NAME, day, at: new Date().toISOString(), shards: 1, calls: 1, tokens: 1, merges: 0,
     groups: [

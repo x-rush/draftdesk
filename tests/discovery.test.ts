@@ -36,7 +36,7 @@ test("线索覆盖只显示保留期内且与指定任务对应的记录",()=>{
  const dir=mkdtempSync(path.join(tmpdir(),"dd-discovery-"));
  const db=new Store(dir);
  try{
-  const record=(jobId:string,at:string):DiscoveryRecord=>({jobId,at,planName:"研究",sources:[],candidates:[],limit:5});
+  const record=(jobId:string,at:string):DiscoveryRecord=>({jobId,at,planName:"研究",sources:[],candidates:[]});
   db.put("discovery","old",record("old",new Date(Date.now()-15*86400000).toISOString()));
   db.put("discovery","fresh",record("fresh",new Date().toISOString()));
   assert.equal((db.snapshot() as any).discovery.length,1);

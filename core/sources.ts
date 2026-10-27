@@ -507,7 +507,7 @@ export async function collect(
       db.put("candidate-groups", "tg-" + jobId, triage);
     } catch (e) {
       if (signal.aborted) throw e;
-      markTriageFailed(db, { jobId, at: now(), planName: plan.name, candidates, sources: coverage, limit: plan.maxEvidence, mode }, e);
+      markTriageFailed(db, { jobId, at: now(), planName: plan.name, candidates, sources: coverage, mode }, e);
       warnings.push(`AI 语义初筛失败（已标待补跑）：${e instanceof Error ? e.message : "模型调用失败"}；本批名额暂按来源均衡分配。`);
     }
   }
@@ -520,7 +520,7 @@ export async function collect(
     : balancedEvidence(groups, limit);
   if(jobId){
     for(const cov of coverage)cov.selected=candidates.filter(c=>c.sourceId===cov.sourceId&&c.status==="selected").length;
-    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,limit,mode};
+    const record:DiscoveryRecord={jobId,at:now(),planName:plan.name,candidates,sources:coverage,mode};
     if(triage){
       // R9-7③：统一写回（组落库+候选判级+清失败标记），与补跑路径共用同一函数
       applyTriageResult(db, record, triage);

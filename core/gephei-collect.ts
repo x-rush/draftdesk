@@ -28,14 +28,14 @@ export const BENCHMARK_SEEDS = [
   { host: "remove.bg", name: "Remove.bg" },
 ];
 
+// R10.29-3：删全量短路标记（benchmark-seeds-done 自 10-14 写入后造成永久死区——
+// 标杆站三集合 0 行、月更空转）。改为按 host 逐个幂等补种（循环内已有 db.get 判断）
 export function ensureBenchmarkSeeds(db: Store): void {
-  if (db.get("meta", "benchmark-seeds-done")) return;
   const stamp = now();
   for (const s of BENCHMARK_SEEDS) {
     if (db.get<any>("benchmark-sites", s.host)) continue;
     db.put("benchmark-sites", s.host, { id: s.host, host: s.host, name: s.name, addedAt: stamp, lastAnalyzedAt: undefined, pagesCount: 0, newTermsCount: 0, producedBy: "seed" });
   }
-  db.put("meta", "benchmark-seeds-done", { at: stamp });
 }
 
 // ---- 趋势上升词过滤（英文/非品牌/长度 3-40）----

@@ -166,7 +166,8 @@ export function purgeTerminalJobs(db: Store): number {
 // legacy 迁入清理（R10.27-C1）：POST /migrate-local 的 legacy 集合与脚本 legacy-research——
 // 一次性迁移 decision-layer-v1 已转正存量，后续再迁入的 30 天后出库（无 reader，防永久滞留）
 export function purgeLegacyIntake(db: Store): number {
-  const cutoff = new Date().toISOString().slice(0, 10);
+  // R10.29-2：30 天偏移（原 cutoff=今天→迁入次日即删，与注释「30 天后出库」不符）
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   let purged = 0;
   for (const c of ["legacy", "legacy-research"]) {
     for (const doc of db.list<any>(c)) {

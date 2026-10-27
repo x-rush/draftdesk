@@ -69,7 +69,7 @@ export const routes: RouteDef[] = [
         // 不被缩减重放清掉（重放只影响本次组认领的候选）
         const disc = db.get<any>("discovery", parsed.jobId);
         if (disc) {
-          const limit = disc.limit ?? 6;
+          const limit = 6; // R10.28：精简闸删后无 record.limit——入模名额固定（名额语义与精简闸正交）
           applyTriageToCandidates(disc.candidates || [], doc.groups as any, limit, { preserveUnclaimed: true });
           const judgedBySource = new Map<string, number>();
           for (const c of disc.candidates || []) if (c.attention) judgedBySource.set(c.sourceId, (judgedBySource.get(c.sourceId) || 0) + 1);

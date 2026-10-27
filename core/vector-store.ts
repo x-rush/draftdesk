@@ -201,6 +201,10 @@ export async function indexEventGroups(
     const texts = groups.map(eventEmbedText);
     const vecs = await embedTexts(db, texts);
     const nowSec = Math.floor(Date.now() / 1000);
+    // R10.29-1 P0：prune 必须在 HSET 之前——写在循环后会删光本批刚写入的键
+    //（R10.26-4③ 引入的回归：AOF 铁证 10-27 批 HSET×38→紧随 DEL×38，eventline 自 10-26 起零新键，
+    // 语义去重失效/白烧嵌入）。执行序：清同 jobId 旧键+过期键 → 写入本批 → 计数真实。
+    await pruneEventVectors(c, jobId);
     let indexed = 0;
     for (let i = 0; i < groups.length; i++) {
       await hsetVector(c, "idx:eventline", "dd:v:eventline:", `${jobId}:${groups[i].id}`, vecs[i], [
@@ -211,9 +215,7 @@ export async function indexEventGroups(
       ], ["title", "TEXT", "jobId", "TAG", "attention", "TAG", "date", "NUMERIC"]);
       indexed++;
     }
-    await pruneEventVectors(c, jobId);
-    // R10.27-A#3：完整性标记（期望/实写计数落 meta）——次日对账与排障凭此可查，
-    // 嵌入失败（本函数 catch）不写标记=状态停留在上一批，区别于「写成功」
+    // R10.27-A#3：完整性标记——prune 已前置、HSET 全成功后写，indexed 计数真实
     db.put("meta", "vector-index:" + jobId, { at: new Date().toISOString(), expected: groups.length, indexed });
   } catch (e) {
     db.put("meta", "vector-index:" + jobId, { at: new Date().toISOString(), expected: groups.length, indexed: 0, error: String(e instanceof Error ? e.message : e).slice(0, 160) });

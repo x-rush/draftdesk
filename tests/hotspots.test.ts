@@ -8,7 +8,7 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 
 const at="2026-09-25T01:00:00.000Z";
-const record=(jobId:string,candidates:DiscoveryRecord["candidates"]):DiscoveryRecord=>({jobId,at,planName:jobId,mode:"analysis",limit:10,sources:[],candidates});
+const record=(jobId:string,candidates:DiscoveryRecord["candidates"]):DiscoveryRecord=>({jobId,at,planName:jobId,mode:"analysis",sources:[],candidates});
 test("热点列表合并重复链接、保留被筛除条目，并在筛选后分页",()=>{
  const records=[record("资讯",[{url:"https://example.com/a?utm_source=x",title:"AI 视频新工具",sourceId:"s1",sourceName:"平台榜",status:"filtered",reason:"未命中策略",observedAt:"2026-09-25T00:00:00Z"},{url:"https://example.com/b",title:"Vibe Coding 活动",sourceId:"s2",sourceName:"创作者榜",status:"watch",reason:"待观察",observedAt:at}]),record("热词",[{url:"https://example.com/a",title:"AI 视频新工具",sourceId:"s1",sourceName:"平台榜",status:"selected",reason:"进入分析",observedAt:at}])];
  const all=hotspotFeed(records,new URLSearchParams(),1);

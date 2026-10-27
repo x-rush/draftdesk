@@ -30,7 +30,7 @@ export function DiscoveryLens({record: slim, mode}: { record: DiscoveryRecord | 
     const failed=record.sources.filter(s=>s.status==="failed").length;
     const rate=totals.raw?Math.round(totals.selected/totals.raw*1000)/10:0;
     return <section className="lens-panel" aria-label="采集覆盖报告">
-      <header><div><h2>{record.planName} · 采集覆盖{record.mode==="preview"?"（只采集预览）":""}</h2><p>{date(record.at)} · 本轮最多保留 {record.limit} 条证据。{record.mode==="preview"?"未调用 AI，尚未生成推荐。":"榜单标题是线索，未入选不等于无价值。"}</p></div></header>
+      <header><div><h2>{record.planName} · 采集覆盖{record.mode==="preview"?"（只采集预览）":""}</h2><p>{date(record.at)} · 当日有效候选全量保留。{record.mode==="preview"?"未调用 AI，尚未生成推荐。":"榜单标题是线索，未入选不等于无价值。"}</p></div></header>
       <div className="coverage-funnel" role="img" aria-label={`漏斗：读取 ${totals.raw} 条，匹配 ${totals.matched} 条，${record.mode==="preview"?"保留":"进入分析"} ${totals.selected} 条`}>
         <div className="coverage-funnel-bar" aria-hidden="true">
           {totals.raw>0&&<>

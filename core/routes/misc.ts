@@ -110,7 +110,7 @@ export const routes: RouteDef[] = [
         pendingDecisions: decisionsPending,
         todayChecks: { total: checks.length, terms: checks },
         fourSources,
-        collectAll: collectAll ? { sources: collectAll.sources, raw: collectAll.raw, trimmed: collectAll.trimmed ?? 0, triage: collectAllTriage } : null,
+        collectAll: collectAll ? { sources: collectAll.sources, raw: collectAll.raw, triage: collectAllTriage } : null,
         externalConsumption,
       });
     },

@@ -249,7 +249,7 @@ function setupTickDb(dir: string) {
   db.put("config", "consumerMode", "builtin"); // R10.19：tick 测试需 builtin 模式
   db.put("plans", PLAN.id, PLAN);
   const candidates = Array.from({ length: 12 }, (_, i) => cand(i, "s1"));
-  const record: DiscoveryRecord = { jobId: "job-t1", at: new Date().toISOString(), planName: PLAN.name, candidates, sources: [{ sourceId: "s1", sourceName: "S1", status: "ok", raw: 12, matched: 12, selected: 0 }], limit: 6, mode: "analysis" };
+  const record: DiscoveryRecord = { jobId: "job-t1", at: new Date().toISOString(), planName: PLAN.name, candidates, sources: [{ sourceId: "s1", sourceName: "S1", status: "ok", raw: 12, matched: 12, selected: 0 }],  mode: "analysis" };
   db.put("discovery", record.jobId, record);
   db.put("config", "aiPolicy", { triage: "cheap", outline: "off", draft: "off", aiWriter: "external" });
   return { db, record };

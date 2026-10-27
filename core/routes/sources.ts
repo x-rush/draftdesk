@@ -71,13 +71,13 @@ export const routes: RouteDef[] = [
       const at = now(), id = "hotspot-" + randomUUID();
       try {
         const items = (await readHotspotSource(source, AbortSignal.any([req.signal, AbortSignal.timeout(45000)]))).slice(0, 100);
-        const record: DiscoveryRecord = { jobId: id, at, planName: "独立热点快照", mode: "hotspot", limit: 100,
+        const record: DiscoveryRecord = { jobId: id, at, planName: "独立热点快照", mode: "hotspot",
           candidates: items.map((item, index) => candidateFromItem(item, source.id, source.name, index, "watch", "原始热点；未按研究策略筛选或经 AI 核实")),
           sources: [{ sourceId: source.id, sourceName: source.name, status: "ok", raw: items.length, matched: 0, selected: 0 }] };
         db.put("discovery", id, record);
         return json({ count: items.length, source: source.name, at });
       } catch (error) {
-        db.put("discovery", id, { jobId: id, at, planName: "独立热点快照", mode: "hotspot", limit: 100, candidates: [], sources: [{ sourceId: source.id, sourceName: source.name, status: "failed", raw: 0, matched: 0, selected: 0, error: error instanceof AppError ? error.message : "来源读取失败" }] } satisfies DiscoveryRecord);
+        db.put("discovery", id, { jobId: id, at, planName: "独立热点快照", mode: "hotspot", candidates: [], sources: [{ sourceId: source.id, sourceName: source.name, status: "failed", raw: 0, matched: 0, selected: 0, error: error instanceof AppError ? error.message : "来源读取失败" }] } satisfies DiscoveryRecord);
         throw error;
       }
     },

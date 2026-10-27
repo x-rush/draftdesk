@@ -53,7 +53,7 @@ test("元数据全链：parser→落库构造→视图投影→agent 投影 四�
   assert.equal(withPublished.publishedAt, "2026-10-01T00:00:00.000Z");
 
   // ③ 视图投影（hotspotFeed）：新行携带元数据；同 URL 更新时最新观测优先
-  const record: DiscoveryRecord = { jobId: "j1", at: seenAt, planName: "热词与内容机会", mode: "analysis", limit: 100, candidates: [candidate], sources: [] };
+  const record: DiscoveryRecord = { jobId: "j1", at: seenAt, planName: "热词与内容机会", mode: "analysis", candidates: [candidate], sources: [] };
   const feed = hotspotFeed([record], new URLSearchParams("hotspotConsumed=include"));
   assert.equal(feed.items.length, 1);
   assert.equal(feed.items[0].mediaType, "video");

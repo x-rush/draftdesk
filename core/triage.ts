@@ -424,7 +424,7 @@ function pickTriageTarget(db: Store, jobId?: string): DiscoveryRecord | undefine
 // 分叉的历史教训：内联路径漏落库（143237c 修复）导致组卡引擎读不到、补跑机制整批重跑。
 export function applyTriageResult(db: Store, record: DiscoveryRecord, triage: TriageRecord) {
   db.put("candidate-groups", "tg-" + record.jobId, triage);
-  applyTriageToCandidates(record.candidates, triage.groups, record.limit ?? 6);
+  applyTriageToCandidates(record.candidates, triage.groups, 6); // R10.28：精简闸删后无 record.limit——入模名额固定 6（名额语义与精简闸正交，保留）
   db.put("discovery", record.jobId, record);
   db.del("meta", "triage-fail:" + record.jobId);
 }

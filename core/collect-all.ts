@@ -16,7 +16,6 @@ import { readSourceEvidence, candidateFromItem } from "./sources";
 import { runTriage, applyTriageResult, archiveNoneGroups, triagePoolOf, defaultTriageRunner, markTriageFailed, COLLECT_ALL_PLAN_NAME, defaultTriagePlan, type TriageRunner, type TriageRecord } from "./triage";
 import { shanghaiDay } from "./model-metrics";
 
-export const COLLECT_ALL_LIMIT = 300;
 
 export function collectAllJobId(day: string = shanghaiDay()): string {
   return "collectall-" + day;
@@ -97,38 +96,12 @@ async function runCollectAll(db: Store, ctx: { day: string; doneKey: string; job
       coverage.push({ sourceId: s.id, sourceName: s.name, status: "failed", raw: 0, matched: 0, selected: 0, error: e instanceof Error ? e.message : "读取失败" });
     }
   }
-  // 当日精简闸：超上限按「同源归一热度 > 原始热度 > 稳定源序」保留前 N。
-  // R10.6 双修正：①原始热度跨源量纲不可比（百度「百万」碾压 aihot 信号「65」）——
-  // 每源内部按热度排名折算 0..1；②毫秒级采集时序会劫持「新度」（后读的源包揽全部
-  // 名额，实测 300 席被最后 8 源吞掉）——当日闸已保证同日新鲜，新度不再参与排序，
-  // 源序兜底天然跨源交错。
-  const watch = candidates.filter((c) => c.status === "watch");
-  const heatRank = new Map<string, number>();
-  {
-    const bySource = new Map<string, DiscoveryCandidate[]>();
-    for (const c of watch) { const l = bySource.get(c.sourceId) || []; l.push(c); bySource.set(c.sourceId, l); }
-    for (const list of bySource.values()) {
-      list.sort((a, b) => heatOf(b) - heatOf(a));
-      list.forEach((c, idx) => heatRank.set(c.url, list.length > 1 ? (list.length - idx) / list.length : 1));
-    }
-  }
-  let trimmed = 0;
-  if (watch.length > COLLECT_ALL_LIMIT) {
-    const keep = new Set(
-      watch
-        .map((c, i) => ({ c, i }))
-        .sort((a, b) => (heatRank.get(b.c.url) ?? 0) - (heatRank.get(a.c.url) ?? 0) || heatOf(b.c) - heatOf(a.c) || a.i - b.i)
-        .slice(0, COLLECT_ALL_LIMIT)
-        .map((x) => x.c.url),
-    );
-    for (const c of candidates) {
-      if (c.status === "watch" && !keep.has(c.url)) { c.status = "filtered"; c.reason = `超出当日精简上限（${COLLECT_ALL_LIMIT}）`; trimmed++; }
-    }
-  }
-  const record: DiscoveryRecord = { jobId, at: now(), planName: COLLECT_ALL_PLAN_NAME, candidates, sources: coverage, limit: COLLECT_ALL_LIMIT, mode: "analysis" };
+  // R10.28：采集侧精简闸已删（builtin 时代给内置初筛限流的历史产物；external 下外部
+  // Agent 全量语义处理，闸只剩误伤——当日 watch 候选全部保留，「非当日→filtered」跨日去重语义不变）
+  const record: DiscoveryRecord = { jobId, at: now(), planName: COLLECT_ALL_PLAN_NAME, candidates, sources: coverage, mode: "analysis" };
   db.put("discovery", jobId, record);
-  db.put("meta", doneKey, { at: now(), sources: sources.length, raw: candidates.length, trimmed, durationMs: Date.now() - started });
-  console.log(`[collect-all] ${day}：${sources.length} 源 ${candidates.length} 条（精简 ${trimmed}）落盘，用时 ${Math.round((Date.now() - started) / 1000)}s`);
+  db.put("meta", doneKey, { at: now(), sources: sources.length, raw: candidates.length, watch: candidates.filter((c) => c.status === "watch").length, durationMs: Date.now() - started });
+  console.log(`[collect-all] ${day}：${sources.length} 源 ${candidates.length} 条（watch ${candidates.filter((c) => c.status === "watch").length}）落盘，用时 ${Math.round((Date.now() - started) / 1000)}s`);
   // R10.20-A3 注释更新：consumerMode 决定整套链——external=采集落盘即止（语义处理由
   // 外部 Agent 02:00 全套完成），builtin=内置 AI 跑全套。appGap 转卡在 builtin 门内。
   // 不新增第三种机制，无自动兜底。
