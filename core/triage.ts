@@ -63,7 +63,7 @@ export function triageShardMessages(plan: Pick<Plan, "name" | "goal" | "platform
   const lines: string[] = [
     "你是内容选题工作台的语义初筛引擎。输入是同一采集批次的候选条目（i=编号，t=标题，s=来源）。依次完成：",
     "1. 归类：讲同一事件或同一主题的条目归为一组，单条也可自成一组；members 必须含组内全部编号，每个编号恰好属于一组。",
-    "2. 注意力判级：每组给 attention 与一句话 reason。strong=AI/科技/创作者工具领域的强信号（重要发布、大版本、显著数据、研究策略方向上的大事件）；potential=有潜在价值、值得留观察池的次级信号；none=与 AI/科技/内容创作方向无关（纯体育赛事、时政要闻、社会民生、娱乐八卦）或无信息量的噪音。",
+    "2. 注意力判级：每组给 attention 与一句话 reason。strong=AI/科技/创作者工具领域的强信号（重要发布、大版本、显著数据、研究策略方向上的大事件）；potential=有潜在价值、值得留观察池的次级信号（reason 写清升级条件）；none=与 AI/科技/内容创作方向无关（纯体育赛事、时政要闻、社会民生、娱乐八卦）或无信息量的噪音。reason 质量标准（R10.32 三路一致）：带具体依据——数据/多源交叉/事件连续性/决策影响，至少占其一；禁止只写「相关」「热门」。",
     `3. 双线草案：attention 非 none 的组给 angles（内容角度 0-3 条，platform 只能从 ${platforms.join("/")} 中选）；若该事件存在 web/app 配套工具缺口，给 appGap（一句话应用路线）；没有就不写该字段。`,
     `归类粒度：${granularityText(plan.aiPolicy ?? {})}。`,
     ATTENTION_FEW_SHOT,

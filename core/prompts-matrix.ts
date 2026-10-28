@@ -48,9 +48,11 @@ export function composeOutlinePrompt(platform: string, category: string | undefi
   const template = m.platforms[pKey] || "按目标平台的通行结构组织内容（标题/正文/标签/视觉位）。";
   const angle = cKey ? m.categories[cKey] : undefined;
   const points = keyPoints.length ? `\n\n写作要点（必须覆盖）：\n${keyPoints.map((k) => `- ${k}`).join("\n")}` : "";
+  // R10.32-2：三路一致化——内置链注入小拾关键口径（标题=选题句/平台适配/跨日去重意识）
+  const stance = `\n\n【编辑口径（与外部 Agent 主分析同源）】\n- 标题必须是选题句（带判断/承诺/角度），不是主题词：「换掉 X 前先看 Y」优于「X 发布」。\n- 平台适配：gzh=完整论证；tiebuhao=图卡组（3-6 张，首图即观点，每张 ≤54 字）；xhs-note=清单体/教程体（标题带可收藏价值点）；threads=中文选题的英文短评改写（不是新选题）。\n- 跨日去重意识：选题来自多日连续事件时，标题体现本轮新进展（如「第三轮调整后…」），不重炒旧闻。`;
   return `为选题「${subject}」写第一版内容大纲（${platformLabel(pKey) || pKey}${cKey ? ` · ${categoryLabel(cKey) || cKey}` : ""}）。
 
-【平台结构要求】\n${template}${angle ? `\n\n【题材角度要求】\n${angle}` : ""}${points}
+【平台结构要求】\n${template}${angle ? `\n\n【题材角度要求】\n${angle}` : ""}${points}${stance}
 
 【输出格式】只输出 JSON 对象（不要 markdown 代码块）：
 {"keyPoints":["要点1","要点2","要点3"],"outline":["第一部分标题","第二部分标题","第三部分标题"],"draftBody":"按平台结构要求写好的完整初稿（Markdown）"}
