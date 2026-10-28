@@ -60,6 +60,6 @@
 | 模式 | 谁写第一版大纲 | 时机 |
 |---|---|---|
 | **external** | 外部 Agent（按 `skills/prompts/outline-matrix.md` 提示词矩阵，平台 × 题材双标注提交） | Agent 自己的调度；接口与示例见[外部 Agent 接入指南](agent-integration.md)「大纲提交」节 |
-| **builtin** | 内置 AI 每小时自动跑：approved 且无草稿的选题按「平台模板 × 题材角度」cheap 档出稿（keyPoints/outline/draftBody），写完自动推进到「写作中」 | approved 后最迟 1 小时内 |
+| **builtin** | 内置 AI 随每日 01:00 日批自动跑：approved 且无草稿的选题按「平台模板 × 题材角度」cheap 档出稿（keyPoints/outline/draftBody），写完自动推进到「写作中」（R10.33 起全部日粒度任务随日批一次跑完） | 次日 01:00 日批内 |
 
 「模型与设置」里的 aiPolicy.draft 只是档位说明，真正的开关是消费执行方：external 时内置大纲兜底停用（外部 Agent 没交稿的 approved 选题保持在「已通过」等待），builtin 时自动接管。题材由 LLM 初标（六类），审查台题材徽章可点改纠偏。

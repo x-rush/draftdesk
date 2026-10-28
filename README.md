@@ -119,7 +119,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 草稿全程可见：pending 的选题只要有草稿就显示「有草稿」徽章与只读预览（Markdown 渲染），通过后开放编辑；大纲抽屉同时展示内容结构、写作要点与数据源。
 
-产出兜底链按消费执行方联动：external 模式由外部 Agent 对 approved 选题写第一版大纲（keyPoints/outline/draftBody，提示词矩阵见 `skills/prompts/outline-matrix.md`，接入指引见[外部 Agent 接入指南](docs/agent-integration.md)）；builtin 模式由内置 AI 每小时自动为 approved 选题按「平台模板 × 题材角度」生成第一版大纲并推进到「写作中」。手动添加选题、人设配置（AI 个性化判断输入，可编辑）与内置 AI 参与开关 aiPolicy（triage/outline/draft 三档 off|cheap|full，经 suggest scope 令牌经 /api/v1/agent/clusters|outlines 写回）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
+产出兜底链按消费执行方联动：external 模式由外部 Agent 对 approved 选题写第一版大纲（keyPoints/outline/draftBody，提示词矩阵见 `skills/prompts/outline-matrix.md`，接入指引见[外部 Agent 接入指南](docs/agent-integration.md)）；builtin 模式由内置 AI 在每日 01:00 日批中自动为 approved 选题按「平台模板 × 题材角度」生成第一版大纲并推进到「写作中」（R10.33 起全部日粒度任务随日批一次跑完，白天循环静默）。手动添加选题、人设配置（AI 个性化判断输入，可编辑）与内置 AI 参与开关 aiPolicy（triage/outline/draft 三档 off|cheap|full，经 suggest scope 令牌经 /api/v1/agent/clusters|outlines 写回）都在「审查台」页。人拍板走页面，Agent 走 `/api/v1/agent/decisions*` 与 `suggestions`（read scope 即可，建议不改变人的拍板）。
 
 ## 数据与边界
 

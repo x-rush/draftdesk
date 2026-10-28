@@ -208,3 +208,39 @@ test("R10.31 验收：上海 00:30 触发时日闸用上海日（时钟注入）
   const { shanghaiDayOf: sd } = await import("../core/tick-guard");
   assert.match(sd(new Date("2026-10-28T16:30:00Z")), /^\d{4}-\d{2}-\d{2}$/);
 });
+
+test("R10.33 验收：日批决策四态（夜间起跑/夜间多批/白天静默/重启补跑/手动随时）", async () => {
+  const db = store();
+  const { dayBatchDecision, markDayBatchDone } = await import("../worker/loop");
+  // 上海时间构造：直接按 +08:00 解析（避免跨日反推错位）
+  const sh = (h: number, day = "2026-10-30") => new Date(Date.parse(`${day}T00:00:00+08:00`) + h * 3600000 + 1800000);
+  // 清掉可能残留的日批标记与手动键
+  for (const d of ["2026-10-30", "2026-10-31"]) {
+    db.del("meta", "day-batch-done:" + d);
+    db.del("meta", "seen-terms-extract-done:" + d);
+  }
+  for (const k of ["triage-request", "site-launches-manual", "seen-dig-manual", "seen-terms-manual"]) db.del("meta", k);
+
+  // ① 上海 00:30（日批窗口前）→ idle（collectAllTick 自身也按 <1 点拦）
+  assert.equal(dayBatchDecision(db, sh(0)).action, "idle", "00:30 尚未到日批窗口");
+  // ② 上海 01:30 未跑 → chain
+  assert.equal(dayBatchDecision(db, sh(1)).action, "chain", "01:30 日批起跑");
+  // ③ 标完成后 01:30 → multibatch（夜间多批追赶）
+  markDayBatchDone(db, "2026-10-30", 1);
+  assert.equal(dayBatchDecision(db, sh(2)).action, "multibatch", "夜间窗口多批追赶");
+  // ④ 白天 14:30 已完成 → idle（完全安静）
+  assert.equal(dayBatchDecision(db, sh(14)).action, "idle", "白天静默");
+  // ⑤ 白天未完成（进程重启错过窗口）→ chain 补跑
+  assert.equal(dayBatchDecision(db, sh(14, "2026-10-31")).action, "chain", "重启补跑不漏批");
+  // ⑥ 手动口随时响应（白天也 chain）
+  db.put("meta", "triage-request", { jobId: "x", at: new Date().toISOString() });
+  assert.equal(dayBatchDecision(db, sh(14)).action, "manual", "手动请求白天也响应");
+  db.del("meta", "triage-request");
+  // ⑦ seen-terms-manual 已被当日提取闸消费后不再算待处理（不无限循环）
+  db.put("meta", "seen-terms-manual", { date: "2026-10-30", at: "2026-10-30T01:05:00.000Z" });
+  db.put("meta", "seen-terms-extract-done:2026-10-30", { at: "2026-10-30T01:10:00.000Z" });
+  assert.equal(dayBatchDecision(db, sh(14)).action, "idle", "已消费的手动键不再触发链");
+  db.put("meta", "seen-terms-extract-done:2026-10-30", { at: "2026-10-30T01:00:00.000Z" });
+  assert.equal(dayBatchDecision(db, sh(14)).action, "manual", "晚于 done 的手动请求仍待处理");
+  for (const k of ["seen-terms-manual", "seen-terms-extract-done:2026-10-30"]) db.del("meta", k);
+});
