@@ -38,8 +38,14 @@ export const skillCatalog = [
     name: "外部智能体提交",
     purpose: "任意外部 Agent（Hermes、OpenClaw 等为实测样例）使用统一收件协议",
   },
+  {
+    id: "daily-analysis",
+    name: "每日主分析（接管流程）",
+    purpose: "外部 Agent 接管工作台每日语义处理：合并归组→判级→写回→归档→大纲→机会卡→回执（R10.32 三路一致）",
+  },
 ];
 export const skillReferences: Record<string, string[]> = {
+  "daily-analysis": ["references/grading-examples.md", "references/outline-samples.md"],
   "draftdesk-submit": ["references/agent-workflow.md"],
   "evidence-curator": ["references/source-assessment.md"],
   "editorial-research": ["references/editorial-decisions.md"],
