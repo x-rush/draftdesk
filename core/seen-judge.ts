@@ -448,6 +448,20 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
   const done = db.get<any>("meta", doneKey);
   const manual = db.get<any>("meta", "seen-dig-manual");
   const byManual = !!manual?.date && manual.date === today && (!done || manual.at > done.at);
+  // 性能修复（2026-10-28 生产 CPU 事件）：done 满批/间隔闸提前到 queue 构建之前——
+  // 原顺序每 1.5s 循环先全表拉 seen-terms（14732 条 JSON.parse+filter+sort ≈92ms ≈6-8%
+  // 持续单核 CPU）才检查 done 满批秒退。busy/heavy 档位用 done 携带的日级标志
+  // （busyDay/heavyDay 一旦置位全天保持，与下方 queue 长度判定同源不冲突）。
+  if (done && !byManual) {
+    const busyEarly = done.busyDay === true;
+    const heavyEarly = done.heavyDay === true;
+    const maxEarly = heavyEarly ? HEAVY_MAX_BATCHES : busyEarly ? MID_MAX_BATCHES : 1;
+    const gapEarly = heavyEarly ? GAP_HEAVY_MS : GAP_MID_MS;
+    if ((done.batches ?? 1) >= maxEarly) return;
+    if (done.at && nowDate.getTime() - Date.parse(done.at) < gapEarly) return;
+  }
+  const running = db.get<any>("meta", "seen-judge-running");
+  if (running && Date.now() - Date.parse(running.at) < 45 * 60000) return;
   const queue = db.list<any>("seen-terms")
     .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global" && (typeof t.serpDedicated !== "number" || isSerpStale(t)))
     .sort((a, b) => wordScore(b) - wordScore(a));
@@ -465,9 +479,6 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
     if ((done.batches ?? 1) >= maxBatches) return;
     if (done.at && nowDate.getTime() - Date.parse(done.at) < gapMs) return;
   }
-  // 批量 200 词（含退避）可能超旧 20 分钟窗：running 守卫放宽到 45 分钟
-  const running = db.get<any>("meta", "seen-judge-running");
-  if (running && Date.now() - Date.parse(running.at) < 45 * 60000) return;
   const batch = queue.slice(0, heavy ? JUDGE_TOP_HEAVY : busy ? JUDGE_TOP_MID : JUDGE_TOP);
   db.put("meta", "seen-judge-running", { at: new Date().toISOString() });
   const batchNo = (done?.batches ?? 0) + 1;
