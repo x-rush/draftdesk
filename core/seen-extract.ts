@@ -370,19 +370,28 @@ export function unjudgedPendingCount(db: Store): number {
 export function judgeBackfillTick(db: Store, runModel: ModelRunner, nowDate: Date = new Date()): void {
   const day = shanghaiDayOf(nowDate); // R10.31：上海日
   const doneKey = judgeBackfillDoneKey(day);
-  const done = db.get<any>("meta", doneKey);
+  const done = db.get<any>(("meta"), doneKey);
+  // 性能修复（2026-10-28 生产 CPU 事件，与 seenJudgeTick 同款闸序倒置）：
+  // done 满批/间隔/running 守卫提前到 unjudgedPendingCount 全表扫之前——
+  // 原顺序每 1.5s 无条件全表拉 seen-terms（≈60ms）才判 done 满批秒退。
+  // busy/heavy 用 done 日级标志（与 pending 长度判定同源不冲突）。
+  if (done) {
+    const busyEarly = done.busyDay === true;
+    const heavyEarly = done.heavyDay === true;
+    const maxEarly = heavyEarly ? BACKFILL_HEAVY_BATCHES : busyEarly ? BACKFILL_MID_BATCHES : 1;
+    const gapEarly = heavyEarly ? BACKFILL_HEAVY_GAP_MS : BACKFILL_MID_GAP_MS;
+    if ((done.batches ?? 1) >= maxEarly) return;
+    if (done.at && nowDate.getTime() - Date.parse(done.at) < gapEarly) return;
+  }
+  const runningEarly = db.get<any>("meta", "judge-backfill-running");
+  if (runningEarly && Date.now() - Date.parse(runningEarly.at) < 15 * 60000) return;
   const pending = unjudgedPendingCount(db);
   if (!pending) return;
   const busy = pending > 500 || done?.busyDay === true;
   const heavy = pending > 2000 || done?.heavyDay === true;
   const maxBatches = heavy ? BACKFILL_HEAVY_BATCHES : busy ? BACKFILL_MID_BATCHES : 1;
   const gapMs = heavy ? BACKFILL_HEAVY_GAP_MS : BACKFILL_MID_GAP_MS;
-  if (done) {
-    if ((done.batches ?? 1) >= maxBatches) return;
-    if (done.at && nowDate.getTime() - Date.parse(done.at) < gapMs) return;
-  }
-  const running = db.get<any>("meta", "judge-backfill-running");
-  if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
+  const running = runningEarly;
   db.put("meta", "judge-backfill-running", { at: new Date().toISOString() });
   const batchNo = (done?.batches ?? 0) + 1;
   void (async () => {
