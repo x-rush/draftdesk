@@ -46,7 +46,9 @@ function shanghaiHour(d: Date = new Date()): number {
 // triage-request/site-launches-manual/seen-dig-manual 由 tick 自删；
 // seen-terms-manual 永不删除（靠提取 done 闸去重），故与当日 done 时间戳比较。
 function pendingManual(db: Store, day: string): boolean {
-  if (db.get("meta", "triage-request")) return true;
+  // triage-request 只有 builtin 的 triageTick 会消费（external 在门控处早退、不删键）——
+  // 不按模式过滤会让切到 external 后残留的请求键导致日间空转
+  if ((db.get("config", "consumerMode") || "external") === "builtin" && db.get("meta", "triage-request")) return true;
   if (db.get("meta", "site-launches-manual")) return true;
   if (db.get("meta", "seen-dig-manual")) return true;
   const m = db.get<any>("meta", "seen-terms-manual");

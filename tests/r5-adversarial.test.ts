@@ -232,10 +232,17 @@ test("R10.33 验收：日批决策四态（夜间起跑/夜间多批/白天静�
   assert.equal(dayBatchDecision(db, sh(14)).action, "idle", "白天静默");
   // ⑤ 白天未完成（进程重启错过窗口）→ chain 补跑
   assert.equal(dayBatchDecision(db, sh(14, "2026-10-31")).action, "chain", "重启补跑不漏批");
-  // ⑥ 手动口随时响应（白天也 chain）
+  // ⑥ 手动口随时响应（白天也 chain）——triage-request 仅 builtin 消费，external 下不算待处理
   db.put("meta", "triage-request", { jobId: "x", at: new Date().toISOString() });
-  assert.equal(dayBatchDecision(db, sh(14)).action, "manual", "手动请求白天也响应");
+  assert.equal(dayBatchDecision(db, sh(14)).action, "idle", "external 下 triage-request 不触发（无人消费）");
+  db.put("config", "consumerMode", "builtin");
+  assert.equal(dayBatchDecision(db, sh(14)).action, "manual", "builtin 下手动请求白天也响应");
+  db.put("config", "consumerMode", "external");
   db.del("meta", "triage-request");
+  // 采集手动口（外部模式也消费）随时响应
+  db.put("meta", "site-launches-manual", { at: new Date().toISOString() });
+  assert.equal(dayBatchDecision(db, sh(14)).action, "manual", "新站手动刷新白天也响应");
+  db.del("meta", "site-launches-manual");
   // ⑦ seen-terms-manual 已被当日提取闸消费后不再算待处理（不无限循环）
   db.put("meta", "seen-terms-manual", { date: "2026-10-30", at: "2026-10-30T01:05:00.000Z" });
   db.put("meta", "seen-terms-extract-done:2026-10-30", { at: "2026-10-30T01:10:00.000Z" });
