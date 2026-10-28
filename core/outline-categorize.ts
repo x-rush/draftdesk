@@ -3,7 +3,7 @@
 // meta 键守卫，标完置位不再跑；新增大纲的 category 由提交方（外部 Agent/内置）带出。
 // 分类属初筛（采集的一部分），不受 consumerMode 门控。
 import type { Store } from "./store";
-import { tickGuard } from "./tick-guard";
+import { tickGuard, shanghaiDayOf } from "./tick-guard";
 import { now } from "./store";
 import { CATEGORY_LABELS, normalizeCategory } from "./platforms";
 
@@ -55,7 +55,7 @@ export async function categorizeOutlines(db: Store, runModel: ModelRunner, outer
 // 大纲即 cheap 档增量标注（新簇/新大纲次日自动补上，下游 ensureTiebuhaoClones、
 // 审查台题材筛选持续有数据）；失败也置当日 done（防每分钟打爆模型），次日重试。
 export function outlineCategoryTick(db: Store, runModel: ModelRunner, nowDate: Date = new Date()) {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   const doneKey = "outline-category-done:" + day;
   if (db.get("meta", doneKey)) return;
   const pending = db.list<any>("outlines").filter((o) => !o.category).length;
@@ -64,7 +64,7 @@ export function outlineCategoryTick(db: Store, runModel: ModelRunner, nowDate: D
     return;
   }
   // R10.27-C#17：守卫统一（键与 TTL 保持原值）
-  const guard = tickGuard(db, { key: "outline-category", lockTtlMs: 20 * 60000, day: "utc" });
+  const guard = tickGuard(db, { key: "outline-category", lockTtlMs: 20 * 60000, day: "shanghai" });
   if (guard.locked) return;
   guard.acquire();
   void (async () => {

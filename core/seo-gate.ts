@@ -5,6 +5,7 @@
 //   全门槛达标自动出标+域名清单+出卡触发；autoMetrics 授权门控+metrics 月池（批4）
 // 依赖方向：seo-gate → seo-source / seen-terms / store（opportunity 出卡为动态 import，避免循环）
 import type { Store } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { generateOpportunities } from "./opportunity";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { GEPHEI_TTL_MS, seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, fetchKeywordMetrics, seoApi } from "./seo-source";
@@ -177,7 +178,7 @@ export function dailyMetricsCandidates(db: Store, gate: SiteGate, markedIds: Set
 }
 
 export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "seo-metrics-done:" + day)) return;
   if (!seoSourceEnabled(db)) return;
   // 双重门控（批4 W7-11①；R8-4 v4 后默认关）：付费接口自动查需 settings 授权，

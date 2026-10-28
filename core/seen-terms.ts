@@ -67,8 +67,9 @@ export function termId(term: string): string {
   return term.trim().toLowerCase().replace(/\s+/g, "");
 }
 
+// R10.31：观察日改上海口径（与 seen-judge 判定窗 day() 同源——原 UTC 会在凌晨窗口错位一天）
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
 }
 
 // obsByDay 瘦身：只保留最近 30 天（判定层 obsRatio 只看近 9 天，留足余量）

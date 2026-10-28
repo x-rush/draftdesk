@@ -4,13 +4,14 @@
 // ⚠️ 站群池仍只收 tool 意图词，两通道互不干扰（R8-2② 拍板）。
 // 零外部调用纯库内计算；每日一道闸；幂等（同词已建卡不重复）。
 import type { Store } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { now } from "./store";
 import { termId } from "./seen-terms";
 
 const CARD_SPEC = "图卡文案包规格：3-6 张图卡，首图即观点，每张文案 ≤54 字，视觉风格关键词 3-5 个";
 
 export function infoReflowTick(db: Store, nowDate: Date = new Date()): void {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "info-reflow-done:" + day)) return;
   const isInfoStrong = (t: any) => t.relevance === "strong" && t.demandIntent === "info"
     && (t.observations ?? 0) >= 3 && !t.offTopic;

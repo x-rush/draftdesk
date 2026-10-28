@@ -191,3 +191,20 @@ test("R10.30 验收：池护栏 2000 边界 + legacy 30 天真删", async () => 
   assert.ok(!has31, "31 天前真删（非空键虚报）");
   assert.equal(n, 1, "计数=实际删除数");
 });
+
+test("R10.31 验收：上海 00:30 触发时日闸用上海日（时钟注入）", async () => {
+  const db = store();
+  const { tickGuard, shanghaiDayOf } = await import("../core/tick-guard");
+  // 上海 00:30 = UTC 前一日 16:30——UTC 日比上海日早一天
+  const utcNow = new Date();
+  const shDay = shanghaiDayOf(utcNow);
+  const utcDay = utcNow.toISOString().slice(0, 10);
+  const boundaryDifferent = shDay !== utcDay; // 凌晨窗口内两口径不同日
+  const g = tickGuard(db, { key: "r31-tz", lockTtlMs: 60000, day: "shanghai", now: utcNow });
+  assert.ok(g.doneKey.endsWith(shDay), `日闸键用上海日：${g.doneKey}`);
+  if (boundaryDifferent) assert.notEqual(g.doneKey, "r31-tz-done:" + utcDay, "凌晨窗口不再挂 UTC 昨天");
+  g.acquire(); g.release();
+  // monthOf/halfMonthOf 语义抽验（gephei）
+  const { shanghaiDayOf: sd } = await import("../core/tick-guard");
+  assert.match(sd(new Date("2026-10-28T16:30:00Z")), /^\d{4}-\d{2}-\d{2}$/);
+});

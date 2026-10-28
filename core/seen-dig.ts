@@ -4,6 +4,7 @@
 // 频控：并发 ≤5、请求间隔 ≥200ms、单轮请求预算硬顶；失败静默跳过，不阻塞整理主流程。
 // 触发：随热词整理闸门（每日一次幂等）或 UI「立即整理」手动请求。
 import type { Store } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { classifyIntent, observeSuggestion, termId } from "./seen-terms";
 
 const DAY_MS = 86400000;
@@ -420,7 +421,7 @@ export async function runTrendsRising(db: Store, doFetch: DoFetch = fetch): Prom
 
 // 每分钟 tick：手动请求（UI「立即整理」）优先，其次随整理闸门每日一次。
 // 全程 fire-and-forget：挖掘耗时数分钟，不得阻塞研究任务循环。
-export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number; providerIntervalMs?: number; providerConcurrency?: number } = {}) {  const today = new Date().toISOString().slice(0, 10);
+export function seenDiggingTick(db: Store, doFetch: DoFetch = fetch, opts: { intervalMs?: number; concurrency?: number; budget?: number; providerIntervalMs?: number; providerConcurrency?: number } = {}) {  const today = shanghaiDayOf(); // R10.31：上海日
   const manual = db.get<any>("meta", "seen-dig-manual");
   const gate = db.get<any>("meta", "seen-terms-gate");
   const byManual = manual?.date === today;
@@ -533,7 +534,7 @@ export async function runRootProbe(db: Store, doFetch: DoFetch = fetch, opts: { 
 
 // 词根探针 tick：独立日闸（不依赖整理闸门），fire-and-forget，失败静默。
 export function rootProbeTick(db: Store, doFetch: DoFetch = fetch, opts: { perDay?: number; top?: number; intervalMs?: number } = {}) {
-  const day = new Date().toISOString().slice(0, 10);
+  const day = shanghaiDayOf(); // R10.31：上海日
   const doneKey = "root-probe-done:" + day;
   if (db.get("meta", doneKey)) return;
   const running = db.get<any>("meta", "root-probe-running");

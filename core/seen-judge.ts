@@ -12,6 +12,7 @@
 // 吞吐扩容（§5）：积压 >500 时每天 3 批、每批 200 词（批间隔 ≥4h），≤500 每天 1 批 100 词；
 // 完成键记「本批游标与批次号」而非当日一次，同日可多批。SearXNG 间隔 500ms 不变。
 import type { Store } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { fetchSuggest, Limiter } from "./seen-dig";
 import { GEPHEI_TTL_MS, seoSourceEnabled, seoBudgetLeft, seoSpend, fetchSerp, seoApi } from "./seo-source";
@@ -58,8 +59,9 @@ const STATIC_PLATFORMS: [RegExp, string][] = [
   [/\.netlify\.app$/i, "netlify"],
 ];
 
+// R10.31：观测窗日期改上海口径（与日闸一致；原 UTC 在凌晨窗口会与 done 键错位一天）
 function day(offset: number, now = new Date()): string {
-  return new Date(now.getTime() - offset * DAY_MS).toISOString().slice(0, 10);
+  return shanghaiDayOf(new Date(now.getTime() - offset * DAY_MS));
 }
 
 // obsRatio（判定层 5，第五轮 §6 放宽）：近 2 天日均 ÷ 前 3 天日均；
@@ -441,7 +443,7 @@ async function applySerpJudgement(
 
 export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { backoffBaseMs?: number; now?: Date; intervalMs?: number } = {}) {
   const nowDate = opts.now ?? new Date();
-  const today = nowDate.toISOString().slice(0, 10);
+  const today = shanghaiDayOf(nowDate); // R10.31：上海日
   const doneKey = "seen-judge-done:" + today;
   const done = db.get<any>("meta", doneKey);
   const manual = db.get<any>("meta", "seen-dig-manual");

@@ -11,6 +11,7 @@
 import type { Store } from "./store";
 import { AppError } from "./errors";
 import { hash, now } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { urlKey } from "./hotspots";
 import { judgeVerdict, platformOf } from "./seen-judge";
 import { valueScoreOf } from "./seo-gate";
@@ -528,7 +529,7 @@ function generateFromSiteCandidates(db: Store, source: "auto" | "agent", counter
 // ---- worker tick（每日一道闸）----
 // watch TTL 是初筛的一部分（初筛保留，不受 consumerMode 影响，§4）；机会自动生成只在 builtin 跑。
 export function watchTtlTick(db: Store, nowDate: Date = new Date()) {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "watch-ttl-done:" + day)) return;
   const r = watchPoolMaintenance(db, { now: nowDate });
   db.put("meta", "watch-ttl-done:" + day, { at: now(), ...r });
@@ -537,7 +538,7 @@ export function watchTtlTick(db: Store, nowDate: Date = new Date()) {
 
 export function opportunityTick(db: Store, nowDate: Date = new Date()) {
   if ((db.get("config", "consumerMode") || "external") !== "builtin") return;
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "opportunity-auto-done:" + day)) return;
   const r = generateOpportunities(db, { source: "auto" });
   db.put("meta", "opportunity-auto-done:" + day, { at: now(), ...r });

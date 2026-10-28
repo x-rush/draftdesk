@@ -34,7 +34,7 @@ export function outlineDraftTick(db: Store, runModel: ModelRunner = requestModel
   // aiPolicy.draft 存量默认 off 不构成关断（否则 builtin 兜底永不生效）；档位固定 cheap。
   if ((db.get("config", "consumerMode") || "external") !== "builtin") return;
   if (!db.config().apiKey) return;
-  const hourKey = "outline-draft-done:" + nowDate.toISOString().slice(0, 13);
+  const hourKey = "outline-draft-done:" + new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).format(nowDate).replace(/\//g, "-"); // R10.31：上海小时
   if (db.get("meta", hourKey)) return;
   const running = db.get<any>("meta", "outline-draft-running");
   if (running && Date.now() - Date.parse(running.at) < 20 * 60000) return;

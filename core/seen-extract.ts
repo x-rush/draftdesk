@@ -4,6 +4,7 @@
 // 兜底 = 闸门置位 24h 仍无写入时，worker 降级执行一次内置提取（保证不断流）。
 // 手动 = UI「立即整理/刷新雷达」写 seen-terms-manual 请求，tick 立即执行（跳过 24h 等待）。
 import type { Store } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { judgeSeenTerm, observeSeenTerm, termId } from "./seen-terms";
 import type { PersonaRelevance, DemandIntent } from "./seen-terms";
 import { normalizeDemandIntent } from "./seen-terms";
@@ -31,7 +32,7 @@ export function seenTermsGate(db: Store): { date: string; at: string } | undefin
 // 手动触发（UI「立即整理/刷新雷达」）：当日内一次；已完成则 alreadyDone。
 // 同时写挖掘（联想展开）手动标记——提取与挖掘各自独立幂等，互不阻塞。
 export function requestSeenTermsExtraction(db: Store): { triggered: boolean; alreadyDone: boolean } {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shanghaiDayOf(); // R10.31：上海日
   db.put("meta", "seen-dig-manual", { date: today, at: new Date().toISOString() });
   if (db.get("meta", extractDoneKey(today))) return { triggered: false, alreadyDone: true };
   db.put("meta", "seen-terms-manual", { date: today, at: new Date().toISOString() });
@@ -42,7 +43,7 @@ export function requestSeenTermsExtraction(db: Store): { triggered: boolean; alr
 // running 键守卫与 runExtraction 同口径：仅 10 分钟内的标记视为进行中——
 // 容器重建/崩溃留下的僵尸键不能永久卡死提取（2026-10-11 重建实测踩中）。
 export function seenTermsTick(db: Store, runModel: ModelRunner) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shanghaiDayOf(); // R10.31：上海日
   const manual = db.get<any>("meta", "seen-terms-manual");
   const running = db.get<any>("meta", extractRunningKey(today));
   const runningFresh = running && Date.now() - Date.parse(running.at) < 10 * 60000;
@@ -109,7 +110,7 @@ const EXTRACT_FALLBACK_MODEL = process.env.DRAFTDESK_FALLBACK_MODEL || "glm-5.3"
 // 毒标题台账（第三轮 4）：记录触发挂死的分块标题样本（截断 100 字/条），
 // 累积后分析共性、沉淀安全路由绕过清单。
 function recordToxicSample(db: Store, chunkIndex: number, titles: string[], retryModel: string | undefined) {
-  const id = `${new Date().toISOString().slice(0, 10)}:chunk${chunkIndex}`;
+  const id = `${shanghaiDayOf()}:chunk${chunkIndex}`; // R10.31：上海日
   db.put("toxic-samples", id, {
     id,
     at: new Date().toISOString(),
@@ -367,7 +368,7 @@ export function unjudgedPendingCount(db: Store): number {
 // 日多批判定 tick（第五轮 §5）：提取日闸之外独立跑；fire-and-forget，串行防并发（running 键）。
 // consumerMode 不门控——relevance 判定是初筛（采集的一部分），external 模式照跑（§4）。
 export function judgeBackfillTick(db: Store, runModel: ModelRunner, nowDate: Date = new Date()): void {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   const doneKey = judgeBackfillDoneKey(day);
   const done = db.get<any>("meta", doneKey);
   const pending = unjudgedPendingCount(db);

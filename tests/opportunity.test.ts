@@ -350,7 +350,7 @@ test("选题体系批 B：按平台拍板聚合 + siteCandidate 站群卡 + buil
     assert.ok(drafted.draftBody?.includes("完整初稿"), "builtin 自动出稿");
     assert.equal(drafted.decision, "drafting", "自动推进 drafting");
     assert.deepEqual(drafted.outline, ["第一部分", "第二部分"], "outline 数组回写");
-    assert.equal(db.get<any>("meta", "outline-draft-done:" + new Date().toISOString().slice(0, 13)).drafted, 1, "小时闸置位");
+    assert.equal(db.get<any>("meta", "outline-draft-done:" + new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).format(new Date()).replace(/\//g, "-")).drafted, 1, "小时闸置位（上海小时，R10.31）");
   } finally {
     db?.close();
     cleanup(dir);

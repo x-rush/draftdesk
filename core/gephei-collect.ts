@@ -15,7 +15,7 @@ import { seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, seoApi, SeoQuot
 import { TOOL_ROOTS, AI_ROOTS, rootYieldStats } from "./seen-dig";
 import { now, hash } from "./store";
 import { indexTermCluster } from "./vector-store";
-import { tickGuard } from "./tick-guard";
+import { tickGuard, shanghaiDayOf } from "./tick-guard";
 
 const DAY_MS = 86400000;
 
@@ -62,11 +62,13 @@ function parseTrendWords(raw: unknown): string[] {
   return out;
 }
 
+// R10.31：月/半月键改上海口径（原 UTC——月更「1 日」与半月「15 日」的翻界时点随之对齐上海日）
 function monthOf(day: Date): string {
-  return day.toISOString().slice(0, 7);
+  return shanghaiDayOf(day).slice(0, 7);
 }
 function halfMonthOf(day: Date): string {
-  return `${day.toISOString().slice(0, 7)}-${day.getUTCDate() <= 15 ? "a" : "b"}`;
+  const sh = shanghaiDayOf(day);
+  return `${sh.slice(0, 7)}-${Number(sh.slice(8, 10)) <= 15 ? "a" : "b"}`;
 }
 
 // ---- 第十一步（每周日）趋势周更 + 第十四步根词降频 ----
@@ -93,12 +95,12 @@ export function rootSlowdownReview(db: Store, nowDate: Date = new Date()): { slo
 export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
   // R8-4④：周更→日更（缓存优先，trends_rising 缓存命中合 2 分/次，月成本约 60 分；
   // 存量周 key 自然废弃无需迁移——新日 key 直接生效）
-  const dayKey = nowDate.toISOString().slice(0, 10);
+  const dayKey = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "geo-trends-done:" + dayKey)) return;
   if (!seoSourceEnabled(db)) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
   // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
-  const guard = tickGuard(db, { key: "geo-trends", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  const guard = tickGuard(db, { key: "geo-trends", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
   void (async () => {
@@ -154,7 +156,7 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
   if (!seoSourceOf(db).autoCollect) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
   // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
-  const guard = tickGuard(db, { key: "geo-benchmark", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  const guard = tickGuard(db, { key: "geo-benchmark", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
   void (async () => {
@@ -215,7 +217,7 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
   if (!seoSourceOf(db).autoCollect) return;
   if (seoBudgetLeft(db, "collect") <= 0) return;
   // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
-  const guard = tickGuard(db, { key: "geo-links", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  const guard = tickGuard(db, { key: "geo-links", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
   void (async () => {
@@ -276,11 +278,11 @@ function parseBatchKeywords(raw: unknown): { keyword: string; verdict?: string }
 }
 
 export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "geo-newwords-done:" + day)) return;
   if (!seoSourceEnabled(db)) return; // token 出口唯一；免费接口也只在数据源开启时跑
   // R10.27-C#17：守卫统一（core/tick-guard.ts；键与 TTL 保持原值）
-  const guard = tickGuard(db, { key: "geo-newwords", lockTtlMs: 30 * 60000, day: "utc", now: nowDate });
+  const guard = tickGuard(db, { key: "geo-newwords", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
   void (async () => {

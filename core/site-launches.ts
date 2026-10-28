@@ -7,7 +7,7 @@
 // tick 每日一道闸，fire-and-forget；抓取/分类失败静默入台账，次日重试。
 import { XMLParser } from "fast-xml-parser";
 import type { Store } from "./store";
-import { tickGuard } from "./tick-guard";
+import { tickGuard, shanghaiDayOf } from "./tick-guard";
 import { now } from "./store";
 import { termId } from "./seen-terms";
 
@@ -268,7 +268,7 @@ async function readText(doFetch: typeof fetch, url: string, outer: AbortSignal):
 }
 
 export function siteLaunchesTick(db: Store, runModel: ModelRunner, doFetch: typeof fetch = fetch, nowDate: Date = new Date()) {
-  const day = nowDate.toISOString().slice(0, 10);
+  const day = shanghaiDayOf(nowDate); // R10.31：上海日
   const doneKey = "site-launches-done:" + day;
   const done = db.get<any>("meta", doneKey);
   // 手动刷新（POST /site-launches/refresh）：晚于当日完成键时越闸重跑——
@@ -277,7 +277,7 @@ export function siteLaunchesTick(db: Store, runModel: ModelRunner, doFetch: type
   const byManual = !!manual?.at && (!done || manual.at > done.at);
   if (done && !byManual) return;
   // R10.27-C#17：守卫统一（键与 TTL 保持原值）
-  const guard = tickGuard(db, { key: "site-launches", lockTtlMs: 20 * 60000, day: "utc" });
+  const guard = tickGuard(db, { key: "site-launches", lockTtlMs: 20 * 60000, day: "shanghai" });
   if (guard.locked) return;
   guard.acquire();
   void (async () => {

@@ -1,3 +1,4 @@
+import { shanghaiDayOf } from "./tick-guard";
 // R10.24-5（R10.23）Redis 向量事件线：组摘要（idx:eventline）+ 增量词（idx:termcluster）。
 // 嵌入走百炼 compatible-mode /embeddings（text-embedding-v3，1024 维，与主模型同一把 Key）。
 // 全链容错：REDIS_URL 未配置（fresh clone/测试）、Redis 不可达、RediSearch 不可用或嵌入
@@ -88,7 +89,7 @@ export async function embedTexts(db: import("./store").Store, texts: string[]): 
     for (const item of data.data.sort((a: { index: number }, b: { index: number }) => a.index - b.index))
       out.push(Float32Array.from(item.embedding));
   }
-  const day = new Date().toISOString().slice(0, 10);
+  const day = shanghaiDayOf(); // R10.31：上海日（日报「今日用量」口径）
   const prev = db.get<{ calls: number; texts: number; tokens: number }>("meta", "vector-embed:" + day);
   db.put("meta", "vector-embed:" + day, {
     calls: (prev?.calls || 0) + Math.ceil(texts.length / EMBED_BATCH),

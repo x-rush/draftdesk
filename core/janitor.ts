@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Store } from "./store";
+import { shanghaiDayOf } from "./tick-guard";
 import { urlKey } from "./hotspots";
 
 // 数据保留策略（消费接口文档 §6）：worker 每日跑一次 janitor，把超过窗口且未被引用的
@@ -98,7 +99,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
 export function runDailyBackup(db: Store): JanitorBackup {
   const dir = process.env.DRAFTDESK_BACKUP_DIR || path.join(process.cwd(), "backups");
   mkdirSync(dir, { recursive: true });
-  const date = new Date().toISOString().slice(0, 10);
+  const date = shanghaiDayOf(); // R10.31：上海日（每日一份备份的翻界口径）
   const file = path.join(dir, `draftdesk-${date}.sqlite`);
   rmSync(file, { force: true });
   db.db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
