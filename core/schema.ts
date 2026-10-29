@@ -185,7 +185,7 @@ export type Artifact = ArtifactDraft & {
   skillVersion: string;
   visibility: "private" | "public";
   decision?: DecisionState;
-  decidedBy?: "human" | "agent";
+  decidedBy?: "human" | "agent" | "builtin" | "janitor";
   decidedAt?: string;
   platforms?: string[];
   publishedRef?: string;
@@ -217,7 +217,7 @@ export type ContentOutline = {
   evidenceRefs: string[];
   decision: DecisionState;
   perPlatformDecision?: Record<string, DecisionState>; // 按平台拍板（第六轮批 B）：{gzh: approved, xhs-note: pending…}，decision 字段保留为聚合视图
-  decidedBy?: "human" | "agent";
+  decidedBy?: "human" | "agent" | "builtin" | "janitor";
   decidedAt?: string;
   publishedRef?: string;
   rejectReason?: string;
@@ -231,7 +231,7 @@ export type ManualDecision = {
   notes?: string;
   platforms: string[];
   decision: DecisionState;
-  decidedBy?: "human" | "agent";
+  decidedBy?: "human" | "agent" | "builtin" | "janitor";
   decidedAt?: string;
   publishedRef?: string;
   rejectReason?: string;

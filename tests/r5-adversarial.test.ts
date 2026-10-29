@@ -251,3 +251,31 @@ test("R10.33 验收：日批决策四态（夜间起跑/夜间多批/白天静�
   assert.equal(dayBatchDecision(db, sh(14)).action, "manual", "晚于 done 的手动请求仍待处理");
   for (const k of ["seen-terms-manual", "seen-terms-extract-done:2026-10-30"]) db.del("meta", k);
 });
+
+test("R10.34 验收：待拍大纲 7 天过期（时钟注入）+ discovery 30 天批次清理", async () => {
+  const db = store();
+  const { expireStalePendingOutlines, purgeOldDiscovery } = await import("../core/janitor");
+  const d = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+  db.put("clusters", "clu-exp", { id: "clu-exp", topic: "过期测试簇", memberIds: [], kind: "news", createdAt: d(10) });
+  // 8 天前 pending（应过期）/ 5 天前 pending（保留）/ 8 天前 approved（不动）/ 8 天前 rejected（不动）
+  db.put("outlines", "out-old-pending", { id: "out-old-pending", clusterId: "clu-exp", platform: "gzh", title: "八天前待拍", decision: "pending", createdAt: d(8) });
+  db.put("outlines", "out-fresh-pending", { id: "out-fresh-pending", clusterId: "clu-exp", platform: "gzh", title: "五天前待拍", decision: "pending", createdAt: d(5) });
+  db.put("outlines", "out-old-approved", { id: "out-old-approved", clusterId: "clu-exp", platform: "gzh", title: "八天前已拍", decision: "approved", createdAt: d(8) });
+  db.put("outlines", "out-old-rejected", { id: "out-old-rejected", clusterId: "clu-exp", platform: "gzh", title: "八天前否决", decision: "rejected", createdAt: d(8) });
+  const n = expireStalePendingOutlines(db);
+  assert.ok(n >= 1, "至少过期 1 条");
+  const old = db.get<any>("outlines", "out-old-pending");
+  assert.equal(old.decision, "rejected", "8 天前 pending → rejected（不删）");
+  assert.equal(old.rejectReason, "expired-7d");
+  assert.equal(old.decidedBy, "janitor");
+  assert.equal(db.get<any>("outlines", "out-fresh-pending").decision, "pending", "5 天前仍待拍");
+  assert.equal(db.get<any>("outlines", "out-old-approved").decision, "approved", "已通过不受影响");
+  assert.equal(db.get<any>("outlines", "out-old-rejected").decision, "rejected", "已否决不受影响");
+  // discovery：31 天前清、29 天前保留
+  db.put("discovery", "collectall-31d", { jobId: "collectall-31d", at: d(31), planName: "P", mode: "analysis", sources: [], candidates: [] });
+  db.put("discovery", "collectall-29d", { jobId: "collectall-29d", at: d(29), planName: "P", mode: "analysis", sources: [], candidates: [] });
+  const purged = purgeOldDiscovery(db);
+  assert.ok(purged >= 1, "至少清 1 个旧批次");
+  assert.equal(db.get("discovery", "collectall-31d"), undefined, "31 天前批次被清");
+  assert.ok(db.get("discovery", "collectall-29d"), "29 天前保留");
+});

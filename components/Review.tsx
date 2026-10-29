@@ -1,11 +1,27 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, Field, formatApiError, date } from "./ui";
 import { OutlineDrawer } from "./views/OutlineQueueView";
 import { PLATFORM_KEYS, PLATFORM_LABELS, platformLabel, aggregateOutlineDecision } from "../core/platforms";
 import { MessageContent } from "./MessageContent";
 import { Select } from "./Select";
 import { creationLabels } from "../core/workspace-ui";
+
+// R10.34-2：待拍队列按创建日分档（上海日）——今天/近 3 天默认展开，更早折叠（热点选题时效短，
+// 旧条目沉底后由 janitor 7 天过期机制转 rejected，队列不会无限堆积）。
+function shDayOf(iso: string): string {
+  try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date(iso)); } catch { return ""; }
+}
+function ageBucketOf(createdAt: string, todaySh: string): "today" | "recent" | "older" {
+  const d = shDayOf(createdAt);
+  if (!d || !todaySh) return "older";
+  if (d === todaySh) return "today";
+  const cutoffStart = Date.parse(todaySh + "T00:00:00+08:00") - 3 * 86400000;
+  if (Date.parse(d + "T00:00:00+08:00") >= cutoffStart) return "recent";
+  return "older";
+}
+const AGE_LABEL: Record<string, string> = { today: "今天", recent: "近 3 天", older: "更早（建议过期清理）" };
+const AGE_HINT: Record<string, string> = { today: "先消化这批", recent: "还在时效内", older: "超 3 天未拍——7 天后自动转已否决" };
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
 // 语义红线：quality 是证据可信度（AI 判），decision 是要不要写（人拍板）——两层不互相推导。
@@ -38,6 +54,7 @@ export function Review() {
   const [detail, setDetail] = useState<any>(null);
   const [status, setStatus] = useState<string>("pending");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [showOlder, setShowOlder] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchReason, setBatchReason] = useState("no-ai-signal");
   const [busy, setBusy] = useState(false);
@@ -110,6 +127,12 @@ export function Review() {
       })
       .sort((a, b) => b.primary.createdAt.localeCompare(a.primary.createdAt));
   }, [visible]);
+  // 更早（>3 天）默认折叠——待拍/全部视图生效；计数始终展示
+  const todaySh = shDayOf(new Date().toISOString());
+  const olderCount = groups.filter((g) => ageBucketOf(g.primary.createdAt, todaySh) === "older").length;
+  const shownGroups = (status === "pending" || status === "all") && !showOlder
+    ? groups.filter((g) => ageBucketOf(g.primary.createdAt, todaySh) !== "older")
+    : groups;
   const expandedGroups = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = expandedGroups;
   const toggleGroup = (title: string) => setOpenGroups((prev) => {
@@ -285,16 +308,29 @@ export function Review() {
       </div>
 
       {/* ③ 决策队列（紧凑行：摘要钳 2 行，拍板键右贴，同题组聚合） */}
+      {olderCount > 0 && (status === "pending" || status === "all") && (
+        <p className="helper-text" style={{ margin: "4px 0 8px" }}>
+          <button className="text-button" onClick={() => setShowOlder((v) => !v)}>
+            {showOlder ? `收起更早的 ${olderCount} 条` : `更早的 ${olderCount} 条已折叠（超 3 天未拍）——展开`}
+          </button>
+        </p>
+      )}
       {groups.length === 0 ? (
         <p className="muted" style={{ padding: "18px 2px" }}>该状态下暂无条目。</p>
+      ) : shownGroups.length === 0 ? (
+        <p className="muted" style={{ padding: "18px 2px" }}>今天与近 3 天没有待拍条目；更早的 {olderCount} 条已折叠（展开或等 7 天自动过期）。</p>
       ) : (
         <div className="decision-list">
-        {groups.map((group) => {
+        {shownGroups.map((group, gi) => {
           const row = group.primary;
           const dupCount = group.members.length;
           const cluster = clusters.find((c) => c.id === row.clusterId);
+          const bucket = ageBucketOf(row.createdAt, todaySh);
+          const prevBucket = gi > 0 ? ageBucketOf(shownGroups[gi - 1].primary.createdAt, todaySh) : null;
           return (
-          <div className="decision-row" key={row.id}>
+          <Fragment key={row.id}>
+          {bucket !== prevBucket && <p className="dash-label age-sep">{AGE_LABEL[bucket]}<span className="dash-label-sub">{AGE_HINT[bucket]}</span></p>}
+          <div className="decision-row">
             <label className="check">
               <input
                 type="checkbox"
@@ -426,6 +462,7 @@ export function Review() {
               )}
             </div>
           </div>
+          </Fragment>
           );
         })}
         </div>
