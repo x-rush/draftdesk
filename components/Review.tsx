@@ -132,6 +132,8 @@ export function Review() {
   const olderGroups = groups.filter((g) => ageBucketOf(g.primary.createdAt, todaySh) === "older");
   const olderCount = olderGroups.length;
   const olderRows = olderGroups.reduce((n, g) => n + g.members.length, 0);
+  // 组数=条数时只报条数（否则「161 组 · 161 条」冗余）
+  const olderLabel = olderCount === olderRows ? `${olderRows} 条` : `${olderCount} 组 · ${olderRows} 条`;
   const shownGroups = (status === "pending" || status === "all") && !showOlder
     ? groups.filter((g) => ageBucketOf(g.primary.createdAt, todaySh) !== "older")
     : groups;
@@ -313,14 +315,14 @@ export function Review() {
       {olderCount > 0 && (status === "pending" || status === "all") && (
         <p className="helper-text" style={{ margin: "4px 0 8px" }}>
           <button className="text-button" onClick={() => setShowOlder((v) => !v)}>
-            {showOlder ? `收起更早的 ${olderCount} 组 · ${olderRows} 条` : `更早的 ${olderCount} 组 · ${olderRows} 条已折叠（超 3 天未拍）——展开`}
+            {showOlder ? `收起更早的 ${olderLabel}` : `更早的 ${olderLabel}已折叠（超 3 天未拍）——展开`}
           </button>
         </p>
       )}
       {groups.length === 0 ? (
         <p className="muted" style={{ padding: "18px 2px" }}>该状态下暂无条目。</p>
       ) : shownGroups.length === 0 ? (
-        <p className="muted" style={{ padding: "18px 2px" }}>今天与近 3 天没有待拍条目；更早的 {olderCount} 组 · {olderRows} 条已折叠（展开或等满 7 天自动过期）。</p>
+        <p className="muted" style={{ padding: "18px 2px" }}>今天与近 3 天没有待拍条目；更早的 {olderLabel}已折叠（展开或等满 7 天自动过期）。</p>
       ) : (
         <div className="decision-list">
         {shownGroups.map((group, gi) => {
