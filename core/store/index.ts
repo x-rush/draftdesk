@@ -41,6 +41,7 @@ export class Store {
   get db() {
     return this.kv.db;
   }
+  directory: string; // 库文件所在目录（R10.34-4：备份目录推导用）
   private _auth: Auth;
   private _consumption: Consumption;
   private _decisions: Decisions;
@@ -50,6 +51,7 @@ export class Store {
     directory = process.env.DRAFTDESK_DATA_DIR ||
       path.join(process.cwd(), "data"),
   ) {
+    this.directory = directory; // R10.34-4：备份目录从库目录推导（暴露给 janitor）
     this.kv = new KV(directory);
     runMigrations({ kv: this.kv, directory });
     this._auth = createAuth(this.kv);
@@ -97,8 +99,8 @@ export class Store {
   addSuggestion(id: string, suggestion: { by: string; verdict: string; score?: number; platforms?: string[]; reason?: string }) {
     return this._decisions.addSuggestion(id, suggestion);
   }
-  decisionsQueue(status?: string) {
-    return this._decisions.decisionsQueue(status);
+  decisionsQueue(status?: string, opts?: { includeAll?: boolean }) {
+    return this._decisions.decisionsQueue(status, opts);
   }
   decisionsStats() {
     return this._decisions.decisionsStats();

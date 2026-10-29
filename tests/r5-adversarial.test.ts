@@ -252,30 +252,60 @@ test("R10.33 验收：日批决策四态（夜间起跑/夜间多批/白天静�
   for (const k of ["seen-terms-manual", "seen-terms-extract-done:2026-10-30"]) db.del("meta", k);
 });
 
-test("R10.34 验收：待拍大纲 7 天过期（时钟注入）+ discovery 30 天批次清理", async () => {
+test("R10.34 验收（v2）：物理归档 + 队列窗口 + discovery 清理", async () => {
   const db = store();
-  const { expireStalePendingOutlines, purgeOldDiscovery } = await import("../core/janitor");
+  const { archiveExpiredOrders, purgeOldDiscovery } = await import("../core/janitor");
   const d = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
   db.put("clusters", "clu-exp", { id: "clu-exp", topic: "过期测试簇", memberIds: [], kind: "news", createdAt: d(10) });
-  // 8 天前 pending（应过期）/ 5 天前 pending（保留）/ 8 天前 approved（不动）/ 8 天前 rejected（不动）
   db.put("outlines", "out-old-pending", { id: "out-old-pending", clusterId: "clu-exp", platform: "gzh", title: "八天前待拍", decision: "pending", createdAt: d(8) });
   db.put("outlines", "out-fresh-pending", { id: "out-fresh-pending", clusterId: "clu-exp", platform: "gzh", title: "五天前待拍", decision: "pending", createdAt: d(5) });
   db.put("outlines", "out-old-approved", { id: "out-old-approved", clusterId: "clu-exp", platform: "gzh", title: "八天前已拍", decision: "approved", createdAt: d(8) });
-  db.put("outlines", "out-old-rejected", { id: "out-old-rejected", clusterId: "clu-exp", platform: "gzh", title: "八天前否决", decision: "rejected", createdAt: d(8) });
-  const n = expireStalePendingOutlines(db);
-  assert.ok(n >= 1, "至少过期 1 条");
-  const old = db.get<any>("outlines", "out-old-pending");
-  assert.equal(old.decision, "rejected", "8 天前 pending → rejected（不删）");
-  assert.equal(old.rejectReason, "expired-7d");
-  assert.equal(old.decidedBy, "janitor");
-  assert.equal(db.get<any>("outlines", "out-fresh-pending").decision, "pending", "5 天前仍待拍");
-  assert.equal(db.get<any>("outlines", "out-old-approved").decision, "approved", "已通过不受影响");
-  assert.equal(db.get<any>("outlines", "out-old-rejected").decision, "rejected", "已否决不受影响");
+  const r = archiveExpiredOrders(db);
+  assert.ok(r.outlines >= 1);
+  assert.equal(db.get("outlines", "out-old-pending"), undefined, "8 天前 pending 物理移出主集合");
+  const arch = db.get<any>("outlines-archive", "out-old-pending");
+  assert.ok(arch, "归档集合可查");
+  assert.equal(arch.decision, "pending", "归档保留原 decision");
+  assert.equal(arch.expiredReason, "expired-7d");
+  assert.ok(arch.archivedAt);
+  assert.ok(db.get("outlines", "out-fresh-pending"), "5 天前保留主集合");
+  assert.equal(db.get<any>("outlines", "out-old-approved").decision, "approved", "已拍不动");
+  // 队列窗口：8 天前 approved 默认不出队，includeAll 可查
+  const queueDefault = db.decisionsQueue();
+  assert.ok(!queueDefault.some((x: any) => x.id === "out-old-approved"), "默认窗口不含 8 天前");
+  const queueAll = db.decisionsQueue(undefined, { includeAll: true });
+  assert.ok(queueAll.some((x: any) => x.id === "out-old-approved"), "includeAll 全量可查");
   // discovery：31 天前清、29 天前保留
   db.put("discovery", "collectall-31d", { jobId: "collectall-31d", at: d(31), planName: "P", mode: "analysis", sources: [], candidates: [] });
   db.put("discovery", "collectall-29d", { jobId: "collectall-29d", at: d(29), planName: "P", mode: "analysis", sources: [], candidates: [] });
   const purged = purgeOldDiscovery(db);
-  assert.ok(purged >= 1, "至少清 1 个旧批次");
+  assert.ok(purged >= 1);
   assert.equal(db.get("discovery", "collectall-31d"), undefined, "31 天前批次被清");
   assert.ok(db.get("discovery", "collectall-29d"), "29 天前保留");
+});
+
+test("R10.34-4 备份保险丝：测试进程的备份落在临时库旁，不污染真实 backups/", async () => {
+  const { mkdtempSync, mkdirSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  // 专用临时根 + data 子目录作库目录——备份应推导到 <root>/backups（= <库目录>/../backups）
+  const root = mkdtempSync(path.join(tmpdir(), "dd-backup-fuse-"));
+  const dir = path.join(root, "data");
+  mkdirSync(dir);
+  process.env.DRAFTDESK_DATA_DIR = dir;
+  delete process.env.DRAFTDESK_BACKUP_DIR;
+  try {
+    const { Store } = await import("../core/store");
+    const { runDailyBackup } = await import("../core/janitor");
+    const db = new Store(dir);
+    const r = runDailyBackup(db);
+    db.close();
+    assert.ok(!("skipped" in r), "备份成功");
+    const file = (r as { file: string }).file;
+    assert.ok(file.startsWith(path.join(root, "backups")), `备份应落在 <root>/backups（${root}），实际 ${file}`);
+    assert.ok(!file.includes(path.join(process.cwd(), "backups")), "绝不落在项目真实 backups/");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    delete process.env.DRAFTDESK_DATA_DIR;
+  }
 });

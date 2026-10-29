@@ -24,7 +24,7 @@ export const routes: RouteDef[] = [
   {
     methods: ["GET"],
     pattern: "decisions",
-    handler: ({ db, query }) => json({ items: db.decisionsQueue(statusOf(query)), generatedAt: now() }),
+    handler: ({ db, query }) => json({ items: db.decisionsQueue(statusOf(query), { includeAll: query.get("includeArchived") === "1" }), generatedAt: now() }),
   },
   {
     methods: ["GET"],

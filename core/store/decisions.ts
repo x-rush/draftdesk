@@ -92,7 +92,7 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       return kv.get<any>(collection, id);
     },
     // 决策队列：产物 + 大纲 + 手动题合并（决策挂在原条目上；手动题是唯一的独立记录形态）。
-    decisionsQueue(status?: string) {
+    decisionsQueue(status?: string, opts?: { includeAll?: boolean }) {
       const rows: any[] = [];
       for (const a of kv.list<any>("artifacts")) {
         if (a.archived || (a.kind as string) === "person") continue;
@@ -107,7 +107,12 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       for (const d of kv.list<any>("decisions"))
         rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
           platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", draftBody: d.draftBody, createdAt: d.createdAt });
-      return rows.filter((r) => !status || r.decision === status)
+      // R10.34-2：默认只返回活跃窗口（近 7 天）——过期产物由 janitor 物理归档出主集合，
+      // 此窗是第二道带（归档尚未跑的当日溢出项也不进队列）；includeAll 覆盖（?includeArchived=1）。
+      const windowMs = 7 * 86400000;
+      return rows
+        .filter((r) => !status || r.decision === status)
+        .filter((r) => opts?.includeAll || !Number.isFinite(Date.parse(r.createdAt)) || Date.now() - Date.parse(r.createdAt) <= windowMs)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     },
     decisionsStats() {

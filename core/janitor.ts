@@ -19,16 +19,16 @@ export const RETENTION = {
   // 研究任务（R10.25-5④）：终态 job（completed/failed/cancelled）7 天后出库——
   // builtin 停摆后 jobs 无清理机制堆积（77 条全是历史终态）；external 模式也跑（与消费模式无关）。
   jobs: { purgeTerminalAfterDays: 7 },
-  // 待拍大纲时效（R10.34-1）：pending 超 7 天自动转 rejected（不删，留选题历史）——
-  // 热点选题时效短，旧条目占队列只会让老大翻不到新鲜的。两模式都跑（生命周期卫生，非消费）。
-  outlines: { expirePendingAfterDays: 7 },
+  // 订单时效（R10.34-1 v2：老大拍板物理归档）：pending 大纲/产物满 7 天物理移入
+  // *-archive（archivedAt+expiredReason），主集合删除——审查台零噪音，归档可查可恢复。
+  orderExpire: { expirePendingAfterDays: 7 },
   // 采集批次（R10.34-3）：discovery 批次含候选快照（过程数据），超 30 天清理；
   // 产物（candidate-groups 组结构 / outlines / decisions / opportunities）不受影响。
   discovery: { purgeAfterDays: 30 },
 };
 
 export type JanitorBackup = { file: string; bytes: number } | { skipped: string };
-export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; auditPurged?: number; legacyPurged?: number; outlinesExpired?: number; discoveryPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
+export function runJanitor(db: Store): { day: string; at: string; hotspots: number; evidence: number; clustersArchived?: number; seenPurged?: number; metricsPurged?: number; jobsPurged?: number; auditPurged?: number; legacyPurged?: number; ordersArchived?: { outlines: number; artifacts: number }; discoveryPurged?: number; integrity?: string; backup?: JanitorBackup; skipped?: boolean } | null {
   const stamp = new Date().toISOString();
   // R10.27-F：每日节流键统一上海日（原 UTC 日与 snapshotCollectionsReport 的上海日口径分裂，
   // 凌晨窗口可能双写/漏写 collections-report）
@@ -41,7 +41,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   const jobsPurged = purgeTerminalJobs(db);
   const auditPurged = purgeBudgetAuditKeys(db);
   const legacyPurged = purgeLegacyIntake(db);
-  const outlinesExpired = expireStalePendingOutlines(db);
+  const ordersArchived = archiveExpiredOrders(db);
   const discoveryPurged = purgeOldDiscovery(db);
   // 挂载期保险丝批 8：每日库完整性自检 + 全集合行数快照（设置页「昨日 vs 今日」异动看板）
   const integrity = integrityCheck(db);
@@ -51,8 +51,8 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
   try { backup = runDailyBackup(db); }
   catch (e) { backup = { skipped: e instanceof Error ? e.message : String(e) }; }
   if ((db.get<any>("config", "consumerMode") || "external") === "external") {
-    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, outlinesExpired, discoveryPurged, integrity, backup, skipped: true });
-    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, outlinesExpired, discoveryPurged, integrity, backup, skipped: true };
+    db.put("meta", "janitor", { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, ordersArchived, discoveryPurged, integrity, backup, skipped: true });
+    return { day: today, at: stamp, hotspots: 0, evidence: 0, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, ordersArchived, discoveryPurged, integrity, backup, skipped: true };
   }
   const consumed = new Map<string, any>();
   for (const c of db.list<any>("consumption")) consumed.set(`${c.target}:${c.identity}`, c);
@@ -96,7 +96,7 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
     db.put("clusters", c.id, { ...c, status: "archived" });
     clustersArchived++;
   }
-  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, outlinesExpired, discoveryPurged, integrity, backup };
+  const result = { day: today, at: stamp, hotspots: hotspotIds.length, evidence: evidenceIds.length, clustersArchived, seenPurged, metricsPurged, jobsPurged, auditPurged, legacyPurged, ordersArchived, discoveryPurged, integrity, backup };
   db.put("meta", "janitor", result);
   return result;
 }
@@ -105,7 +105,10 @@ export function runJanitor(db: Store): { day: string; at: string; hotspots: numb
 // 目录为 bind mount（纯追加写、无文件扩展，无截断风险）；保留最近 14 份。回滚路径：
 // compose 改回 bind mount 后用最新快照覆盖 data/draftdesk.sqlite 即可。
 export function runDailyBackup(db: Store): JanitorBackup {
-  const dir = process.env.DRAFTDESK_BACKUP_DIR || path.join(process.cwd(), "backups");
+  // R10.34-4 P0：备份目录从 Store 库目录推导（<库目录>/../backups）——原 cwd 兜底让
+  // 测试进程（cwd=项目根）把空库快照写进真实 backups/，按日期名覆盖当天真实备份，
+  // 灾难恢复实质归零。DRAFTDESK_BACKUP_DIR 保留显式覆盖（compose 设置 /app/backups）。
+  const dir = process.env.DRAFTDESK_BACKUP_DIR || path.join(path.dirname(db.directory), "backups");
   mkdirSync(dir, { recursive: true });
   const date = shanghaiDayOf(); // R10.31：上海日（每日一份备份的翻界口径）
   const file = path.join(dir, `draftdesk-${date}.sqlite`);
@@ -172,32 +175,29 @@ export function purgeTerminalJobs(db: Store): number {
   return purged;
 }
 
-// 待拍大纲时效（R10.34-1）：pending 且创建日早于「今天-7 天」→ 转 rejected（reason=expired-7d）。
-// 直接改文档不消费热榜（这些热点早已过期/消费，是队列卫生而非价值判定）；保留记录可查。
-export function expireStalePendingOutlines(db: Store, nowDate: Date = new Date()): number {
-  // 日差口径（上海日）：满 N 天即过期（10-22 创建 → 10-29 运行 ageDays=7 → 过期）
+// 订单时效（R10.34-1 v2）：pending 大纲/产物满 7 天（上海日日差）→ 物理移入
+// outlines-archive / artifacts-archive（保留原记录 + archivedAt + expiredReason），主集合删除。
+// decisionsQueue 只扫主集合三源，归档自然零显示；归档集合可查可手动恢复。
+// 不做软过期（rejected 混在已拍里）——数据设计终版：审查台只见活跃窗口。
+export function archiveExpiredOrders(db: Store, nowDate: Date = new Date()): { outlines: number; artifacts: number } {
   const todayMs = Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00");
-  // db.list 只回 body 拿不到键名（历史坑）——SELECT 直取 id
-  const rows = db.db.prepare("SELECT id, body FROM documents WHERE collection='outlines'").all() as Array<{ id: string; body: string }>;
-  let expired = 0;
-  for (const r of rows) {
-    const o = JSON.parse(r.body) as { decision?: string; createdAt?: string };
-    if (o.decision !== "pending") continue;
-    const created = String(o.createdAt || "").slice(0, 10);
-    const createdMs = Date.parse(created + "T00:00:00+08:00");
-    if (!created || !Number.isFinite(createdMs)) continue;
-    const ageDays = Math.floor((todayMs - createdMs) / 86400000);
-    if (ageDays < RETENTION.outlines.expirePendingAfterDays) continue;
-    db.put("outlines", r.id, {
-      ...JSON.parse(r.body),
-      decision: "rejected",
-      rejectReason: "expired-7d",
-      decidedAt: nowDate.toISOString(),
-      decidedBy: "janitor",
-    });
-    expired++;
+  const cutoff = RETENTION.orderExpire.expirePendingAfterDays;
+  const out = { outlines: 0, artifacts: 0 };
+  for (const [collection, archive] of [["outlines", "outlines-archive"], ["artifacts", "artifacts-archive"]] as const) {
+    // db.list 只回 body 拿不到键名（历史坑）——SELECT 直取 id
+    const rows = db.db.prepare(`SELECT id, body FROM documents WHERE collection='${collection}'`).all() as Array<{ id: string; body: string }>;
+    for (const r of rows) {
+      const o = JSON.parse(r.body) as { decision?: string; createdAt?: string };
+      if (o.decision !== "pending") continue;
+      const createdMs = Date.parse(String(o.createdAt || "").slice(0, 10) + "T00:00:00+08:00");
+      if (!Number.isFinite(createdMs)) continue;
+      if (Math.floor((todayMs - createdMs) / 86400000) < cutoff) continue;
+      db.put(archive, r.id, { ...o, archivedAt: nowDate.toISOString(), expiredReason: "expired-7d" });
+      db.del(collection, r.id);
+      out[collection === "outlines" ? "outlines" : "artifacts"]++;
+    }
   }
-  return expired;
+  return out;
 }
 
 // 采集批次清理（R10.34-3）：discovery 批次（含候选快照=过程数据）超 30 天出库。

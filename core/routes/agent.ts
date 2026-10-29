@@ -119,7 +119,7 @@ export const routes: RouteDef[] = [
     handler: ({ db, query }) => {
       const rawStatus = query.get("status") || undefined;
       const status = rawStatus === "all" ? undefined : rawStatus;
-      return json({ items: db.decisionsQueue(status), generatedAt: now() });
+      return json({ items: db.decisionsQueue(status, { includeAll: query.get("includeArchived") === "1" }), generatedAt: now() });
     },
   },
   {
