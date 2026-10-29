@@ -175,7 +175,8 @@ export function purgeTerminalJobs(db: Store): number {
 // 待拍大纲时效（R10.34-1）：pending 且创建日早于「今天-7 天」→ 转 rejected（reason=expired-7d）。
 // 直接改文档不消费热榜（这些热点早已过期/消费，是队列卫生而非价值判定）；保留记录可查。
 export function expireStalePendingOutlines(db: Store, nowDate: Date = new Date()): number {
-  const cutoff = shanghaiDayOf(new Date(nowDate.getTime() - RETENTION.outlines.expirePendingAfterDays * 86400000));
+  // 日差口径（上海日）：满 N 天即过期（10-22 创建 → 10-29 运行 ageDays=7 → 过期）
+  const todayMs = Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00");
   // db.list 只回 body 拿不到键名（历史坑）——SELECT 直取 id
   const rows = db.db.prepare("SELECT id, body FROM documents WHERE collection='outlines'").all() as Array<{ id: string; body: string }>;
   let expired = 0;
@@ -183,7 +184,10 @@ export function expireStalePendingOutlines(db: Store, nowDate: Date = new Date()
     const o = JSON.parse(r.body) as { decision?: string; createdAt?: string };
     if (o.decision !== "pending") continue;
     const created = String(o.createdAt || "").slice(0, 10);
-    if (!created || created > cutoff) continue;
+    const createdMs = Date.parse(created + "T00:00:00+08:00");
+    if (!created || !Number.isFinite(createdMs)) continue;
+    const ageDays = Math.floor((todayMs - createdMs) / 86400000);
+    if (ageDays < RETENTION.outlines.expirePendingAfterDays) continue;
     db.put("outlines", r.id, {
       ...JSON.parse(r.body),
       decision: "rejected",
@@ -199,13 +203,16 @@ export function expireStalePendingOutlines(db: Store, nowDate: Date = new Date()
 // 采集批次清理（R10.34-3）：discovery 批次（含候选快照=过程数据）超 30 天出库。
 // 组结构（candidate-groups）/大纲/decisions/机会卡是产物，独立集合，不受影响。
 export function purgeOldDiscovery(db: Store, nowDate: Date = new Date()): number {
-  const cutoff = shanghaiDayOf(new Date(nowDate.getTime() - RETENTION.discovery.purgeAfterDays * 86400000));
+  const todayMs = Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00");
   const rows = db.db.prepare("SELECT id, body FROM documents WHERE collection='discovery'").all() as Array<{ id: string; body: string }>;
   let purged = 0;
   for (const r of rows) {
     const d = JSON.parse(r.body) as { at?: string };
     const at = String(d.at || "").slice(0, 10);
-    if (at && at <= cutoff) { db.del("discovery", r.id); purged++; }
+    const atMs = Date.parse(at + "T00:00:00+08:00");
+    if (!Number.isFinite(atMs)) continue;
+    const ageDays = Math.floor((todayMs - atMs) / 86400000);
+    if (ageDays >= RETENTION.discovery.purgeAfterDays) { db.del("discovery", r.id); purged++; }
   }
   return purged;
 }
