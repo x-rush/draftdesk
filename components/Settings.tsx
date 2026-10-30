@@ -387,8 +387,8 @@ export function Settings({
           </Select>
         </Field>
         <p className="helper-text" style={{ marginBottom: 0 }}>
-          当前：{(config.consumerMode || "external") === "external" ? "外部 Agent ｜ 每日 01:00 采集与巡检照跑；内置 AI 分析（初筛/大纲/自动出卡）与内置自动回收停用，语义初筛由外部 Agent 02:00 执行并写回。" : "内置管线 ｜ 每晚定时采集与全套分析（初筛/大纲/自动出卡）、自动回收照常运行。"}
-          内置 AI 与外部 Agent 各自负责消费链路的不同环节；停用某来源后其已产出的内容仍可查。内置 AI 参与开关（triage / outline / draft / aiWriter 四开关，builtin 专属）在审查台「内置 AI 参与开关（aiPolicy）」分区配置。
+          当前：{(config.consumerMode || "external") === "external" ? "外部 Agent ｜ 每日 01:00 采集与巡检照跑；内置 AI 分析（初筛/大纲/自动出卡）与内置自动回收停用，语义初筛由外部 Agent 02:00 执行并写回。" : "内置管线 ｜ 每晚定时采集与全套分析（初筛/已批大纲主平台出稿/自动出卡）、自动回收照常运行。R10.36（方案 B）：builtin 不产适合平台集合与推荐建议——大纲由人工在审查台表单创建或外部 Agent 写回，完整选题形态走 external。"}
+          内置 AI 与外部 Agent 各自负责消费链路的不同环节；停用某来源后其已产出的内容仍可查。内置 AI 参与开关（triage / draft，builtin 专属）在审查台「内置 AI 参与开关（aiPolicy）」分区配置。
         </p>
       </section>
 

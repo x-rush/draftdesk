@@ -204,6 +204,8 @@ export const defaultPersona = {
 export const defaultAiPolicy = {
   // R10 第2段：语义初筛默认开（cheap）——采集批默认走归类+判级+双线草案；off 显式关闭
   triage: "cheap" as const,
+  // R10.36：outline 档位无运行时消费方（builtin 链不落大纲行——大纲行只有 agent 写口与 UI
+  // 表单两个入口；内置 AI 只做 approved 大纲的主平台出稿=下方 draft）。槽位保留，UI 开关已撤。
   outline: "off" as const,
   draft: "off" as const,
   aiWriter: "external" as const, // R10.27-C7：预留字段（当前无运行时消费方；builtin 大纲链若分写作方时启用）

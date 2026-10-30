@@ -509,8 +509,8 @@ export function Review() {
       <details className="fold-card review-form-fold">
         <summary><h2 style={{ display: "inline", margin: 0 }}>内置 AI 参与开关（aiPolicy）</h2>{consumerMode !== "builtin" && <span className="pill" style={{ marginLeft: 8 }} title="consumerMode=builtin 时这些开关才生效">builtin 专属 · 只读</span>}</summary>
         <p className="muted">{consumerMode === "builtin"
-          ? "off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。triage = 采集批次的语义初筛（R9-6：AI 归类 + 注意力判级 + 双线草案，名额按组分配），off 时回退来源均衡分配。"
-          : "当前 consumerMode=external：四开关不参与任何执行链，仅作 builtin 切换时的预设值保留（只读）。语义初筛与大纲由外部 Agent 02:00 全套执行。"}</p>
+          ? "off = 该环节内置 AI 完全不跑、零开销，产出字段留空等外部 Agent（经 /api/v1/agent/clusters、/outlines 写回）或人补。开关是「谁来干」，不是「干不干」。triage = 采集批次的语义初筛（R9-6：AI 归类 + 注意力判级 + 双线草案，名额按组分配），off 时回退来源均衡分配；draft = 已批大纲的主平台出稿。R10.36（方案 B 降级声明）：builtin 不产适合平台集合与推荐建议的语义标注——大纲由你在上方表单手动创建（支持多平台+推荐建议）或外部 Agent 写回，内置 AI 只按主平台出稿；完整选题形态走 external。"
+          : "当前 consumerMode=external：开关不参与任何执行链，仅作 builtin 切换时的预设值保留（只读）。语义初筛与选题大纲（一选题一条：适合平台+推荐建议）由外部 Agent 02:00 全套执行。"}</p>
         {aiPolicy && (
           <div className="toolbar">
             <Field label="语义初筛（归类+判级）">
@@ -518,12 +518,7 @@ export function Review() {
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
               </Select>
             </Field>
-            <Field label="多平台大纲生成">
-              <Select aria-label="outline 档位" disabled={consumerMode !== "builtin"} value={aiPolicy.outline} onChange={(e) => void saveAiPolicy({ ...aiPolicy, outline: e.target.value })}>
-                {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
-              </Select>
-            </Field>
-            <Field label="草稿正文">
+            <Field label="已批大纲主平台出稿">
               <Select aria-label="draft 档位" disabled={consumerMode !== "builtin"} value={aiPolicy.draft} onChange={(e) => void saveAiPolicy({ ...aiPolicy, draft: e.target.value })}>
                 {["off", "cheap", "full"].map((v) => <option key={v} value={v}>{v}</option>)}
               </Select>
