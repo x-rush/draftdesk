@@ -96,13 +96,13 @@ test("P0-5：PUT /agent/opportunities（suggest 令牌写 form 六值；未知 f
 
 test("R10.11-1 P0：agent 口 PUT /agent/outlines 平台归一——未知值 400（旧回退曾落库任意字符串）、gzh 201", async () => {
   const db = store();
-  db.put("clusters", "clu-inbox", { id: "clu-inbox", topic: "收集箱", memberIds: [], memberCount: 0, kind: "inbox", window: "", suggestedPlatforms: [], createdAt: "" });
+  db.put("clusters", "clu-inbox-norm", { id: "clu-inbox-norm", topic: "收集箱", memberIds: [], memberCount: 0, kind: "inbox", window: "", suggestedPlatforms: [], createdAt: "" });
   const agent = db.createConnection("r11agent", ["suggest"]);
   const auth = { authorization: "Bearer " + agent.token, "content-type": "application/json" };
-  const bad = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox", platform: "哔哩哔哩", contentType: "活动解读", title: "x", keyPoints: ["t"] }) }), ["agent", "outlines"]);
+  const bad = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox-norm", platform: "哔哩哔哩", contentType: "活动解读", title: "x", keyPoints: ["t"] }) }), ["agent", "outlines"]);
   assert.equal(bad.status, 400, "agent 口未知平台拒绝（与 UI 口同口径）");
   assert.match(await bad.text(), /gzh/);
-  const ok = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox", platform: "gzh", contentType: "长文", title: "r11 测试", keyPoints: ["t"] }) }), ["agent", "outlines"]);
+  const ok = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox-norm", platform: "gzh", contentType: "长文", title: "r11 测试", keyPoints: ["t"] }) }), ["agent", "outlines"]);
   assert.equal(ok.status, 201);
   assert.equal((await ok.json()).platform, "gzh");
 });

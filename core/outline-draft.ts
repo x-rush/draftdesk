@@ -85,46 +85,26 @@ export function outlineDraftTick(db: Store, runModel: ModelRunner = requestModel
 // R8-2①：资讯类（category=news/newtech）选题强制覆盖贴图号。
 // R10.35 语义变更（老大 2026-10-30 拍板：一选题一条大纲）：不再克隆出一条 tiebuhao 独立大纲，
 // 而是把 "tiebuhao" 补进该选题的 platforms（适合平台）——同一条选题多挂一个投放口，
-// 大纲内容不重复。存量已按平台拆行的老数据（无 platforms 或 platforms 里含 tiebuhao）都算已覆盖。
+// 大纲内容不重复。R10.35 裁决收口：取消「存量无 platforms 走克隆」双路径（活库已 100% 带
+// platforms，写口保证新行必有；双路径属旧兼容，按前向产出原则砍掉），统一只补平台。
+// 存量克隆行（platform=tiebuhao）本身算已覆盖，不回填不删除。
 // 每次运行幂等（查重后补平台），不消耗模型调用。
 export function ensureTiebuhaoClones(db: Store): number {
   const outlines = db.list<any>("outlines");
   const newsish = outlines.filter((o) => (o.category === "news" || o.category === "newtech") && !o.cloneOf);
-  let patched = 0, cloned = 0;
+  let patched = 0;
   for (const o of newsish) {
     const clusterRows = outlines.filter((x) => x.clusterId === o.clusterId);
-    // 已覆盖判定：同簇任一行 platform=tiebuhao（存量克隆行），或 platforms 已含 tiebuhao（新模型）
+    // 已覆盖判定：同簇任一行 platform=tiebuhao（存量克隆行），或 platforms 已含 tiebuhao
     if (clusterRows.some((x) => x.platform === "tiebuhao" || (x.platforms || []).includes("tiebuhao"))) continue;
-    if (o.platforms?.length) {
-      // 新模型：直接补平台，不新增行
-      const prev = db.get<any>("outlines", o.id);
-      if (!prev) continue;
-      db.put("outlines", o.id, { ...prev, platforms: [...prev.platforms, "tiebuhao"], updatedAt: new Date().toISOString() });
-      patched++;
-      continue;
-    }
-    // 存量老数据（无 platforms 字段）：保持原克隆行为，避免改造存量语义
-    const stamp = new Date().toISOString();
-    const clone = {
-      ...o,
-      id: o.id + "-tbh",
-      platform: "tiebuhao",
-      platforms: ["tiebuhao"],
-      decision: "pending" as const,
-      perPlatformDecision: undefined,
-      draftBody: undefined,
-      publishedRef: undefined,
-      decidedAt: stamp,
-      decidedBy: o.decidedBy || "builtin",
-      createdAt: stamp,
-      updatedAt: stamp,
-      cloneOf: o.id,
-    };
-    db.put("outlines", clone.id, clone);
-    cloned++;
+    const prev = db.get<any>("outlines", o.id);
+    if (!prev) continue;
+    const base = prev.platforms?.length ? prev.platforms : [prev.platform].filter(Boolean);
+    if (!base.length) continue; // 无任何平台信息的老行无从补，跳过
+    db.put("outlines", o.id, { ...prev, platforms: [...base, "tiebuhao"], updatedAt: new Date().toISOString() });
+    patched++;
   }
   if (patched) console.log(`[outline-draft] 资讯类选题补挂贴图号投放口 ${patched} 条（R10.35）`);
-  if (cloned) console.log(`[outline-draft] 存量资讯类簇补贴图号版大纲 ${cloned} 条（R8-2① 兼容）`);
-  return patched + cloned;
+  return patched;
 }
 

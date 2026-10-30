@@ -48,7 +48,9 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
             unconsumeNotFound = r.notFound ?? 0;
           }
         }
-        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined, unconsumedCount, unconsumeExpired, unconsumeNotFound };
+        // R10.35 裁决：翻回 pending 同时清 perPlatformDecision——不清会让按平台徽章停在
+        // rejected 而行级已 pending（或反向），合并行（一选题多平台）上两套状态互相打架。
+        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined, perPlatformDecision: undefined, unconsumedCount, unconsumeExpired, unconsumeNotFound };
         kv.put(collection, id, reverted);
         return reverted;
       }

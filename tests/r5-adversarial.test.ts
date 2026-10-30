@@ -37,8 +37,13 @@ test("跨零点窗：00:01 新批无组 → GROUPS_MISSING；昨日 23:59 批有
   assert.equal(b.status, 400);
   assert.equal(b.body.code, "GROUPS_MISSING");
   await req("agent/triage/groups", { jobId: "collectall-today", groups: [{ id: "g0", title: "零点组", attention: "strong" }] }, auth, "PUT");
-  const c = await req("agent/outlines", { clusterId: "clu-x0", platform: "gzh", contentType: "长文", title: "r5零点C组后放行", keyPoints: ["t"] }, auth, "PUT");
+  // R10.35 同簇防线：clu-x0 已有 A，C 换新簇验证组写回后放行
+  db.put("clusters", "clu-x0b", { id: "clu-x0b", topic: "零点簇B", memberIds: [], kind: "news", createdAt: new Date().toISOString() });
+  const c = await req("agent/outlines", { clusterId: "clu-x0b", platform: "gzh", contentType: "长文", title: "r5零点C组后放行", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(c.status, 201);
+  const sameClu = await req("agent/outlines", { clusterId: "clu-x0", platform: "gzh", contentType: "长文", title: "r5零点C同簇换题应回dup", keyPoints: ["t"] }, auth, "PUT");
+  assert.equal(sameClu.body.duplicate, true, "同簇 48h 内第二条（不同题）也命中 cluster 去重");
+  assert.equal(sameClu.body.sameCluster, true);
   const dup = await req("agent/outlines", { clusterId: "clu-x0", platform: "xhs-note", contentType: "长文", title: "r5零点A昨日组放行", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(dup.body.duplicate, true, "48h 跨零点同题仍命中");
 });
@@ -84,19 +89,22 @@ test("畸形输入：emoji/超长标题、200 组批量边界", async () => {
   assert.equal(over.status, 400, "201 组被 zod 拒绝");
 });
 
-test("并发写：两路同时 PUT outlines 同簇（各自不同标题）→ 双落库无半写", async () => {
+test("并发写：两路同时 PUT outlines 各自簇（不同标题）→ 双落库无半写", async () => {
   const db = store();
   const T = db.createConnection("r5并发", ["suggest"]).token;
   const auth = { Authorization: "Bearer " + T };
+  // R10.35 起一簇=一选题=一条大纲：同簇并发写已被同簇防线定义（先落者胜，后到者 duplicate），
+  // 并发完整性用两个簇验证——两路独立写不受彼此影响、无半写。
   db.put("clusters", "clu-cc", { id: "clu-cc", topic: "并发簇", memberIds: [], kind: "news", createdAt: new Date().toISOString() });
+  db.put("clusters", "clu-cc2", { id: "clu-cc2", topic: "并发簇2", memberIds: [], kind: "news", createdAt: new Date().toISOString() });
   const [a, b] = await Promise.all([
     req("agent/outlines", { clusterId: "clu-cc", platform: "gzh", contentType: "长文", title: "r5并发写入甲", keyPoints: ["t"] }, auth, "PUT"),
-    req("agent/outlines", { clusterId: "clu-cc", platform: "gzh", contentType: "长文", title: "r5并发写入乙", keyPoints: ["t"] }, auth, "PUT"),
+    req("agent/outlines", { clusterId: "clu-cc2", platform: "gzh", contentType: "长文", title: "r5并发写入乙", keyPoints: ["t"] }, auth, "PUT"),
   ]);
   assert.ok([a.status, b.status].every((s) => s === 201), `两路均 201: ${a.status}/${b.status}`);
   const rows = db.list<any>("outlines").filter((o) => String(o.title).startsWith("r5并发写入"));
   assert.equal(rows.length, 2, "双落库");
-  assert.ok(rows.every((o) => o.clusterId === "clu-cc" && o.decision === "pending"), "字段完整无半写");
+  assert.ok(rows.every((o) => ["clu-cc", "clu-cc2"].includes(o.clusterId) && o.decision === "pending"), "字段完整无半写");
 });
 
 test("02:00 预演：external 下 worker 关键 tick 真实跑一轮（门控零动作+锁无残留）", async () => {

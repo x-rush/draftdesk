@@ -80,8 +80,9 @@ PUT $BASE/agent/triage/archive
 一条大纲 = 一个选题方向（讲什么、怎么讲），用 `platforms` 标注它适合投放到哪几个平台，
 平台层面的差异（标题风格、篇幅、语气、分发策略）写进 `recommendation` 一句话推荐建议里。
 
-先查重（两道，都由工作台在写入时强制，但你要有意识）：
+先查重（三道，都由工作台在写入时强制，但你要有意识）：
 - **标题级**：48h 内同标题（含全角/大小写变体）会被判 duplicate
+- **同簇级**：同一簇 48h 内已有大纲时，换标题再建也会回 `duplicate`（带 `sameCluster:true` 与 `existingId`）——一簇=一选题=一条大纲；要改内容就带 `id` 走更新，不要另开一条
 - **语义级**：与前 48h（不含当日）的组摘要向量相似度 >0.92 会被判 duplicate——**昨日/前日已有同事件组时，不要重复出题，挂到既有事件线上**（可用 `POST $BASE/agent/vectors/search {"index":"eventline","text":"<标题>","topK":5}` 检索历史事件线）
 
 对每个有注意力的组（strong 与 potential 都要，按组的实际价值定），先 `PUT $BASE/agent/clusters` 建簇（`topic`=组标题、`kind`∈news/newtech/oss/selfproduct/thinking/hot），再出大纲：

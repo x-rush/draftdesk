@@ -305,15 +305,19 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     draftBody: z.string().max(100000).optional(),
   }).parse(input);
   if (!db.get<any>("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404, "NOT_FOUND");
-  // R10.11-1 P0：平台归一与 UI 口同口径——未知值 400 带允许列表
-  const rawPlatforms = parsed.platforms?.length ? parsed.platforms : parsed.platform ? [parsed.platform] : [];
+  const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
+  // R10.11-1 P0：平台归一与 UI 口同口径——未知值 400 带允许列表。
+  // R10.35 裁决：更新路径请求未带 platforms 字段时保留存量集合——旧调用只给 platform
+  // 改主平台，不该把已标注的适合平台集合悄悄缩成单平台（platforms 才是主字段）。
+  const rawPlatforms = parsed.platforms?.length ? parsed.platforms : parsed.platform ? [parsed.platform] : existing?.platforms?.length ? existing.platforms : [];
   if (!rawPlatforms.length) throw new AppError(`platforms 或 platform 至少给一个；允许值：${PLATFORM_KEYS.join(", ")}。`, 400);
-  const platforms: string[] = [];
+  const normalized: string[] = [];
   for (const raw of rawPlatforms) {
     const p = normalizePlatform(raw);
     if (!p) throw new AppError(`未知平台「${raw}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400);
-    if (!platforms.includes(p)) platforms.push(p); // 去重保序：重复平台无意义
+    if (!normalized.includes(p)) normalized.push(p); // 去重保序：重复平台无意义
   }
+  const platforms = existing && parsed.platforms === undefined && existing.platforms?.length ? existing.platforms : normalized;
   const platform = platforms[0];
   // R10.35 空壳防线（10-30 审查发现 23 条只有标题的大纲）：outline/keyPoints/evidenceRefs
   // 三者至少一项有内容，只有标题的大纲 400 拒收——补齐后重提即可（幂等 upsert）。放在平台校验后。
@@ -343,6 +347,13 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     String(o.createdAt || "") >= cutoff48h,
   );
   if (duplicate) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
+  // R10.35 裁决：同簇防线（写口版）——一簇=一选题=一条大纲。同簇已有 48h 内的大纲时，
+  // 新建（无 id）一律回 duplicate（带 existingId，改内容走 id 更新），堵「续接同质化」
+  // 在同簇换个标题再开一条的口子；48h 外的旧簇（老选题重做）不拦，与标题去重窗口同口径。
+  const clusterDup = !parsed.id && db.list<any>("outlines").find((o) =>
+    o.clusterId === parsed.clusterId && String(o.createdAt || "") >= cutoff48h,
+  );
+  if (clusterDup) return json({ ok: true, duplicate: true, sameCluster: true, existingId: clusterDup.id, title: clusterDup.title }, 200);
   // R10.23-3 + R10.26-4②：跨日语义去重（48h 窗口不含当日）——更新路径同跑；
   // R10.27-F：向量线降级时照常写入但在大纲 doc 打 semanticDedupSkipped 标记（可观测，日报可查）
   let semanticSkipped = false;
@@ -352,7 +363,6 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     else if (semantic)
       return json({ ok: true, duplicate: true, semantic: true, score: semantic.score, matchedEvent: { key: semantic.matchedEvent.key, title: semantic.matchedEvent.title, jobId: semantic.matchedEvent.jobId } }, 200);
   }
-  const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
   const outline = existing
     ? { ...existing, clusterId: parsed.clusterId, platform, platforms, ...(parsed.recommendation !== undefined ? { recommendation: parsed.recommendation } : {}), ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) }
     : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform, platforms, ...(parsed.recommendation !== undefined ? { recommendation: parsed.recommendation } : {}), category, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now(), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) };

@@ -24,14 +24,14 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
   const pending = outlines
     .filter((o) => o.decision === "pending")
     .sort((a, b) => outlineScore(b) - outlineScore(a) || b.createdAt.localeCompare(a.createdAt));
-  // 数据治理（R10.35）：同选题聚合——按选题身份（outline=clusterId，其余回退 title）。
-  // R10.35 前大纲按平台拆行、同簇标题各不相同，按 title 聚不起来（实测 48 个多行簇只能聚 2 个）；
-  // 现在一个选题一条大纲，platforms 标注适合投放的平台。
+  // 数据治理（R10.35）：同选题聚合——此处都是大纲裸行（无 sourceType 字段），
+  // 直接以 clusterId 为选题身份（无 clusterId 的兜底 title）。R10.35 前按 title 聚
+  // 不起同簇多行（标题各不同），与审查台 clu: 键同口径。
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const groups = (() => {
     const byKey = new Map<string, any[]>();
     for (const o of pending) {
-      const key = o.sourceType === "outline" && o.clusterId ? "clu:" + o.clusterId : "title:" + String(o.title || "").trim();
+      const key = o.clusterId ? "clu:" + o.clusterId : "title:" + String(o.title || "").trim();
       const bucket = byKey.get(key);
       if (bucket) bucket.push(o);
       else byKey.set(key, [o]);

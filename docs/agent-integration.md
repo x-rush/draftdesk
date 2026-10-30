@@ -260,4 +260,4 @@ curl -X POST "$BASE/api/v1/agent/vectors/search" \
 - 相似度 = 1 - 余弦距离；≥0.90 视为疑似同事件，命中则挂线复用（不重新出题）。
 - `degraded:true` = 向量线不可用（照常处理，不做历史对齐）。
 
-2. **大纲重复抑制（服务端强制，无需 Agent 参与）**：`PUT /agent/outlines` 写入时，工作台自动对新标题与前 48h（不含当日）的组摘要做 KNN——相似度 >0.92 返回 `200 {"duplicate":true,"semantic":true,"score":0.95,"matchedEvent":{...}}` 跳过入库。与 48h 标题精确去重互补；当日向量不参与（当日大纲本就派生自当日组）。
+2. **大纲重复抑制（服务端强制，无需 Agent 参与）**：`PUT /agent/outlines` 写入时，工作台自动对新标题与前 48h（不含当日）的组摘要做 KNN——相似度 >0.92 返回 `200 {"duplicate":true,"semantic":true,"score":0.95,"matchedEvent":{...}}` 跳过入库。与 48h 标题精确去重互补；当日向量不参与（当日大纲本就派生自当日组）。R10.35 起另有同簇防线：同簇 48h 内已有大纲时，新建（无 `id`）一律回 `200 {"duplicate":true,"sameCluster":true,"existingId":"..."}`——一簇=一选题=一条大纲，改内容带 `existingId` 走更新。

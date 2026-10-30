@@ -114,7 +114,9 @@ test("4②：标题去重归一化——全角+零宽空格变体命中 48h 去�
   assert.equal(variant.status, 200);
   assert.equal(variant.body.duplicate, true, "归一化变体命中去重");
   // 更新路径：把既有大纲改成与另一条 48h 内大纲同题（归一化后）→ duplicate
-  const other = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "GPT-6 首测", keyPoints: ["t"] }, auth, "PUT");
+  //（R10.35 同簇防线下第二条须放别的簇——同簇新建会先命中 cluster 去重）
+  db.put("clusters", "clu-dup2", { id: "clu-dup2", topic: "去重簇2", memberIds: [], kind: "news", createdAt: new Date().toISOString() });
+  const other = await jsonReq("agent/outlines", { clusterId: "clu-dup2", platform: "gzh", contentType: "长文", title: "GPT-6 首测", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(other.status, 201);
   const updateDup = await jsonReq("agent/outlines", { id: orig.body.id, clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "GPT-6 首测", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(updateDup.status, 200);
