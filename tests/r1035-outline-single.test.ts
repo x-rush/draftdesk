@@ -70,6 +70,7 @@ test("R10.35 ②：平台值归一与去重（中文标签可传、重复平台�
     platforms: ["公众号", "gzh", "小红书笔记"],
     contentType: "长文",
     title: "中文标签与重复值归一",
+    keyPoints: ["归一测试"],
   }, auth, "PUT");
   assert.equal(res.status, 201);
   assert.deepEqual(res.body.platforms, ["gzh", "xhs-note"], "中文标签归一成键、重复平台去重保序");
@@ -94,7 +95,7 @@ test("R10.35 ④：只给 platform 的老调用照常工作（platforms 收敛�
   const token = db.createConnection("r1035d作者", ["suggest"]).token;
   const auth = { Authorization: "Bearer " + token };
   seedCluster(db, "clu-legacy");
-  const res = await jsonReq("agent/outlines", { clusterId: "clu-legacy", platform: "gzh", contentType: "长文", title: "旧调用兼容" }, auth, "PUT");
+  const res = await jsonReq("agent/outlines", { clusterId: "clu-legacy", platform: "gzh", contentType: "长文", title: "旧调用兼容", keyPoints: ["兼容"] }, auth, "PUT");
   assert.equal(res.status, 201);
   assert.deepEqual(res.body.platforms, ["gzh"]);
   assert.equal(res.body.platform, "gzh");
@@ -155,4 +156,21 @@ test("R10.35 ⑦：存量老数据（无 platforms）仍走克隆路径，不破
   const clone = rows.find((o: any) => o.id === "out-tbh-legacy-tbh");
   assert.ok(clone, "克隆行存在");
   assert.equal(clone.platform, "tiebuhao");
+});
+
+test("R10.35 ⑧：空壳防线——只有标题无任何内容的大纲 400 拒收", async () => {
+  const db = store();
+  const token = db.createConnection("r1035f作者", ["suggest"]).token;
+  const auth = { Authorization: "Bearer " + token };
+  seedCluster(db, "clu-empty");
+  const empty = await jsonReq("agent/outlines", { clusterId: "clu-empty", platforms: ["gzh"], contentType: "长文", title: "只有标题的空壳" }, auth, "PUT");
+  assert.equal(empty.status, 400);
+  assert.equal(empty.body.code, "EMPTY_OUTLINE");
+  assert.match(String(empty.body.error), /空壳大纲/);
+  // 带 keyPoints 的正常写入不受影响
+  const ok = await jsonReq("agent/outlines", { clusterId: "clu-empty", platforms: ["gzh"], contentType: "长文", title: "有内容的大纲", keyPoints: ["要点"] }, auth, "PUT");
+  assert.equal(ok.status, 201);
+  // 更新路径（带 id）不受限——老数据补内容走的更新口
+  const upd = await jsonReq("agent/outlines", { id: ok.body.id, clusterId: "clu-empty", platforms: ["gzh"], contentType: "长文", title: "有内容的大纲" }, auth, "PUT");
+  assert.equal(upd.status, 200, "更新已有大纲不触发空壳防线（保留原内容）");
 });

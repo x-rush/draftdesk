@@ -315,6 +315,10 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     if (!platforms.includes(p)) platforms.push(p); // 去重保序：重复平台无意义
   }
   const platform = platforms[0];
+  // R10.35 空壳防线（10-30 审查发现 23 条只有标题的大纲）：outline/keyPoints/evidenceRefs
+  // 三者至少一项有内容，只有标题的大纲 400 拒收——补齐后重提即可（幂等 upsert）。放在平台校验后。
+  if (!parsed.id && !(parsed.outline?.length || parsed.keyPoints?.length || parsed.evidenceRefs?.length || parsed.draftBody))
+    throw new AppError("空壳大纲：outline / keyPoints / evidenceRefs / draftBody 至少给一项内容（只有标题不收）。", 400, "EMPTY_OUTLINE");
   const category = parsed.category ? normalizeCategory(parsed.category) ?? parsed.category : undefined;
   // R10.21-1 P0 + R10.26-4②：组校验锚「近 48h 最新 collectall 批」——堵跨零点窗与停摆日。
   // R10.27-A#6 复核：不扩到任意前缀——计划批在 external 下已无产生口（手动分析 R10.24 封死），

@@ -56,7 +56,7 @@ test("① 按簇消费：clusterIds 展开成员、exceptIds 排除、producedRe
   const clusterRes = await request("agent/clusters", { topic: "测试簇", memberIds: ["https://cluster.example.org/1", "https://cluster.example.org/2"], kind: "news" }, consumeAuth, "PUT");
   console.log("[dbg] cluster PUT:", clusterRes.status, (await clusterRes.clone().text()).slice(0,120));
   const cluster = await clusterRes.json();
-  const outline = await (await request("agent/outlines", { clusterId: cluster.id, platform: "公众号", contentType: "长文", title: "测试大纲" }, consumeAuth, "PUT")).json();
+  const outline = await (await request("agent/outlines", { clusterId: cluster.id, platform: "公众号", contentType: "长文", title: "测试大纲", keyPoints: ["t"] }, consumeAuth, "PUT")).json();
   // 按簇消费，exceptIds 排除成员二；producedRef 自动指向大纲 id
   const dry = await request("agent/consume", { target: "hotspots", clusterIds: [cluster.id], exceptIds: ["https://cluster.example.org/2"], reason: "processed-into-artifact", dryRun: true }, consumeAuth);
   const dryBody = await dry.json();

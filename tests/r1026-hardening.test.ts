@@ -107,16 +107,16 @@ test("4②：标题去重归一化——全角+零宽空格变体命中 48h 去�
   const token = db.createConnection("r26去重", ["suggest"]).token;
   const auth = { Authorization: "Bearer " + token };
   db.put("clusters", "clu-dup", { id: "clu-dup", topic: "去重簇", memberIds: [], kind: "news", createdAt: new Date().toISOString() });
-  const orig = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "Claude 4.5 发布" }, auth, "PUT");
+  const orig = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "Claude 4.5 发布", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(orig.status, 201);
   // 全角数字+小写+零宽空格变体——归一化后命中
-  const variant = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "xhs-note", contentType: "长文", title: "claude４.５\u200B发布" }, auth, "PUT");
+  const variant = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "xhs-note", contentType: "长文", title: "claude４.５\u200B发布", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(variant.status, 200);
   assert.equal(variant.body.duplicate, true, "归一化变体命中去重");
   // 更新路径：把既有大纲改成与另一条 48h 内大纲同题（归一化后）→ duplicate
-  const other = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "GPT-6 首测" }, auth, "PUT");
+  const other = await jsonReq("agent/outlines", { clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "GPT-6 首测", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(other.status, 201);
-  const updateDup = await jsonReq("agent/outlines", { id: orig.body.id, clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "GPT-6 首测" }, auth, "PUT");
+  const updateDup = await jsonReq("agent/outlines", { id: orig.body.id, clusterId: "clu-dup", platform: "gzh", contentType: "长文", title: "GPT-6 首测", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(updateDup.status, 200);
   assert.equal(updateDup.body.duplicate, true, "更新路径同跑标题查重");
 });
@@ -127,12 +127,12 @@ test("4②：跨零点窗——近 48h 最新 collectall 批无组时写大纲 4
   const auth = { Authorization: "Bearer " + token };
   db.put("discovery", "collectall-r26win", { jobId: "collectall-r26win", at: new Date().toISOString(), planName: "全量采集", limit: 6, mode: "analysis", sources: [], candidates: [] });
   db.put("clusters", "clu-win", { id: "clu-win", topic: "窗口簇", memberIds: [], kind: "news", createdAt: new Date().toISOString() });
-  const blocked = await jsonReq("agent/outlines", { clusterId: "clu-win", platform: "gzh", contentType: "长文", title: "窗口测试大纲" }, auth, "PUT");
+  const blocked = await jsonReq("agent/outlines", { clusterId: "clu-win", platform: "gzh", contentType: "长文", title: "窗口测试大纲", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(blocked.status, 400);
   assert.equal(blocked.body.code, "GROUPS_MISSING");
   // 写组后放行
   await jsonReq("agent/triage/groups", { jobId: "collectall-r26win", groups: [{ id: "gw", title: "窗组", attention: "strong" }] }, auth, "PUT");
-  const ok = await jsonReq("agent/outlines", { clusterId: "clu-win", platform: "gzh", contentType: "长文", title: "窗口测试大纲" }, auth, "PUT");
+  const ok = await jsonReq("agent/outlines", { clusterId: "clu-win", platform: "gzh", contentType: "长文", title: "窗口测试大纲", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(ok.status, 201);
 });
 

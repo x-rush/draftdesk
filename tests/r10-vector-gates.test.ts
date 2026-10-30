@@ -94,6 +94,6 @@ test("R10.24-5 向量线降级：组写回与大纲写入主链不受影响（�
   assert.equal(g.status, 200, JSON.stringify(g.body));
   const c = await jsonReq("agent/clusters", { topic: "向量线主链簇", memberIds: [], kind: "news" }, auth, "PUT");
   assert.equal(c.status, 201);
-  const o = await jsonReq("agent/outlines", { clusterId: c.body.id, platform: "gzh", contentType: "长文", title: "向量线主链大纲标题" }, auth, "PUT");
+  const o = await jsonReq("agent/outlines", { clusterId: c.body.id, platform: "gzh", contentType: "长文", title: "向量线主链大纲标题", keyPoints: ["t"] }, auth, "PUT");
   assert.equal(o.status, 201, JSON.stringify(o.body));
 });

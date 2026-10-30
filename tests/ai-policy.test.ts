@@ -56,14 +56,14 @@ test("suggest scope：写回 clusters/outlines 带 producedBy，decision 字段�
   assert.equal(clusterRow.producedBy, "agent:聚合助手");
   assert.equal(clusterRow.id.startsWith("clu-"), true);
   // 大纲：携带 decision/draftRef/publishedRef 也被剥离，保持 pending
-  const outline = await request("agent/outlines", { clusterId: clusterRow.id, platform: "Threads", contentType: "英文短评", title: "Weekly AI models", decision: "published", draftRef: "hack" } as any, suggestAuth, "PUT");
+  const outline = await request("agent/outlines", { clusterId: clusterRow.id, platform: "Threads", contentType: "英文短评", title: "Weekly AI models", keyPoints: ["t"], decision: "published", draftRef: "hack" } as any, suggestAuth, "PUT");
   const outlineRow = await outline.json();
   assert.equal(outline.status, 201);
   assert.equal(outlineRow.decision, "pending");
   assert.equal(outlineRow.producedBy, "agent:聚合助手");
   assert.equal(outlineRow.draftRef, undefined);
   // 更新（带 id）保留原 decision
-  const updated = await request("agent/outlines", { id: outlineRow.id, clusterId: clusterRow.id, platform: "公众号", contentType: "长文", title: "周更 AI 动态" } as any, suggestAuth, "PUT");
+  const updated = await request("agent/outlines", { id: outlineRow.id, clusterId: clusterRow.id, platform: "公众号", contentType: "长文", title: "周更 AI 动态", keyPoints: ["t"] } as any, suggestAuth, "PUT");
   assert.equal((await updated.json()).decision, "pending");
   // 建议 PATCH 别名
   db.put("evidence", "ev-s", { ...evidence[0], id: "ev-s" });

@@ -60,7 +60,7 @@ test("① 按簇消费：target 校验 400 零写入、notFound 统计、produce
   // 建簇（target 默认 hotspots）
   const { body: cluster } = await jsonReq("agent/clusters", { topic: "v3簇", memberIds: ["https://v3.example.org/1", "https://v3.example.org/2"], kind: "news" }, consumeAuth, "PUT");
   assert.equal(cluster.target, "hotspots");
-  const { body: outline } = await jsonReq("agent/outlines", { clusterId: cluster.id, platform: "公众号", contentType: "长文", title: "v3大纲" }, consumeAuth, "PUT");
+  const { body: outline } = await jsonReq("agent/outlines", { clusterId: cluster.id, platform: "公众号", contentType: "长文", title: "v3大纲", keyPoints: ["t"] }, consumeAuth, "PUT");
   // target 不匹配 → 400 且零写入
   const mismatch = await request("agent/consume", { target: "evidence", clusterIds: [cluster.id], reason: "processed-into-artifact", dryRun: false }, consumeAuth);
   assert.equal(mismatch.status, 400);
