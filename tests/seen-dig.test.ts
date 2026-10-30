@@ -1,6 +1,7 @@
 // 热词掘金 v3 引擎 A 守护：展开计划形状、联想响应解析、频控调度器、
 // 入库统计与幂等、tick 触发语义（手动优先/闸门每日一次/完成键幂等）。
 import test from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -135,14 +136,14 @@ test("tick：手动标记立即触发；完成键当日幂等；无标记无闸�
     seenDiggingTick(db, fakeFetch, { intervalMs: 1, providerIntervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(db.get("seen-terms", termId("notion tools")), undefined, "无手动标记且无闸门不应触发");
-    db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
+    db.put("meta", "seen-dig-manual", { date: shanghaiDayOf(), at: new Date().toISOString() });
     seenDiggingTick(db, fakeFetch, { intervalMs: 1, providerIntervalMs: 1 });
     await new Promise((r) => setTimeout(r, 3500));
     assert.ok(db.get("seen-terms", termId("notion tools")), "手动标记应触发挖掘");
-    const done = db.get<any>("meta", "seen-dig-done:" + new Date().toISOString().slice(0, 10));
+    const done = db.get<any>("meta", "seen-dig-done:" + shanghaiDayOf());
     assert.ok(done, "完成键应写入");
-    db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
-    db.put("meta", "seen-terms-gate", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
+    db.put("meta", "seen-dig-manual", { date: shanghaiDayOf(), at: new Date().toISOString() });
+    db.put("meta", "seen-terms-gate", { date: shanghaiDayOf(), at: new Date().toISOString() });
     seedTerm(db, "another", "rising");
     seenDiggingTick(db, fakeFetch, { intervalMs: 1, providerIntervalMs: 1 });
     await new Promise((r) => setTimeout(r, 30));

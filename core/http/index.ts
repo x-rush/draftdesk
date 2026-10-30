@@ -31,6 +31,7 @@ import { routes as triageRoutes } from "../routes/triage";
 import { routes as activityArchiveRoutes } from "../routes/activity-archive";
 import { routes as archivesRoutes } from "../routes/archives";
 import { routes as sessionRoutes, accessCodeEnabled, validSession } from "../routes/session";
+import { routes as maintenanceRoutes } from "../routes/maintenance";
 
 export { checkRequest } from "./middleware";
 
@@ -38,7 +39,7 @@ const registry = new RouteRegistry();
 // 顺序即优先级：agent-write 必须先于 agent——POST agent/clusters 等方法不符的
 // fallback 要落进 suggest 定义（先鉴权后 405），而不是 read 定义（先 405）；
 // consume 必须先于 agent——agent 的 :rest... 兜底会 pattern 截胡 agent/consume/status。
-for (const def of [...agentWriteRoutes, ...consumeRoutes, ...hotspotCategoryRoutes, ...seoTermRoutes, ...activityCategoryRoutes, ...seenTermRoutes, ...opportunityRoutes, ...triageRoutes, ...activityArchiveRoutes, ...geoRoutes, ...sessionRoutes, ...archivesRoutes, ...agentRoutes, ...decisionsRoutes, ...clustersRoutes, ...connectionsRoutes, ...activityRoutes, ...sourcesRoutes, ...intakeRoutes, ...configRoutes, ...jobsRoutes, ...artifactsRoutes, ...chatRoutes, ...miscRoutes, ...siteProjectRoutes, ...siteLaunchRoutes])
+for (const def of [...agentWriteRoutes, ...consumeRoutes, ...hotspotCategoryRoutes, ...seoTermRoutes, ...activityCategoryRoutes, ...seenTermRoutes, ...opportunityRoutes, ...triageRoutes, ...activityArchiveRoutes, ...geoRoutes, ...maintenanceRoutes, ...sessionRoutes, ...archivesRoutes, ...agentRoutes, ...decisionsRoutes, ...clustersRoutes, ...connectionsRoutes, ...activityRoutes, ...sourcesRoutes, ...intakeRoutes, ...configRoutes, ...jobsRoutes, ...artifactsRoutes, ...chatRoutes, ...miscRoutes, ...siteProjectRoutes, ...siteLaunchRoutes])
   registry.register(def as RouteDef);
 
 const TOKEN_MSG = "提交令牌只允许写入收件接口。";

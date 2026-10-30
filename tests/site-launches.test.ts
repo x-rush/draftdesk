@@ -1,6 +1,7 @@
 // 新站发现引擎守护（第五轮 §2，批 2a）：Show HN/PH 解析、host 去重、LLM 六类判定
 //（含判定来源标注）、撞词标记、site-discoveries 交叉标注、tick 日闸与失败静默。
 import { test } from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -117,7 +118,7 @@ test("入库去重 + LLM 六类判定 + 撞词标记 + 交叉标注 + tick 日�
     const ph = db.get<any>("site-launches", "producthunt.com/posts/toolx");
     assert.deepEqual(ph.clashTerms, ["AI agents"], "strong 低观测词也进撞词池（首批实测教训）");
     assert.equal(ph.crossLinked, false, "未交叉的站显式标 false");
-    const done = db.get<any>("meta", "site-launches-done:" + new Date().toISOString().slice(0, 10));
+    const done = db.get<any>("meta", "site-launches-done:" + shanghaiDayOf());
     assert.equal(done.added, 3, "HN 1 站 + PH 2 条");
     assert.equal(done.classified, 3, "三条都被分类（同批次 mock）");
     assert.equal(done.phSkipped, 0, "新口径无域名不跳过");

@@ -1,5 +1,6 @@
 // 存储根治批守护：janitor 每日备份通道——VACUUM INTO 快照落盘、内容可开、保留 14 份。
 import test from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,9 +32,9 @@ test("每日备份：快照落盘可开且含集合；保留最近 14 份", () =
     assert.ok(row, "备份快照应包含写入后的行");
     snapshot.close();
     // 保留策略：预置 15 份旧快照（含今日文件共 16）→ 保留 14 份
-    const date = new Date().toISOString().slice(0, 10);
+    const date = shanghaiDayOf(); // 备份名=上海日（R10.31），断言必须同源
     for (let i = 1; i <= 15; i++) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const d = shanghaiDayOf(new Date(Date.now() - i * 86400000));
       writeFileSync(path.join(backupDir, `draftdesk-${d}.sqlite`), "stale");
     }
     runDailyBackup(db);

@@ -1,5 +1,6 @@
 // R10.12 守护：trend 近 3 日增量限定 / 总量护栏 / news 窗口收紧
 import test from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +10,7 @@ import { generateOpportunities, OPPORTUNITY_DAILY_CAP } from "../core/opportunit
 import { termId } from "../core/seen-terms";
 
 function cleanup(dir: string) { try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ } }
-const dayKey = (offset: number) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+const dayKey = (offset: number) => shanghaiDayOf(new Date(Date.now() - offset * 86400000)); // 上海日同源
 
 function putTerm(db: Store, term: string, opts: { obsByDay?: Record<string, number>; relevance?: string; observations?: number; intent?: string; region?: string; seed?: string }) {
   db.put("seen-terms", termId(term), {

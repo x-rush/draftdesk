@@ -60,7 +60,8 @@ function pendingManual(db: Store, day: string): boolean {
 }
 
 // 日批任务链：采集 → 全部日粒度任务一次跑完（各 tick 自带日闸，重复调用自动秒退）
-async function runDailyChain(db: Store): Promise<void> {
+// R10.40：导出供 maintenance 手动触发口复用（本地开发环境 worker 关闭后，手动跑一次日批的唯一入口）。
+export async function runDailyChain(db: Store): Promise<void> {
   // 第1段：采集落盘（自带 01:00 闸 + 当日 done 闸 + running 锁 + 失败当日放弃）
   await collectAllTick(db);
   seenTermsTick(db, requestModel);

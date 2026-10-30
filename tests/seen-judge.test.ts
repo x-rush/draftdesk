@@ -1,6 +1,7 @@
 // 判定层 + 站点发现守护（海外定位批 5/6）：obsRatio 口径、三档判定规则、
 // DDG 解析、obsByDay 按日记数、判定 tick（竞争度入库/站点发现/品牌词/永久缓存/失败计数）。
 import { test } from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ function cleanup(dir: string) {
 }
 
 function dayKey(offset: number, base = new Date()): string {
-  return new Date(base.getTime() - offset * 86400000).toISOString().slice(0, 10);
+  return shanghaiDayOf(new Date(base.getTime() - offset * 86400000)); // 上海日同源（R10.31 测试债修复）
 }
 
 test("obsRatio：近2天日均 ÷ 前3天日均（第五轮放宽）；无基线 undefined", () => {
@@ -73,7 +74,7 @@ test("obsByDay：observeSeenTerm 同日不重复计数；observeSuggestion 每�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    const day = new Date().toISOString().slice(0, 10);
+    const day = shanghaiDayOf();
     observeSeenTerm(db, "词一", { day });
     observeSeenTerm(db, "词一", { day });
     assert.equal(db.get<any>("seen-terms", "词一").obsByDay[day], 1, "同日重复提取不膨胀");
@@ -140,7 +141,7 @@ test("判定 tick：竞争度入库 + 站点发现 + 品牌词 + 永久缓存；
     // 失败计数：查过的词不再进队列，构造一个会失败的词
     db.put("seen-terms", "fail 词", { id: "fail 词", term: "fail 词", status: "rising", observations: 9, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: today, lastSeenAt: today, relevance: "strong", region: "global" });
     // 模拟次日：清 done 键（失败词重试语义由 serpDedicated 缺失驱动）
-    db.del("meta", "seen-judge-done:" + new Date().toISOString().slice(0, 10));
+    db.del("meta", "seen-judge-done:" + shanghaiDayOf());
     const failing = (async () => { ddgCalls++; throw new Error("blocked"); }) as unknown as typeof fetch;
     seenJudgeTick(db, failing, { backoffBaseMs: 1 });
     await new Promise((r) => setTimeout(r, 120));
@@ -182,11 +183,11 @@ test("SERP 搜索层（第三轮 3）：SearXNG 主力命中、失败原因台�
     assert.equal(brand.brand, true);
     // 失败原因台账：SearXNG 挂 + DDG 202 → reasons 进完成键
     db.put("seen-terms", "fail 词2", { id: "fail 词2", term: "fail 词2", status: "rising", observations: 9, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: today, lastSeenAt: today, relevance: "strong", region: "global" });
-    db.del("meta", "seen-judge-done:" + new Date().toISOString().slice(0, 10));
+    db.del("meta", "seen-judge-done:" + shanghaiDayOf());
     const allFail = (async () => { throw new Error("boom"); }) as unknown as typeof fetch;
     seenJudgeTick(db, allFail, { backoffBaseMs: 1 });
     await new Promise((r) => setTimeout(r, 120));
-    const done = db.get<any>("meta", "seen-judge-done:" + new Date().toISOString().slice(0, 10));
+    const done = db.get<any>("meta", "seen-judge-done:" + shanghaiDayOf());
     assert.equal(done.failed, 1);
     assert.ok(Object.keys(done.reasons || {}).length >= 1, "失败原因应入台账");
     assert.equal(db.get<any>("seen-terms", "fail 词2").serpFailDays, 1);
@@ -197,7 +198,7 @@ test("SERP 搜索层（第三轮 3）：SearXNG 主力命中、失败原因台�
       if (u.includes("suggestqueries.google.com")) return new Response('["q",[["x",0]]]', { status: 200 });
       throw new Error("unexpected");
     }) as unknown as typeof fetch;
-    db.put("meta", "seen-dig-manual", { date: new Date().toISOString().slice(0, 10), at: new Date().toISOString() });
+    db.put("meta", "seen-dig-manual", { date: shanghaiDayOf(), at: new Date().toISOString() });
     seenJudgeTick(db, failingThenOk, { backoffBaseMs: 1 });
     await new Promise((r) => setTimeout(r, 150));
     assert.equal(typeof db.get<any>("seen-terms", "fail 词2").serpDedicated, "number", "手动触发应重试失败词");
@@ -224,7 +225,7 @@ test("判定吞吐扩容（第五轮 §5）：积压>500 每天 3 批×200 词 +
       const term = `busy词${String(i).padStart(3, "0")}`;
       db!.put("seen-terms", term, { id: term, term, status: "rising", observations: 100 - (i % 50), sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: base.toISOString(), lastSeenAt: base.toISOString(), relevance: "strong", region: "global" });
     }
-    const doneKeyFor = (d: Date) => "seen-judge-done:" + d.toISOString().slice(0, 10);
+    const doneKeyFor = (d: Date) => "seen-judge-done:" + shanghaiDayOf(d);
     const judged = () => db!.list<any>("seen-terms").filter((t) => typeof t.serpDedicated === "number").length;
     seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: base });
     await new Promise((r) => setTimeout(r, 500));
@@ -269,7 +270,7 @@ test("判定重档（验收反推）：积压>2000 → 12 批×250 词、间隔 
       const term = `heavy词${String(i).padStart(4, "0")}`;
       db!.put("seen-terms", term, { id: term, term, status: "rising", observations: 500 - (i % 40), sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: base.toISOString(), lastSeenAt: base.toISOString(), relevance: "strong", region: "global" });
     }
-    const doneKeyFor = (d: Date) => "seen-judge-done:" + d.toISOString().slice(0, 10);
+    const doneKeyFor = (d: Date) => "seen-judge-done:" + shanghaiDayOf(d);
     const judged = () => db!.list<any>("seen-terms").filter((t) => typeof t.serpDedicated === "number").length;
     seenJudgeTick(db, fakeFetch, { backoffBaseMs: 1, intervalMs: 0, now: base });
     await new Promise((r) => setTimeout(r, 600));

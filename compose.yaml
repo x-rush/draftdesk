@@ -23,6 +23,9 @@ services:
     environment:
       DRAFTDESK_DATA_DIR: /app/data
       DRAFTDESK_BACKUP_DIR: /app/backups
+      # 开发环境开关（R10.40）：本地 .env 设 DRAFTDESK_EMBEDDED_WORKER=0 关闭 worker 循环
+      #（01:00 日批/挖掘 tick 全静默，本地变纯 API/UI 服务）；生产不设=照常日批。
+      DRAFTDESK_EMBEDDED_WORKER: ${DRAFTDESK_EMBEDDED_WORKER:-}
       DRAFTDESK_ALLOWED_HOSTS: host.docker.internal
       # 会话鉴权（R10.39 上线前置）：公网 HTTPS 部署时在 .env 设置访问码即启用 UI 登录门
       #（PWA/浏览器走 30 天会话 cookie，机器访问可另配 DRAFTDESK_UI_TOKEN 头令牌）。

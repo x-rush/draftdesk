@@ -1,6 +1,7 @@
 // 机会引擎守护（第五轮 §1）：四信号源生成、去重合并、watch 池 TTL、平台适配、
 // consumerMode 门控、源绑定矩阵迁移。
 import { test } from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +19,7 @@ function iso(offsetDays: number, base = new Date()) {
   return new Date(base.getTime() - offsetDays * DAY).toISOString();
 }
 function dayKey(offset: number, base = new Date()) {
-  return new Date(base.getTime() - offset * DAY).toISOString().slice(0, 10);
+  return shanghaiDayOf(new Date(base.getTime() - offset * DAY)); // 上海日同源（R10.31 测试债修复）
 }
 
 function putEvidence(db: Store, id: string, url: string, extra: Record<string, unknown> = {}) {
@@ -177,7 +178,7 @@ test("tick 门控：external 不自动生成；builtin 每日一道闸；watch T
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = shanghaiDayOf();
     opportunityTick(db);
     assert.equal(db.get("meta", "opportunity-auto-done:" + today), undefined, "external 模式不自动生成");
     db.put("config", "consumerMode", "builtin");
@@ -297,7 +298,7 @@ test("R10.2① 平台九值目录 + 题材六值（总纲：旧值映射与迁�
     await new Promise((r) => setTimeout(r, 250));
     assert.equal(db.get<any>("outlines", "out-c1").category, "newtech");
     assert.equal(db.get<any>("outlines", "out-c2").category, "oss");
-    const day = new Date().toISOString().slice(0, 10);
+    const day = shanghaiDayOf();
     assert.ok(db.get<any>("meta", "outline-category-done:" + day), "当日 done 置位（可持续模式 R9-1）");
     outlineCategoryTick(db, model);
     assert.ok(db.get<any>("meta", "outline-category-done:" + day), "当日 done 幂等");

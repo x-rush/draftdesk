@@ -287,8 +287,12 @@ test("R10.34 验收（v2）：物理归档 + 队列窗口 + discovery 清理", a
   const queueAll = db.decisionsQueue(undefined, { includeAll: true });
   assert.ok(queueAll.some((x: any) => x.id === "out-old-rejected"), "includeAll 全量可查");
   // discovery：31 天前清、29 天前保留
-  db.put("discovery", "collectall-31d", { jobId: "collectall-31d", at: d(31), planName: "P", mode: "analysis", sources: [], candidates: [] });
-  db.put("discovery", "collectall-29d", { jobId: "collectall-29d", at: d(29), planName: "P", mode: "analysis", sources: [], candidates: [] });
+  // 上海日锚定（R10.31 测试债修复）：purgeOldDiscovery 按 at 切片当上海日算日差，
+  // UTC 时刻种子在 UTC16:00+ 窗口（上海次日）会整体偏移一天——按上海日锚到当日中午。
+  const { shanghaiDayOf } = await import("../core/tick-guard");
+  const shAt = (n: number) => shanghaiDayOf(new Date(Date.now() - n * 86400000)) + "T12:00:00+08:00";
+  db.put("discovery", "collectall-31d", { jobId: "collectall-31d", at: shAt(31), planName: "P", mode: "analysis", sources: [], candidates: [] });
+  db.put("discovery", "collectall-29d", { jobId: "collectall-29d", at: shAt(29), planName: "P", mode: "analysis", sources: [], candidates: [] });
   const purged = purgeOldDiscovery(db);
   assert.ok(purged >= 1);
   assert.equal(db.get("discovery", "collectall-31d"), undefined, "31 天前批次被清");

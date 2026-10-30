@@ -1,6 +1,7 @@
 // 热词捕获守护测试：worker 闸门置位条件（24h 滚动窗）+ 24h 兜底提取（mock 模型）
 // + 手动触发（立即整理）跳过等待 + 主路径写入抑制。
 import { test } from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,7 +48,7 @@ test("兜底：闸门 24h 后无主路径写入 → mock 模型提取入库；�
   try {
     db = setup(dir);
     const yesterday = new Date(Date.now() - 25 * 3600000);
-    db.put("meta", "seen-terms-gate", { date: yesterday.toISOString().slice(0, 10), at: yesterday.toISOString() });
+    db.put("meta", "seen-terms-gate", { date: shanghaiDayOf(yesterday), at: yesterday.toISOString() });
     let calls = 0;
     const mockRunner = async () => {
       calls++;
@@ -66,7 +67,7 @@ test("兜底：闸门 24h 后无主路径写入 → mock 模型提取入库；�
     try {
       db.close();
       db = new Store(dir2);
-      db.put("meta", "seen-terms-gate", { date: yesterday.toISOString().slice(0, 10), at: yesterday.toISOString() });
+      db.put("meta", "seen-terms-gate", { date: shanghaiDayOf(yesterday), at: yesterday.toISOString() });
       markSeenTermsWrite(db);
       let calls2 = 0;
       seenTermsTick(db, async () => { calls2++; return { text: "[]" }; });
