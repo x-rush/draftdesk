@@ -34,12 +34,13 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
     setDecision(id: string, input: { decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string; decidedBy?: "human" | "agent" }) {
       const { collection, row } = decisionTarget(id);
       if (collection === "artifacts" && row.archived) throw new AppError("已归档产物不可再拍板。");
-      // rejected→pending 翻转（信息架构 v2-C）：拍错可反悔。自动撤销 rejected 时的联动消费
-      //（unconsume 30 天窗口；已撤销过/身份不存在的条目静默跳过并计入 notFound）；再次 rejected 时消费幂等重放。
+      // rejected/deferred→pending 翻转（信息架构 v2-C + R10.37 C①：deferred 对齐徽章 cycle）：
+      // 拍错可反悔。rejected 翻回自动撤销联动消费（unconsume 30 天窗口；已撤销过/身份不存在
+      // 的条目静默跳过并计入 notFound）；deferred 从未消费，直接翻。再次 rejected 时消费幂等重放。
       if (input.decision === "pending") {
-        if (row.decision !== "rejected") throw new AppError("只有已否决的条目可以翻回待定。", 400, "INVALID_PAYLOAD");
+        if (row.decision !== "rejected" && row.decision !== "deferred") throw new AppError("只有已否决或已暂缓的条目可以翻回待定。", 400, "INVALID_PAYLOAD");
         let unconsumedCount = 0, unconsumeExpired = 0, unconsumeNotFound = 0;
-        if (collection === "outlines" || collection === "decisions" || collection === "artifacts") {
+        if (row.decision === "rejected" && (collection === "outlines" || collection === "decisions" || collection === "artifacts")) {
           const ids = linkedHotspotIds(row);
           if (ids.length) {
             const r = unconsumeIdentities("hotspots", ids, false);
@@ -64,6 +65,14 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
         ...(input.publishedRef !== undefined ? { publishedRef: input.publishedRef } : {}),
       };
       if (collection === "artifacts") { next.revision = (row.revision ?? 0) + 1; next.updatedAt = now(); }
+      // R10.37 A-1（同根修 P2-7）：大纲行级拍板同步写 perPlatformDecision——行级 decision 与
+      // 平台徽章永远一致（旧语义只改 decision，主行 approved 后徽章仍全 pending 呈矛盾态）。
+      // 平台键全集 = platforms ∪ [platform] ∪ per 既有键；全部置为本次拍板值。
+      if (collection === "outlines") {
+        const base = (next.platforms as string[] | undefined) || row.platforms || [];
+        const keys = [...new Set([...base, row.platform, ...Object.keys(row.perPlatformDecision || {})].filter(Boolean))] as string[];
+        if (keys.length) next.perPlatformDecision = Object.fromEntries(keys.map((k) => [k, input.decision]));
+      }
       kv.put(collection, id, next);
       // 联动消费：rejected/published 时消费对应条目（P0-2 返工：按形态分支）。
       // artifacts 的 evidenceIds 是 ev-xxx 证据 ID（去 evidence 集合拿 url）；
@@ -110,12 +119,14 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       for (const d of kv.list<any>("decisions"))
         rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
           platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", draftBody: d.draftBody, createdAt: d.createdAt });
-      // R10.34-2：默认只返回活跃窗口（近 7 天）——过期产物由 janitor 物理归档出主集合，
-      // 此窗是第二道带（归档尚未跑的当日溢出项也不进队列）；includeAll 覆盖（?includeArchived=1）。
+      // R10.34-2 + R10.37 A-2：审查台只见活跃数据——pending/终态（rejected/published）超 7 天出窗
+      // （janitor 物理归档为主，此窗是归档未跑时的第二道带）；在途态（approved/drafting/deferred）
+      // 不设窗（超期在途项由 janitor 30 天归档 staled-* 兜底，不静默消失）。includeAll 覆盖。
       const windowMs = 7 * 86400000;
+      const inFlight = (d: string) => d === "approved" || d === "drafting" || d === "deferred";
       return rows
         .filter((r) => !status || r.decision === status)
-        .filter((r) => opts?.includeAll || !Number.isFinite(Date.parse(r.createdAt)) || Date.now() - Date.parse(r.createdAt) <= windowMs)
+        .filter((r) => opts?.includeAll || inFlight(r.decision) || !Number.isFinite(Date.parse(r.createdAt)) || Date.now() - Date.parse(r.createdAt) <= windowMs)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     },
     decisionsStats() {

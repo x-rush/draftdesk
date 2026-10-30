@@ -6,6 +6,7 @@ import { PLATFORM_KEYS, PLATFORM_LABELS, platformLabel, aggregateOutlineDecision
 import { MessageContent } from "./MessageContent";
 import { Select } from "./Select";
 import { creationLabels } from "../core/workspace-ui";
+import { useListKeyboardShortcuts } from "./useListKeyboardShortcuts";
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
 // 语义红线：quality 是证据可信度（AI 判），decision 是要不要写（人拍板）——两层不互相推导。
@@ -32,6 +33,11 @@ function producedByLabel(by?: string): string {
   return by;
 }
 const sourceFilterLabels: Record<string, string> = { outline: "大纲", manual: "手动" };
+// R10.37 C②：状态快捷卡的组合过滤口径——「进行中」=drafting+published、「已否决·暂缓」=rejected+deferred
+//（单状态值来自工具行按钮，不在表内按原值过滤）。
+const STATUS_CARD_FILTERS: Record<string, string[]> = {
+  pending: ["pending"], approved: ["approved"], active: ["drafting", "published"], closed: ["rejected", "deferred"],
+};
 
 // R10.35：一条选题的「适合平台」= 组内各行的 platforms 并集（主行优先保序）。
 // 单行新数据带 platforms；老数据没有 platforms，退回该行自己的 platform——
@@ -112,7 +118,7 @@ export function Review() {
     rows.forEach((r) => { byDecision[r.decision] = (byDecision[r.decision] || 0) + 1; });
     return byDecision;
   }, [rows]);
-  const visible = rows.filter((r) => (status === "all" ? true : r.decision === status)).filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter);
+  const visible = rows.filter((r) => { if (status === "all") return true; const f = STATUS_CARD_FILTERS[status]; return f ? f.includes(r.decision) : r.decision === status; }).filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter);
   // 数据治理（根因 B + R10.35）：同选题聚合。
   // R10.35 前大纲按平台拆行（一簇 4 行、标题各不同），按 title 聚合只能聚 2/48 簇；
   // 现改按「选题身份」聚合——outline 用 clusterId（一簇=一个事件/选题方向），
@@ -134,26 +140,30 @@ export function Review() {
   }, [visible]);
   const expandedGroups = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = expandedGroups;
+  // R10.37 C⑤：键盘流（J/K 移动、A 通过、X 否决、D 详情）——与队列视图同款，主战场补齐
+  useListKeyboardShortcuts(".decision-row", {
+    approve: () => { if (groups[0]) void decideGroup(groups[0], "approved"); },
+    archive: () => { if (groups[0]) void decideGroup(groups[0], "rejected", "其他"); },
+    discuss: () => { if (groups[0]) setDetail(groups[0].primary); },
+  }, groups.length > 0);
   const toggleGroup = (key: string) => setOpenGroups((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
-  // 同题×N 不再连拍（第六轮批 B §2①）：组拍板=对组内每个平台行各拍各的平台——
-  // 主行写 perPlatformDecision[platform]，同题同平台行由路由行级同步；
-  // 跨平台状态互不影响（旧 batch 全组连拍已撤）。
+  // 同题×N 不再连拍（第六轮批 B §2① + R10.37 A-1）：组拍板=对选题的「适合平台并集」
+  // 逐平台拍（与徽章渲染 groupPlatforms 同源）——R10.35 一选题一条后，单行多平台的
+  // 全部适合平台一起拍，不再只拍主平台；旧多行簇（克隆行）的各平台经并集自然覆盖。
   async function decideGroup(group: { primary: Row; members: Row[] }, decision: string, reason?: string) {
     if (group.primary.sourceType !== "outline") return decide(group.primary, decision, reason);
+    const platforms = groupPlatforms(group.primary, group.members);
+    if (!platforms.length) return decide(group.primary, decision, reason);
     await act(async () => {
-      let platforms = 0;
-      for (const m of group.members) {
-        const key = PLATFORM_KEYS.find((k) => PLATFORM_LABELS[k] === m.platform || k === m.platform);
-        if (!key) continue;
-        await api(`outlines/${m.id}/platform-decision`, { platform: key, decision });
-        platforms++;
+      for (const key of platforms) {
+        await api(`outlines/${group.primary.id}/platform-decision`, { platform: key, decision });
       }
       await reload();
-      setNotice(`已按平台拍板 ${platforms} 个平台（${decision}）——各平台状态独立，可点平台徽章分别改。`);
+      setNotice(`已按平台拍板 ${platforms.length} 个平台（${decision}）——各平台状态独立，可点平台徽章分别改。`);
     });
   }
 
@@ -206,7 +216,7 @@ export function Review() {
     await act(async () => {
       const saved = await api<any>("aiPolicy", next);
       setAiPolicy(saved);
-      setNotice("内置 AI 参与开关已保存：triage=" + saved.triage + "，outline=" + saved.outline + "，draft=" + saved.draft + "。off 的环节产出可为空，由外部 Agent 或人补。");
+      setNotice("内置 AI 参与开关已保存：triage=" + saved.triage + "，draft=" + saved.draft + "。off 的环节产出可为空，由外部 Agent 或人补。");
     });
   }
   async function savePersona() {
@@ -234,11 +244,13 @@ export function Review() {
     });
   }
 
-  const statusCards: Array<[string, string, number, boolean]> = [
-    ["pending", "待决策", stats.pending || 0, true],
-    ["approved", "已通过", stats.approved || 0, false],
-    ["drafting", "进行中", (stats.drafting || 0) + (stats.published || 0), false],
-    ["rejected", "已否决·暂缓", (stats.rejected || 0) + (stats.deferred || 0), false],
+  // R10.37 C②：快捷卡的计数与过滤口径对齐——「进行中」=drafting+published、「已否决·暂缓」
+  // =rejected+deferred 都按组合过滤（旧实现卡上数字含两态、点进去只过滤一态，数字对不上）。
+  const statusCards: Array<{ key: string; label: string; count: number; accent: boolean; states: string[]; small: string }> = [
+    { key: "pending", label: "待决策", count: stats.pending || 0, accent: true, states: ["pending"], small: "点卡片只看这一档，再点回全部" },
+    { key: "approved", label: "已通过", count: stats.approved || 0, accent: false, states: ["approved"], small: "进入写作与发布流转" },
+    { key: "active", label: "进行中", count: (stats.drafting || 0) + (stats.published || 0), accent: false, states: ["drafting", "published"], small: `写作中 ${stats.drafting || 0} · 已发布 ${stats.published || 0} 条` },
+    { key: "closed", label: "已否决·暂缓", count: (stats.rejected || 0) + (stats.deferred || 0), accent: false, states: ["rejected", "deferred"], small: `暂缓 ${stats.deferred || 0} 条` },
   ];
   return (
     <div>
@@ -268,12 +280,12 @@ export function Review() {
 
       {/* ① 统计条（点击切状态档） */}
       <div className="stat-strip">
-        {statusCards.map(([key, label, count, accent]) => (
-          <button type="button" key={key} className={"stat-card clickable" + (accent ? " accent" : "") + (status === key ? " active" : "")}
-            aria-pressed={status === key}
-            onClick={() => setStatus(status === key ? "all" : key)}>
-            <strong>{count}</strong><span>{label}</span>
-            <small>{key === "pending" ? "点卡片只看这一档，再点回全部" : key === "drafting" ? "写作中 " + (stats.drafting || 0) + " · 已发布 " + (stats.published || 0) + " 条" : key === "rejected" ? "暂缓 " + (stats.deferred || 0) + " 条" : "进入写作与发布流转"}</small>
+        {statusCards.map((c) => (
+          <button type="button" key={c.key} className={"stat-card clickable" + (c.accent ? " accent" : "") + (status === c.key ? " active" : "")}
+            aria-pressed={status === c.key}
+            onClick={() => setStatus(status === c.key ? "all" : c.key)}>
+            <strong>{c.count}</strong><span>{c.label}</span>
+            <small>{c.small}</small>
           </button>
         ))}
       </div>
@@ -488,9 +500,12 @@ export function Review() {
         <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）" + (c.coveredVariant ? ` ⚠️已覆盖变体（原选题：${c.coveredVariant.originTitle}，核心词重合 ${Math.round((c.coveredVariant.ratio || 0) * 100)}%）` : "")).join("、") : ""}</p>
         <Field label="簇 ID">
           <Select placeholder="选择内容簇…" value={outlineForm.clusterId || undefined} onChange={(e) => setOutlineForm({ ...outlineForm, clusterId: e.target.value })}>
-            {clusters.map((c) => <option key={c.id} value={c.id}>{c.topic}（{c.memberCount} 条）{c.coveredVariant ? " ⚠️已覆盖变体" : ""}</option>)}
+            {clusters.map((c) => <option key={c.id} value={c.id}>{c.topic}（{c.memberCount} 条{c.outlineCount ? ` · 已有大纲 ${c.outlineCount}` : ""}）{c.coveredVariant ? " ⚠️已覆盖变体" : ""}</option>)}
           </Select>
         </Field>
+        {clusters.find((c) => c.id === outlineForm.clusterId)?.outlineCount ? (
+          <p className="muted" style={{ margin: 0 }}>该簇已有大纲——一簇=一选题，通常应更新既有大纲（Agent 口同簇新建会被 duplicate 拦下）；此处继续创建会形成同题组。</p>
+        ) : null}
         <Field label="适合平台（逗号分隔，如 gzh,xhs-note）">
           <input value={outlineForm.platforms} onChange={(e) => setOutlineForm({ ...outlineForm, platforms: e.target.value })} />
         </Field>

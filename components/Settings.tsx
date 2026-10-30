@@ -19,6 +19,10 @@ export function Settings({
   const [metrics, setMetrics] = useState<any[]>([]);
   const [collections, setCollections] = useState<{ today: any; yesterday: any } | null>(null);
   const [seoSrc, setSeoSrc] = useState<any>(null);
+  // R10.37 B-2：归档管理（GET /archives 总览 + 分页读 + 恢复端点）
+  const [archives, setArchives] = useState<{ collection: string; count: number }[]>([]);
+  const [archiveRows, setArchiveRows] = useState<{ collection: string; total: number; items: any[] } | null>(null);
+  const [archiveMsg, setArchiveMsg] = useState("");
   const [seoToken, setSeoToken] = useState("");
   const [seoSaving, setSeoSaving] = useState(false);
   const [seoMsg, setSeoMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -26,7 +30,22 @@ export function Settings({
     void api<{ items: any[] }>("model-metrics?days=7").then((r) => setMetrics(r.items || [])).catch(() => {});
     void api<{ today: any; yesterday: any }>("collections-report").then(setCollections).catch(() => {});
     void api<any>("seoDataSource").then(setSeoSrc).catch(() => {});
+    void api<{ items: { collection: string; count: number }[] }>("archives").then((r) => setArchives(r.items || [])).catch(() => {});
   }, []);
+  const openArchive = async (collection: string, offset = 0) => {
+    try {
+      const r = await api<{ total: number; items: any[] }>(`archives/${collection}?limit=20&offset=${offset}`);
+      setArchiveRows({ collection, total: r.total, items: r.items || [] });
+    } catch (e: any) { setArchiveMsg(e?.message || String(e)); }
+  };
+  const restoreArchive = async (collection: string, id: string) => {
+    try {
+      await api(`archives/${collection}/${id}/restore`, {});
+      setArchiveMsg(`已恢复 ${id} 回主集合。`);
+      await openArchive(collection, 0);
+      void api<{ items: { collection: string; count: number }[] }>("archives").then((r) => setArchives(r.items || [])).catch(() => {});
+    } catch (e: any) { setArchiveMsg(e?.message || String(e)); }
+  };
   const [value, setValue] = useState({
     baseUrl: config.baseUrl,
     model: config.model,
@@ -465,6 +484,41 @@ export function Settings({
         <p className="helper-text" style={{ marginBottom: 0 }}>
           janitor 每日快照 documents 全集合行数；意外暴增/暴减先看备份（backups/）与保险丝快照（data/snapshots/，保留 3 份）。
         </p>
+        <details className="fold-card" style={{ marginTop: 10 }}>
+          <summary><h3 style={{ display: "inline", margin: 0, fontSize: 14 }}>归档管理（可查可恢复）</h3></summary>
+          <p className="muted" style={{ margin: "6px 0" }}>pending 满 7 天 / 已拍板满 30 天移入归档；归档满 90 天自动清理。恢复=移回主集合（剥离归档标记）。</p>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {archives.length === 0 && <span className="muted">暂无归档集合。</span>}
+            {archives.map((a) => (
+              <button key={a.collection} className={archiveRows?.collection === a.collection ? "pill" : "pill"} style={{ cursor: "pointer" }}
+                onClick={() => void openArchive(a.collection)}>
+                {a.collection} · {a.count}
+              </button>
+            ))}
+          </div>
+          {archiveMsg && <p role="status" className="notice" style={{ margin: "8px 0" }}>{archiveMsg}</p>}
+          {archiveRows && (
+            <div style={{ maxHeight: 260, overflowY: "auto", marginTop: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead><tr style={{ textAlign: "left", opacity: 0.7 }}><th style={{ padding: "3px 6px" }}>标题</th><th>状态</th><th>归档原因</th><th>归档于</th><th></th></tr></thead>
+                <tbody>
+                  {archiveRows.items.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ padding: "3px 6px", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.id}>{String(r.title || "").slice(0, 40)}</td>
+                      <td>{r.decision || "—"}</td>
+                      <td>{r.expiredReason || "—"}</td>
+                      <td>{String(r.archivedAt || "").slice(0, 10)}</td>
+                      <td><button className="button-secondary" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => void restoreArchive(archiveRows.collection, r.id)}>恢复</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {archiveRows.total > archiveRows.items.length && (
+                <p className="muted" style={{ margin: "6px 0 0" }}>共 {archiveRows.total} 条，当前显示前 {archiveRows.items.length} 条（恢复后可再翻）。</p>
+              )}
+            </div>
+          )}
+        </details>
       </section>
 
       {/* ⑨ 危险操作 */}

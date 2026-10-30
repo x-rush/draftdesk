@@ -120,14 +120,15 @@ export const routes: RouteDef[] = [
       if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
       // R10.7 P0-4：未知平台 400（原裸 string 回退让拍板静默失效）
       const key = normalizePlatform(parsed.platform);
-      if (!key) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}。`, 400);
+      if (!key) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}。`, 400, "UNKNOWN_PLATFORM");
       const per = { ...(outline.perPlatformDecision || {}), [key]: parsed.decision };
       const aggregate = aggregateOutlineDecision({ ...outline, perPlatformDecision: per });
       db.put("outlines", params.id, { ...outline, perPlatformDecision: per, decision: aggregate, decidedBy: "human", decidedAt: now() });
       let synced = 0;
-      const title = String(outline.title || "").trim();
+      // R10.37 C④：行级同步收紧为「同簇同平台」——旧按 title 全表匹配会把 48h 外同标题跨簇行
+      // 静默连拍（title 去重只拦 48h 内）；簇才是选题身份。
       for (const row of db.list<any>("outlines")) {
-        if (row.id === params.id || String(row.title || "").trim() !== title) continue;
+        if (row.id === params.id || row.clusterId !== outline.clusterId) continue;
         if ((normalizePlatform(row.platform) ?? row.platform) !== key) continue;
         db.put("outlines", row.id, { ...row, decision: parsed.decision, decidedBy: "human", decidedAt: now() });
         synced++;
@@ -144,7 +145,7 @@ export const routes: RouteDef[] = [
       const outline = db.get<any>("outlines", params.id);
       if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
       const category = normalizeCategory(parsed.category);
-      if (!category) throw new AppError("未知题材，允许值：" + "newtech/news/oss/selfproduct/thinking/hot");
+      if (!category) throw new AppError("未知题材，允许值：" + "newtech/news/oss/selfproduct/thinking/hot", 400, "UNKNOWN_CATEGORY");
       db.put("outlines", params.id, { ...outline, category, updatedAt: now() });
       return json({ ok: true, category });
     },

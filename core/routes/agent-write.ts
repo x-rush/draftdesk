@@ -153,6 +153,10 @@ export const routes: RouteDef[] = [
     handler: async ({ db, params, readBody }) => {
       const { draftBody } = z.object({ draftBody: z.string().max(100000) }).strict().parse(await readBody());
       const { collection, row } = db.decisionTarget(params.id);
+      // R10.37 C⑧：状态门——出稿只对已批/写作中的条目有意义；pending/rejected/deferred 行
+      // 写草稿会造成「未拍板先有稿」的矛盾态（拍板翻转又清态不清稿，语义更乱）。
+      if (!["approved", "drafting"].includes(row.decision || "pending"))
+        throw new AppError(`该条目状态为 ${row.decision || "pending"}，只有 approved/drafting 可写草稿。`, 400, "NOT_DRAFTABLE");
       db.put(collection, row.id, { ...row, draftBody });
       return json({ ok: true, id: row.id, draftBody });
     },
@@ -342,7 +346,9 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, ""); // 空格全剥：中英混排「GPT-6首测/GPT-6 首测」同题
   const cutoff48h = new Date(Date.now() - 48 * 3600000).toISOString();
   const normalizedTitle = normalizeTitle(parsed.title);
-  const duplicate = db.list<any>("outlines").find((o) =>
+  // R10.37 B-1：标题闸与同簇闸共用一次全表扫（原两次 db.list 各自全量 JSON.parse）
+  const outlinesAll = db.list<any>("outlines");
+  const duplicate = outlinesAll.find((o) =>
     o.id !== parsed.id && normalizeTitle(String(o.title || "")) === normalizedTitle &&
     String(o.createdAt || "") >= cutoff48h,
   );
@@ -350,7 +356,7 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   // R10.35 裁决：同簇防线（写口版）——一簇=一选题=一条大纲。同簇已有 48h 内的大纲时，
   // 新建（无 id）一律回 duplicate（带 existingId，改内容走 id 更新），堵「续接同质化」
   // 在同簇换个标题再开一条的口子；48h 外的旧簇（老选题重做）不拦，与标题去重窗口同口径。
-  const clusterDup = !parsed.id && db.list<any>("outlines").find((o) =>
+  const clusterDup = !parsed.id && outlinesAll.find((o) =>
     o.clusterId === parsed.clusterId && String(o.createdAt || "") >= cutoff48h,
   );
   if (clusterDup) return json({ ok: true, duplicate: true, sameCluster: true, existingId: clusterDup.id, title: clusterDup.title }, 200);

@@ -277,12 +277,15 @@ test("R10.34 验收（v2）：物理归档 + 队列窗口 + discovery 清理", a
   assert.equal(arch.expiredReason, "expired-7d");
   assert.ok(arch.archivedAt);
   assert.ok(db.get("outlines", "out-fresh-pending"), "5 天前保留主集合");
-  assert.equal(db.get<any>("outlines", "out-old-approved").decision, "approved", "已拍不动");
-  // 队列窗口：8 天前 approved 默认不出队，includeAll 可查
+  assert.equal(db.get<any>("outlines", "out-old-approved").decision, "approved", "已拍不动（8 天 < 30 天在途归档线）");
+  // 队列窗口（R10.37 A-2 修订）：终态（rejected/published）超 7 天默认出队；
+  // 在途态（approved/drafting/deferred）豁免窗口（超期由 janitor 30 天归档 staled-* 兜底，不静默消失）。
+  db.put("outlines", "out-old-rejected", { id: "out-old-rejected", clusterId: "clu-exp", platform: "gzh", title: "八天前已否决", decision: "rejected", decidedAt: d(8), createdAt: d(8) });
   const queueDefault = db.decisionsQueue();
-  assert.ok(!queueDefault.some((x: any) => x.id === "out-old-approved"), "默认窗口不含 8 天前");
+  assert.ok(!queueDefault.some((x: any) => x.id === "out-old-rejected"), "终态 8 天前默认出队");
+  assert.ok(queueDefault.some((x: any) => x.id === "out-old-approved"), "在途态超窗仍可见（R10.37 A-2 豁免）");
   const queueAll = db.decisionsQueue(undefined, { includeAll: true });
-  assert.ok(queueAll.some((x: any) => x.id === "out-old-approved"), "includeAll 全量可查");
+  assert.ok(queueAll.some((x: any) => x.id === "out-old-rejected"), "includeAll 全量可查");
   // discovery：31 天前清、29 天前保留
   db.put("discovery", "collectall-31d", { jobId: "collectall-31d", at: d(31), planName: "P", mode: "analysis", sources: [], candidates: [] });
   db.put("discovery", "collectall-29d", { jobId: "collectall-29d", at: d(29), planName: "P", mode: "analysis", sources: [], candidates: [] });
