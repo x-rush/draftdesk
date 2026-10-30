@@ -24,6 +24,10 @@ services:
       DRAFTDESK_DATA_DIR: /app/data
       DRAFTDESK_BACKUP_DIR: /app/backups
       DRAFTDESK_ALLOWED_HOSTS: host.docker.internal
+      # 会话鉴权（R10.39 上线前置）：公网 HTTPS 部署时在 .env 设置访问码即启用 UI 登录门
+      #（PWA/浏览器走 30 天会话 cookie，机器访问可另配 DRAFTDESK_UI_TOKEN 头令牌）。
+      # 不设置=本机模式零变化。
+      DRAFTDESK_ACCESS_CODE: ${DRAFTDESK_ACCESS_CODE:-}
       DRAFTDESK_AI_API_KEY: ${DRAFTDESK_AI_API_KEY:-}
       DRAFTDESK_AI_BASE_URL: ${DRAFTDESK_AI_BASE_URL:-}
       DRAFTDESK_AI_MODEL: ${DRAFTDESK_AI_MODEL:-qwen3.8-flash}

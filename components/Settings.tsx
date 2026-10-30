@@ -19,6 +19,8 @@ export function Settings({
   const [metrics, setMetrics] = useState<any[]>([]);
   const [collections, setCollections] = useState<{ today: any; yesterday: any } | null>(null);
   const [seoSrc, setSeoSrc] = useState<any>(null);
+  // R10.39 会话登出（DRAFTDESK_ACCESS_CODE 启用时显示）
+  const [session, setSession] = useState<{ enabled: boolean; authenticated: boolean } | null>(null);
   // R10.37 B-2：归档管理（GET /archives 总览 + 分页读 + 恢复端点）
   const [archives, setArchives] = useState<{ collection: string; count: number }[]>([]);
   const [archiveRows, setArchiveRows] = useState<{ collection: string; total: number; items: any[] } | null>(null);
@@ -31,6 +33,7 @@ export function Settings({
     void api<{ today: any; yesterday: any }>("collections-report").then(setCollections).catch(() => {});
     void api<any>("seoDataSource").then(setSeoSrc).catch(() => {});
     void api<{ items: { collection: string; count: number }[] }>("archives").then((r) => setArchives(r.items || [])).catch(() => {});
+    void api<{ enabled: boolean; authenticated: boolean }>("session").then(setSession).catch(() => {});
   }, []);
   const openArchive = async (collection: string, offset = 0) => {
     try {
@@ -520,6 +523,18 @@ export function Settings({
           )}
         </details>
       </section>
+
+      {session?.enabled && session.authenticated && (
+        <section className="form-section" style={{ marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="muted">受保护部署（访问码已启用），本机会话 30 天有效。</span>
+            <button className="button-secondary" onClick={async () => {
+              try { await fetch("/api/v1/session", { method: "DELETE" }); } catch { /* 忽略网络错误 */ }
+              location.href = "/login";
+            }}>退出登录（撤销本机会话）</button>
+          </div>
+        </section>
+      )}
 
       {/* ⑨ 危险操作 */}
       <p className="dash-label"><TriangleAlert size={14} /> 危险操作</p>

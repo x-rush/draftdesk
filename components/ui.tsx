@@ -47,8 +47,15 @@ export async function api<T = any>(path: string, value?: unknown): Promise<T> {
           body: JSON.stringify(value),
         },
   );
-  const result = await r.json();
-  if (!r.ok) throw new ApiError(result.error || "请求未完成", r.status, result.code);
+  const result = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // 会话过期（R10.39）：跳登录页带回跳地址；登录页自身与登录请求除外（防环）
+    if (r.status === 401 && result?.code === "SESSION_REQUIRED" && !location.pathname.startsWith("/login")) {
+      location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+      throw new ApiError("会话已过期，正在跳转登录…", 401, "SESSION_REQUIRED");
+    }
+    throw new ApiError(result.error || "请求未完成", r.status, result.code);
+  }
   return result;
 }
 export function download(name: string, value: unknown) {

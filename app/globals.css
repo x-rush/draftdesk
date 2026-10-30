@@ -2290,3 +2290,20 @@ legend {
   font-size: 16px; cursor: pointer; box-shadow: 0 4px 14px #233b321f;
 }
 .back-to-top:hover { background: var(--green); color: #fff; }
+
+/* ── 触控增强（R10.39 移动端批）：pointer:coarse=裸指设备（手机/平板）──
+   命中区：徽章/按钮/下拉撑到 ≥32px 高（Apple HIG 44/Material 48 的密度折中，
+   保持信息密度的同时降低误触）；小字底线 12px（徽章/元信息类）。
+   鼠标/触控板设备不受影响（pointer:fine 不命中）。 */
+@media (pointer: coarse) {
+  main .pill { padding: 7px 11px; font-size: 12px; display: inline-flex; align-items: center; min-height: 30px; }
+  /* 徽章是 inline span：纵向 padding 不扩行盒，必须 inline-flex+min-height 才真正放大命中区 */
+  main .creation-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 10px; font-size: 12px; }
+  main button:not(.decision-title) { min-height: 32px; }
+  main .decision-title { display: inline-block; padding: 3px 0; min-height: 28px; }
+  main .select-trigger { min-height: 36px; }
+  main .decision-meta, main .muted { font-size: 12px; }
+  main input[type="checkbox"] { width: 22px; height: 22px; }
+  /* 决策行操作区在窄屏留足指距 */
+  main .decision-row .card-actions { gap: 8px; }
+}
