@@ -21,10 +21,42 @@ export class KV {
    CREATE TABLE IF NOT EXISTS budgets(day TEXT PRIMARY KEY,reserved INTEGER NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS locks(id TEXT PRIMARY KEY,expires INTEGER NOT NULL);
   `);
+    this.ensureHotPathIndexes();
+  }
+  // ---- 性能下推基座（R10.38）：高频过滤字段的 VIRTUAL 生成列 + 复合索引 ----
+  // 背景：db.list = 取集合全部行逐行 JSON.parse——seen-terms 18312 行 52-75ms/次，
+  // 夜间挖掘链 4-5 个 tick 各自全扫。生成列让「按字段过滤/排序」在 SQLite C 层完成，
+  // 只把命中行的 body 交给 JS。VIRTUAL 零迁移成本（不重写表），写成本=每次 put 多几次
+  // C 级 json_extract + 索引维护（微秒级）；查询不命中索引时最多退化回原行为，不炸。
+  // 列名与 body 字段同名；首建索引需扫一次全表（46MB 活库秒级，仅首次部署那一次）。
+  private ensureHotPathIndexes() {
+    // 注意：table_info 隐藏生成列（SQLite 3.54 实测 hidden=2），幂等检查必须用 table_xinfo——
+    // 否则重开时误判列缺失，ALTER 抛 duplicate column（曾引发全部重开型测试雪崩）。
+    const cols = new Set((this.db.prepare("PRAGMA table_xinfo(documents)").all() as Array<{ name: string }>).map((c) => c.name));
+    const generated: Array<[string, string]> = [
+      ["decision", "$.decision"], ["createdAt", "$.createdAt"], ["clusterId", "$.clusterId"],
+      ["status", "$.status"], ["category", "$.category"], ["at", "$.at"], ["relevance", "$.relevance"], ["jobId", "$.jobId"],
+    ];
+    for (const [name, path] of generated)
+      if (!cols.has(name))
+        this.db.exec(`ALTER TABLE documents ADD COLUMN "${name}" TEXT GENERATED ALWAYS AS (json_extract(body,'${path}')) VIRTUAL`);
+    this.db.exec(`
+   CREATE INDEX IF NOT EXISTS idx_doc_decision ON documents(collection,"decision");
+   CREATE INDEX IF NOT EXISTS idx_doc_created ON documents(collection,"createdAt");
+   CREATE INDEX IF NOT EXISTS idx_doc_cluster ON documents(collection,"clusterId");
+   CREATE INDEX IF NOT EXISTS idx_doc_status ON documents(collection,"status");
+   CREATE INDEX IF NOT EXISTS idx_doc_category ON documents(collection,"category");
+   CREATE INDEX IF NOT EXISTS idx_doc_at ON documents(collection,"at");
+   CREATE INDEX IF NOT EXISTS idx_doc_relevance ON documents(collection,"relevance");
+   CREATE INDEX IF NOT EXISTS idx_doc_job ON documents(collection,"jobId");
+  `);
   }
   close() {
     // 幂等：双关（异常路径的 finally 兜底）不抛，避免掩盖原始错误
     try {
+      // R10.38：checkpoint(TRUNCATE) 同步清零 WAL——Windows 下 close 后 -wal/-shm 句柄
+      // 释放有延迟（测试 finally rmSync 曾 EPERM），先清 WAL 消除竞态窗口。
+      try { this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* 忙时跳过：close 兜底 */ }
       this.db.close();
     } catch (e) {
       if (!/not open/i.test(String(e))) throw e;
@@ -107,5 +139,12 @@ export class KV {
     if (params.length !== expected)
       throw new Error(`SQL 参数个数不匹配：绑定 ${params.length}，占位符 ${expected}——${sql.slice(0, 120)}`);
     return this.prepared(sql).all(...params) as Array<Record<string, unknown>>;
+  }
+  // 下推查询（R10.38）：WHERE 片段引用生成列（带引号标识符），值全走参数绑定——
+  // where 只允许代码内常量字符串，禁止拼接外部输入。命中生成列索引时 SQL 层过滤，
+  // 只 parse 命中行；未命中索引（列不在生成列清单内）时退化为全集合扫描，行为等价。
+  selectWhere<T>(collection: string, where: string, ...params: unknown[]): Array<{ id: string; body: T }> {
+    return (this.sqlRows(`SELECT id, body FROM documents WHERE collection=? AND (${where})`, collection, ...params) as Array<{ id: string; body: string }>)
+      .map((r) => ({ id: r.id, body: JSON.parse(r.body) as T }));
   }
 }

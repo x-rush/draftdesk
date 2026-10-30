@@ -127,8 +127,10 @@ export const routes: RouteDef[] = [
       let synced = 0;
       // R10.37 C④：行级同步收紧为「同簇同平台」——旧按 title 全表匹配会把 48h 外同标题跨簇行
       // 静默连拍（title 去重只拦 48h 内）；簇才是选题身份。
-      for (const row of db.list<any>("outlines")) {
-        if (row.id === params.id || row.clusterId !== outline.clusterId) continue;
+      // R10.38 下推：clusterId 生成列索引点查（原全表 parse）。
+      for (const r of db.kv.selectWhere<any>("outlines", `"clusterId" = ?`, outline.clusterId)) {
+        const row = r.body;
+        if (row.id === params.id) continue;
         if ((normalizePlatform(row.platform) ?? row.platform) !== key) continue;
         db.put("outlines", row.id, { ...row, decision: parsed.decision, decidedBy: "human", decidedAt: now() });
         synced++;

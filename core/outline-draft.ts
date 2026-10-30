@@ -90,11 +90,18 @@ export function outlineDraftTick(db: Store, runModel: ModelRunner = requestModel
 // 存量克隆行（platform=tiebuhao）本身算已覆盖，不回填不删除。
 // 每次运行幂等（查重后补平台），不消耗模型调用。
 export function ensureTiebuhaoClones(db: Store): number {
+  // R10.38：一次扫描建簇索引消 O(n²)（原每个资讯行对全表 filter 找同簇行）
   const outlines = db.list<any>("outlines");
+  const byCluster = new Map<string, any[]>();
+  for (const o of outlines) {
+    const bucket = byCluster.get(o.clusterId) || [];
+    bucket.push(o);
+    byCluster.set(o.clusterId, bucket);
+  }
   const newsish = outlines.filter((o) => (o.category === "news" || o.category === "newtech") && !o.cloneOf);
   let patched = 0;
   for (const o of newsish) {
-    const clusterRows = outlines.filter((x) => x.clusterId === o.clusterId);
+    const clusterRows = byCluster.get(o.clusterId) || [];
     // 已覆盖判定：同簇任一行 platform=tiebuhao（存量克隆行），或 platforms 已含 tiebuhao
     if (clusterRows.some((x) => x.platform === "tiebuhao" || (x.platforms || []).includes("tiebuhao"))) continue;
     const prev = db.get<any>("outlines", o.id);

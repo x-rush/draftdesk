@@ -24,8 +24,9 @@ type DoFetch = typeof fetch;
 // region 分流（海外定位批）：region 参数指定时只取该线种子（global 引擎展开海外词、
 // cn 引擎展开中文词），两条内容线数据不混；region 缺失按 global 兜底。
 export function collectSeeds(db: Store, limit = SEED_LIMIT, region?: "global" | "cn"): { term: string; status: string; region?: string }[] {
-  const terms = db.list<any>("seen-terms").filter((t) => {
-    if (t.status === "archived" || t.offTopic || t.relevance !== "strong") return false;
+  // R10.38 下推：relevance=strong 索引候选（原全量 parse 词库）
+  const terms = db.kv.selectWhere<any>("seen-terms", `"relevance" = 'strong'`).map((r) => r.body).filter((t) => {
+    if (t.status === "archived" || t.offTopic) return false;
     if (region && (t.region ?? "global") !== region) return false;
     return true;
   });
@@ -323,8 +324,9 @@ export async function fetchPaa(q: string, doFetch: DoFetch, outer?: AbortSignal)
 // 问题词入 seen-terms（intent=question，seed=rising 词）。单词失败跳过，300ms 间隔防限流。
 export async function runPaa(db: Store, doFetch: DoFetch = fetch): Promise<{ rising: number; questions: number; skipped: number }> {
   const stats = { rising: 0, questions: 0, skipped: 0 };
-  const rising = db.list<any>("seen-terms")
-    .filter((t) => t.status === "rising" && !t.offTopic && t.relevance === "strong")
+  const rising = db.kv.selectWhere<any>("seen-terms", `"status" = 'rising' AND "relevance" = 'strong'`)
+    .map((r) => r.body)
+    .filter((t) => !t.offTopic)
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, 8);
   const outer = AbortSignal.timeout(8 * 60000);

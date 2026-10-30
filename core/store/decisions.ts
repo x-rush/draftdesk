@@ -104,19 +104,25 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
     },
     // 决策队列：产物 + 大纲 + 手动题合并（决策挂在原条目上；手动题是唯一的独立记录形态）。
     decisionsQueue(status?: string, opts?: { includeAll?: boolean }) {
+      // R10.38 下推：默认窗口先在 SQL 层过滤（decision/createdAt 生成列索引），只 parse 命中行；
+      // JS 侧窗口链保留作第二道带（语义兜底，双滤零成本）。includeAll 走原全量。
+      const cutoff7d = new Date(Date.now() - 7 * 86400000).toISOString();
+      const fetchRows = (collection: string) => opts?.includeAll
+        ? kv.list<any>(collection)
+        : kv.selectWhere<any>(collection, `"decision" IN ('approved','drafting','deferred') OR "createdAt" >= ? OR "createdAt" IS NULL`, cutoff7d).map((r) => r.body);
       const rows: any[] = [];
-      for (const a of kv.list<any>("artifacts")) {
+      for (const a of fetchRows("artifacts")) {
         if (a.archived || (a.kind as string) === "person") continue;
         rows.push({ sourceType: "artifact", id: a.id, kind: a.kind, title: a.title, summary: a.summary, quality: a.quality || "review", evidenceQuality: a.quality || "review",
           decision: a.decision || "pending", platforms: a.platforms, suggestions: a.suggestions, rejectReason: a.rejectReason,
           publishedRef: a.publishedRef, draftBody: a.draftBody, createdAt: a.createdAt, evidenceCount: (a.evidenceIds || []).length });
       }
-      for (const o of kv.list<any>("outlines"))
+      for (const o of fetchRows("outlines"))
         rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
           decision: o.decision, platform: o.platform, // R10.35：platform 为主平台（=platforms[0]），platforms 为适合平台全集
           platforms: o.platforms?.length ? o.platforms : [o.platform], recommendation: o.recommendation, category: o.category, perPlatformDecision: o.perPlatformDecision, outline: o.outline,
           suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt });
-      for (const d of kv.list<any>("decisions"))
+      for (const d of fetchRows("decisions"))
         rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
           platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", draftBody: d.draftBody, createdAt: d.createdAt });
       // R10.34-2 + R10.37 A-2：审查台只见活跃数据——pending/终态（rejected/published）超 7 天出窗

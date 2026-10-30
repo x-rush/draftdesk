@@ -462,8 +462,10 @@ export function seenJudgeTick(db: Store, doFetch: typeof fetch = fetch, opts: { 
   }
   const running = db.get<any>("meta", "seen-judge-running");
   if (running && Date.now() - Date.parse(running.at) < 45 * 60000) return;
-  const queue = db.list<any>("seen-terms")
-    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global" && (typeof t.serpDedicated !== "number" || isSerpStale(t)))
+  // R10.38 下推：relevance 生成列索引先取 strong 候选（18312 行词库全量 parse 52-75ms → 只 parse strong 子集）
+  const queue = db.kv.selectWhere<any>("seen-terms", `"relevance" = 'strong'`)
+    .map((r) => r.body)
+    .filter((t) => t.status !== "archived" && (t.region ?? "global") === "global" && (typeof t.serpDedicated !== "number" || isSerpStale(t)))
     .sort((a, b) => wordScore(b) - wordScore(a));
   if (!queue.length) {
     if (byManual && !done) db.put("meta", doneKey, { at: nowDate.toISOString(), date: today, batches: 0, queue: 0, queried: 0, failed: 0, sites: 0 });

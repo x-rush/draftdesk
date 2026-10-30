@@ -331,9 +331,16 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   // R10.21-1 P0 + R10.26-4②：组校验锚「近 48h 最新 collectall 批」——堵跨零点窗与停摆日。
   // R10.27-A#6 复核：不扩到任意前缀——计划批在 external 下已无产生口（手动分析 R10.24 封死），
   // 扩面会破坏「fresh clone/测试自建批次不阻断」约定（consumer-v3 类场景），按设计保留 collectall 口径。
-  const recentBatch = db.list<any>("discovery")
-    .filter((d) => String(d.jobId || "").startsWith("collectall-"))
-    .sort((a, b) => Date.parse(b.at || "") - Date.parse(a.at || ""))[0];
+  // R10.38 下推：at 生成列索引排序（原全量 parse 46 个批次快照 22ms/次；现只 parse 命中行）。
+  const recentBatchRows = db.kv.sqlRows(
+    `SELECT body FROM documents WHERE collection='discovery' ORDER BY "at" DESC LIMIT 60`,
+  ) as Array<{ body: string }>;
+  // 惰性 parse：最新批通常即 collectall（典型只 parse 1 个巨行）；找不到再往前翻
+  let recentBatch: any;
+  for (const r of recentBatchRows) {
+    const d = JSON.parse(r.body) as any;
+    if (String(d.jobId || "").startsWith("collectall-")) { recentBatch = d; break; }
+  }
   if (recentBatch && Date.now() - Date.parse(recentBatch.at || "") < 48 * 3600000) {
     const recentGroups = db.get<any>("candidate-groups", "tg-" + recentBatch.jobId);
     if (!recentGroups && !parsed.id) throw new AppError(`组结构未写回（批次 ${recentBatch.jobId}），先 PUT /agent/triage/groups`, 400, "GROUPS_MISSING");
@@ -346,19 +353,17 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, ""); // 空格全剥：中英混排「GPT-6首测/GPT-6 首测」同题
   const cutoff48h = new Date(Date.now() - 48 * 3600000).toISOString();
   const normalizedTitle = normalizeTitle(parsed.title);
-  // R10.37 B-1：标题闸与同簇闸共用一次全表扫（原两次 db.list 各自全量 JSON.parse）
-  const outlinesAll = db.list<any>("outlines");
-  const duplicate = outlinesAll.find((o) =>
-    o.id !== parsed.id && normalizeTitle(String(o.title || "")) === normalizedTitle &&
-    String(o.createdAt || "") >= cutoff48h,
+  // R10.38 下推：标题闸/同簇闸取「48h 窗口内」候选行（createdAt 生成列索引范围扫，
+  // 只 parse 窗口行；归一化比对在 JS——NFC/全角变换 SQL 做不了）。同簇闸再叠加 clusterId 索引。
+  const windowOutlines = db.kv.selectWhere<any>("outlines", `"createdAt" >= ?`, cutoff48h).map((r) => r.body);
+  const duplicate = windowOutlines.find((o) =>
+    o.id !== parsed.id && normalizeTitle(String(o.title || "")) === normalizedTitle,
   );
   if (duplicate) return json({ ok: true, duplicate: true, existingId: duplicate.id, title: duplicate.title }, 200);
   // R10.35 裁决：同簇防线（写口版）——一簇=一选题=一条大纲。同簇已有 48h 内的大纲时，
   // 新建（无 id）一律回 duplicate（带 existingId，改内容走 id 更新），堵「续接同质化」
   // 在同簇换个标题再开一条的口子；48h 外的旧簇（老选题重做）不拦，与标题去重窗口同口径。
-  const clusterDup = !parsed.id && outlinesAll.find((o) =>
-    o.clusterId === parsed.clusterId && String(o.createdAt || "") >= cutoff48h,
-  );
+  const clusterDup = !parsed.id && db.kv.selectWhere<any>("outlines", `"clusterId" = ? AND "createdAt" >= ?`, parsed.clusterId, cutoff48h)[0]?.body;
   if (clusterDup) return json({ ok: true, duplicate: true, sameCluster: true, existingId: clusterDup.id, title: clusterDup.title }, 200);
   // R10.23-3 + R10.26-4②：跨日语义去重（48h 窗口不含当日）——更新路径同跑；
   // R10.27-F：向量线降级时照常写入但在大纲 doc 打 semanticDedupSkipped 标记（可观测，日报可查）

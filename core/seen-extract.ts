@@ -312,8 +312,10 @@ function judgeBackfillDoneKey(date: string) { return "judge-backfill-done:" + da
 
 export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Promise<number> {
   if (!db.config().apiKey) return 0;
-  const pending = db.list<any>("seen-terms")
-    .filter((t) => t.status !== "archived" && t.relevance !== "strong" && t.relevance !== "weak" && t.relevance !== "off")
+  // R10.38 下推：未判=relevance 不在三档（NULL 计未判）——生成列索引取候选再 JS 精滤
+  const pending = db.kv.selectWhere<any>("seen-terms", `("relevance" IS NULL OR "relevance" NOT IN ('strong','weak','off'))`)
+    .map((r) => r.body)
+    .filter((t) => t.status !== "archived")
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, BACKFILL_LIMIT);
   if (!pending.length) return 0;
@@ -360,9 +362,9 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
 
 // 待判池计数（批数闸原料）：与 judgeUnjudgedTerms 同一过滤口径
 export function unjudgedPendingCount(db: Store): number {
-  return db.list<any>("seen-terms")
-    .filter((t) => t.status !== "archived" && t.relevance !== "strong" && t.relevance !== "weak" && t.relevance !== "off")
-    .length;
+  return db.kv.selectWhere<any>("seen-terms", `("relevance" IS NULL OR "relevance" NOT IN ('strong','weak','off'))`)
+    .map((r) => r.body)
+    .filter((t) => t.status !== "archived").length;
 }
 
 // 日多批判定 tick（第五轮 §5）：提取日闸之外独立跑；fire-and-forget，串行防并发（running 键）。

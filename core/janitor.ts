@@ -184,16 +184,24 @@ export function purgeTerminalJobs(db: Store): number {
 // → archived-<decision>。覆盖 outlines/artifacts/decisions 三个主集合（手动卡一并治理）。
 // 主集合删除、*-archive 保留原记录 + archivedAt + expiredReason，可查可恢复。
 export function archiveExpiredOrders(db: Store, nowDate: Date = new Date()): { outlines: number; artifacts: number; decisions: number } {
+  // R10.38 下推：先在 SQL 层取「足够老」的候选行（createdAt 生成列索引；ISO 字符串字典序=时间序，
+  // 日界=cutoff 日+1 天的日期串），JS 侧再做精确的上海日日差与 anchor（decidedAt）判定——
+  // 候选集远小于全集合（在档行 ≤30 天），parse 成本随之收缩。
+  // 预滤边界：只做粗滤不漏候选——达标行最早是 today-minDays 日（pending 7 天线），
+  // 其 createdAt 时戳最晚约 todayBase-(minDays-2)d（UTC 日期切片 vs 上海日的取整缝隙），
+  // 再留 1 天余量；精确判定全部留给 JS 侧原逻辑（候选只多不少）。
+  const todayBase = Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00");
+  const minDays = Math.min(RETENTION.orderExpire.expirePendingAfterDays, RETENTION.orderExpire.archiveDecidedAfterDays);
+  const olderThan = new Date(todayBase - (minDays - 3) * 86400000).toISOString();
   const todayMs = Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00");
   const cutoffPending = RETENTION.orderExpire.expirePendingAfterDays;
   const cutoffDecided = RETENTION.orderExpire.archiveDecidedAfterDays;
   const out = { outlines: 0, artifacts: 0, decisions: 0 };
   const pairs = [["outlines", "outlines-archive"], ["artifacts", "artifacts-archive"], ["decisions", "decisions-archive"]] as const;
   for (const [collection, archive] of pairs) {
-    // db.list 只回 body 拿不到键名（历史坑）——SELECT 直取 id
-    const rows = db.db.prepare(`SELECT id, body FROM documents WHERE collection='${collection}'`).all() as Array<{ id: string; body: string }>;
+    const rows = db.kv.selectWhere<any>(collection, `"createdAt" < ?`, olderThan);
     for (const r of rows) {
-      const o = JSON.parse(r.body) as { decision?: string; createdAt?: string };
+      const o = r.body as { decision?: string; createdAt?: string };
       const decision = o.decision || "pending";
       // 已拍板行的时钟用 decidedAt（拍板起算）；pending 用 createdAt
       const anchor = decision === "pending" ? String(o.createdAt || "").slice(0, 10) : String((o as any).decidedAt || o.createdAt || "").slice(0, 10);
@@ -234,16 +242,17 @@ export function purgeExpiredArchives(db: Store, nowDate: Date = new Date()): num
 // 采集批次清理（R10.34-3）：discovery 批次（含候选快照=过程数据）超 30 天出库。
 // 组结构（candidate-groups）/大纲/decisions/机会卡是产物，独立集合，不受影响。
 export function purgeOldDiscovery(db: Store, nowDate: Date = new Date()): number {
+  // R10.38 下推：at 生成列索引取「足够老」候选（日界=30 天那天的日期串；批次行是巨大快照，
+  // 全量 parse 22ms/次——现在只 parse 真要删的行），JS 侧保留精确上海日日差判定。
+  const boundary = shanghaiDayOf(new Date(Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00") - RETENTION.discovery.purgeAfterDays * 86400000 + 86400000));
   const todayMs = Date.parse(shanghaiDayOf(nowDate) + "T00:00:00+08:00");
-  const rows = db.db.prepare("SELECT id, body FROM documents WHERE collection='discovery'").all() as Array<{ id: string; body: string }>;
   let purged = 0;
-  for (const r of rows) {
-    const d = JSON.parse(r.body) as { at?: string };
+  for (const r of db.kv.selectWhere<any>("discovery", `"at" < ?`, boundary)) {
+    const d = r.body as { at?: string };
     const at = String(d.at || "").slice(0, 10);
     const atMs = Date.parse(at + "T00:00:00+08:00");
     if (!Number.isFinite(atMs)) continue;
-    const ageDays = Math.floor((todayMs - atMs) / 86400000);
-    if (ageDays >= RETENTION.discovery.purgeAfterDays) { db.del("discovery", r.id); purged++; }
+    if (Math.floor((todayMs - atMs) / 86400000) >= RETENTION.discovery.purgeAfterDays) { db.del("discovery", r.id); purged++; }
   }
   return purged;
 }

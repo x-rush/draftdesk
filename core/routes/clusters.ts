@@ -9,25 +9,28 @@ import { markCoveredVariants, coveredVariantDoc } from "../topic-dedupe";
 
 export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "clusters", handler: ({ db }) => {
-    // 簇带 outlineCount（R10.37 C③）：审查台建大纲表单提示「该簇已有大纲 N 条」的数据源
+    // 簇带 outlineCount（R10.37 C③）：审查台建大纲表单提示「该簇已有大纲 N 条」的数据源。
+    // R10.38 下推：SQL GROUP BY 聚合（原全量 parse 后 Map 计数）。
     const counts = new Map<string, number>();
-    for (const o of db.list<any>("outlines")) counts.set(o.clusterId, (counts.get(o.clusterId) || 0) + 1);
+    for (const r of db.kv.sqlRows(`SELECT "clusterId" cid, COUNT(*) n FROM documents WHERE collection='outlines' GROUP BY "clusterId"`) as Array<{ cid: string | null; n: number }>)
+      if (r.cid) counts.set(r.cid, Number(r.n));
     return json({ items: (db.list("clusters") as any[]).filter((c) => c.status !== "archived").sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)).map((c) => ({ ...c, outlineCount: counts.get(c.id) || 0 })) });
   } },
   // R10.37 B-1：窗口化+分页——与 decisionsQueue 同口径（近 N 天或在途态可见，?all=1 全量），
   // decided 行由 janitor 30 天归档出主集合，主集合规模有界；前端 useWorkspaceData 只取 items 形状不变。
+  // R10.38 下推：过滤/排序/分页全在 SQL 层（decision/createdAt 生成列索引），只 parse 本页行。
   { methods: ["GET"], pattern: "outlines", handler: ({ db, query }) => {
     const all = query.get("all") === "1";
     const days = Math.min(Math.max(Number(query.get("days")) || 7, 1), 90);
     const limit = Math.min(Math.max(Number(query.get("limit")) || 500, 1), 2000);
     const offset = Math.max(Number(query.get("offset")) || 0, 0);
-    let rows = db.list<any>("outlines");
-    if (!all) {
-      const cutoff = Date.now() - days * 86400000;
-      rows = rows.filter((o) => ["approved", "drafting", "deferred"].includes(o.decision || "pending") || Date.parse(o.createdAt || "") >= cutoff);
-    }
-    rows.sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    return json({ total: rows.length, limit, offset, items: rows.slice(offset, offset + limit) });
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+    const where = all ? "1=1" : `("decision" IN ('approved','drafting','deferred') OR "createdAt" >= ?)`;
+    const params = all ? [] : [cutoff];
+    const total = (db.kv.sqlRows(`SELECT COUNT(*) c FROM documents WHERE collection='outlines' AND (${where})`, ...params) as Array<{ c: number }>)[0].c;
+    const rows = (db.kv.sqlRows(`SELECT body FROM documents WHERE collection='outlines' AND (${where}) ORDER BY "createdAt" DESC LIMIT ? OFFSET ?`, ...params, limit, offset) as Array<{ body: string }>)
+      .map((r) => JSON.parse(r.body));
+    return json({ total, limit, offset, items: rows });
   } },
   {
     methods: ["POST"],
