@@ -11,7 +11,7 @@ import { creationLabels } from "../core/workspace-ui";
 // 语义红线：quality 是证据可信度（AI 判），decision 是要不要写（人拍板）——两层不互相推导。
 type Row = {
   sourceType: string; id: string; kind: string; title: string; summary?: string; quality?: string;
-  decision: string; platform?: string; category?: string; perPlatformDecision?: Record<string, string>; outline?: string[]; platforms?: string[]; rejectReason?: string; publishedRef?: string;
+  decision: string; platform?: string; platforms?: string[]; recommendation?: string; category?: string; perPlatformDecision?: Record<string, string>; outline?: string[]; rejectReason?: string; publishedRef?: string;
   suggestions?: { by: string; verdict: string; score?: number; reason?: string }[];
   producedBy?: string;
   draftBody?: string;
@@ -33,6 +33,25 @@ function producedByLabel(by?: string): string {
 }
 const sourceFilterLabels: Record<string, string> = { outline: "大纲", manual: "手动" };
 
+// R10.35：一条选题的「适合平台」= 组内各行的 platforms 并集（主行优先保序）。
+// 单行新数据带 platforms；老数据没有 platforms，退回该行自己的 platform——
+// 这样存量 166 条多平台行聚合后，平台徽章集合与改造前完全等价，不会少平台。
+function groupPlatforms(primary: Row, members: Row[]): string[] {
+  const out: string[] = [];
+  const push = (raw?: string) => {
+    if (!raw) return;
+    const key = PLATFORM_KEYS.find((k) => k === raw || PLATFORM_LABELS[k] === raw);
+    if (key && !out.includes(key)) out.push(key);
+  };
+  for (const p of primary.platforms || []) push(p);
+  push(primary.platform);
+  for (const m of members) {
+    for (const p of m.platforms || []) push(p);
+    push(m.platform);
+  }
+  return out;
+}
+
 export function Review() {
   const [rows, setRows] = useState<Row[]>([]);
   const [detail, setDetail] = useState<any>(null);
@@ -50,7 +69,8 @@ export function Review() {
   const [personaText, setPersonaText] = useState("");
   const [aiPolicy, setAiPolicy] = useState<any>(null);
   const [consumerMode, setConsumerMode] = useState("external");
-  const [outlineForm, setOutlineForm] = useState({ clusterId: "", platform: "gzh", contentType: "长文", title: "" });
+  // R10.35：一个选题一条大纲——platforms 逗号分隔（适合平台），recommendation 为推荐建议
+  const [outlineForm, setOutlineForm] = useState({ clusterId: "", platforms: "gzh", contentType: "长文", title: "", recommendation: "" });
   const [clusters, setClusters] = useState<any[]>([]);
   // R10 第4段：今日总览（四段流水线一屏看全）+ 外部消费回执（超 24h 未跑提醒）
   const [today, setToday] = useState<any>(null);
@@ -93,28 +113,30 @@ export function Review() {
     return byDecision;
   }, [rows]);
   const visible = rows.filter((r) => (status === "all" ? true : r.decision === status)).filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter);
-  // 数据治理（根因 B）：同题 pending 聚合——外部 Agent 每轮重写同题 outline，
-  // 80+ 条里同题 4-6 连发无法浏览。组内取最新为主行，拍板=批量拍全组。
+  // 数据治理（根因 B + R10.35）：同选题聚合。
+  // R10.35 前大纲按平台拆行（一簇 4 行、标题各不同），按 title 聚合只能聚 2/48 簇；
+  // 现改按「选题身份」聚合——outline 用 clusterId（一簇=一个事件/选题方向），
+  // 其他来源（manual/artifact）无 clusterId 退回 title。组内取最新为主行，拍板=按平台批量。
   const groups = useMemo(() => {
-    const byTitle = new Map<string, Row[]>();
+    const byKey = new Map<string, Row[]>();
     for (const r of visible) {
-      const key = r.title.trim();
-      const bucket = byTitle.get(key) || [];
+      const key = r.sourceType === "outline" && r.clusterId ? "clu:" + r.clusterId : "title:" + r.title.trim();
+      const bucket = byKey.get(key) || [];
       bucket.push(r);
-      byTitle.set(key, bucket);
+      byKey.set(key, bucket);
     }
-    return [...byTitle.values()]
-      .map((members) => {
+    return [...byKey.entries()]
+      .map(([key, members]) => {
         const sorted = [...members].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        return { primary: sorted[0], members: sorted };
+        return { key, primary: sorted[0], members: sorted };
       })
       .sort((a, b) => b.primary.createdAt.localeCompare(a.primary.createdAt));
   }, [visible]);
   const expandedGroups = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = expandedGroups;
-  const toggleGroup = (title: string) => setOpenGroups((prev) => {
+  const toggleGroup = (key: string) => setOpenGroups((prev) => {
     const next = new Set(prev);
-    if (next.has(title)) next.delete(title); else next.add(title);
+    if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
   // 同题×N 不再连拍（第六轮批 B §2①）：组拍板=对组内每个平台行各拍各的平台——
@@ -197,8 +219,16 @@ export function Review() {
   }
   async function addOutline() {
     if (!outlineForm.clusterId || !outlineForm.title.trim()) return setNotice("选择簇并填写标题。");
+    const platforms = outlineForm.platforms.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean);
+    if (!platforms.length) return setNotice("至少填一个适合平台。");
     await act(async () => {
-      await api("outlines", { ...outlineForm, title: outlineForm.title.trim() });
+      await api("outlines", {
+        clusterId: outlineForm.clusterId,
+        platforms,
+        contentType: outlineForm.contentType,
+        title: outlineForm.title.trim(),
+        ...(outlineForm.recommendation.trim() ? { recommendation: outlineForm.recommendation.trim() } : {}),
+      });
       await reload();
       setNotice("大纲已创建，进入待决策队列。");
     });
@@ -315,15 +345,16 @@ export function Review() {
                   <strong className="decision-title" style={{ cursor: "default" }}>{row.title}</strong>
                 )}
                 {dupCount > 1 && (
-                  <button className="creation-badge" style={{ cursor: "pointer" }} onClick={() => toggleGroup(row.title)}>同题 ×{dupCount}{openGroups.has(row.title) ? " ▲" : " ▼"}</button>
+                  <button className="creation-badge" style={{ cursor: "pointer" }} onClick={() => toggleGroup(group.key)}>同题 ×{dupCount}{openGroups.has(group.key) ? " ▲" : " ▼"}</button>
                 )}
                 {row.quality && <span className="creation-badge">可信度 {qualityLabels[row.quality] || row.quality}</span>}
                 {row.draftBody && <span className="creation-badge" style={{ color: "#1a7f4b" }}>有草稿</span>}
                 {row.rejectReason && <span className="creation-badge">否决：{row.rejectReason}</span>}
               </div>
-              {row.sourceType === "outline" && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }} aria-label="按平台拍板">
-                  {PLATFORM_KEYS.map((k) => {
+              {row.sourceType === "outline" && groupPlatforms(row, group.members).length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, alignItems: "center" }} aria-label="适合平台与按平台拍板">
+                  <span className="muted" style={{ fontSize: 11 }} title="这条选题适合投放的平台（点徽章可单独拍板）">适合</span>
+                  {groupPlatforms(row, group.members).map((k) => {
                     const st = (row.perPlatformDecision?.[k] || (platformLabel(row.platform) === PLATFORM_LABELS[k] ? row.decision : "pending")) as string;
                     const color = st === "approved" || st === "published" ? "#1a7f4b" : st === "drafting" ? "#8a6d1a" : st === "rejected" ? "#8a3a3a" : undefined;
                     const cycle: Record<string, string> = { pending: "approved", approved: "drafting", drafting: "published", published: "rejected", rejected: "deferred", deferred: "pending" };
@@ -336,6 +367,11 @@ export function Review() {
                     );
                   })}
                 </div>
+              )}
+              {row.recommendation && (
+                <p className="decision-summary" style={{ marginTop: 6 }}>
+                  <span className="muted" style={{ fontSize: 11 }}>推荐 · </span>{row.recommendation}
+                </p>
               )}
               {row.summary && <p className="decision-summary" style={{ cursor: "pointer" }} title="点击展开/收起全文" onClick={(e) => { (e.currentTarget as HTMLElement).classList.toggle("open"); }}>{row.summary.slice(0, 400)}</p>}
               <div className="decision-meta">
@@ -350,7 +386,7 @@ export function Review() {
               {row.decision === "published" && row.publishedRef && (
                 <div className="decision-meta"><a href={row.publishedRef} target="_blank" rel="noreferrer">{row.publishedRef}</a></div>
               )}
-              {dupCount > 1 && openGroups.has(row.title) && (
+              {dupCount > 1 && openGroups.has(group.key) && (
                 <div className="group-members">
                   {group.members.slice(1).map((m) => (
                     <div className="decision-meta" key={m.id} style={{ borderTop: "1px dashed var(--line)", paddingTop: 6, marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -447,16 +483,19 @@ export function Review() {
       </details>
 
       <details className="fold-card review-form-fold">
-        <summary><h2 style={{ display: "inline", margin: 0 }}>内容簇与多平台大纲</h2></summary>
-        <p className="muted">多条同类资讯合并为一个簇；一个簇可产出多份不同平台的大纲，各自独立拍板。AI 自动聚合即将上线，当前支持手动登记。</p>
+        <summary><h2 style={{ display: "inline", margin: 0 }}>内容簇与选题大纲</h2></summary>
+        <p className="muted">多条同类资讯合并为一个簇。R10.35 起一个选题只写一条大纲：写清「讲什么、怎么讲」，用「适合平台」标注投放到哪几个平台，平台差异写进「推荐建议」。</p>
         <p className="muted">已有簇 {clusters.length} 个{clusters.length ? "：" + clusters.slice(0, 5).map((c) => c.topic + "（" + (c.producedBy || "human") + "）" + (c.coveredVariant ? ` ⚠️已覆盖变体（原选题：${c.coveredVariant.originTitle}，核心词重合 ${Math.round((c.coveredVariant.ratio || 0) * 100)}%）` : "")).join("、") : ""}</p>
         <Field label="簇 ID">
           <Select placeholder="选择内容簇…" value={outlineForm.clusterId || undefined} onChange={(e) => setOutlineForm({ ...outlineForm, clusterId: e.target.value })}>
             {clusters.map((c) => <option key={c.id} value={c.id}>{c.topic}（{c.memberCount} 条）{c.coveredVariant ? " ⚠️已覆盖变体" : ""}</option>)}
           </Select>
         </Field>
-        <Field label="平台">
-          <input value={outlineForm.platform} onChange={(e) => setOutlineForm({ ...outlineForm, platform: e.target.value })} />
+        <Field label="适合平台（逗号分隔，如 gzh,xhs-note）">
+          <input value={outlineForm.platforms} onChange={(e) => setOutlineForm({ ...outlineForm, platforms: e.target.value })} />
+        </Field>
+        <Field label="推荐建议（可选：为什么这么写、各平台怎么适配）">
+          <textarea rows={3} value={outlineForm.recommendation} onChange={(e) => setOutlineForm({ ...outlineForm, recommendation: e.target.value })} />
         </Field>
         <Field label="内容类型">
           <input value={outlineForm.contentType} onChange={(e) => setOutlineForm({ ...outlineForm, contentType: e.target.value })} />

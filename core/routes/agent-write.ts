@@ -291,7 +291,11 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   const parsed = z.object({
     id: z.string().min(1).max(100).optional(),
     clusterId: z.string().min(1),
-    platform: z.string().min(1).max(30),
+    // R10.35：platforms 为主字段（这条选题适合投哪些平台）；platform 退为主平台，
+    // 二者至少给一个。只给 platform 的旧调用照常工作（platforms 收敛成 [platform]）。
+    platform: z.string().min(1).max(30).optional(),
+    platforms: z.array(z.string().min(1).max(30)).max(9).optional(),
+    recommendation: z.string().max(2000).optional(),
     category: z.string().max(30).optional(),
     contentType: z.string().min(1).max(30),
     title: z.string().min(1).max(300),
@@ -302,8 +306,15 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   }).parse(input);
   if (!db.get<any>("clusters", parsed.clusterId)) throw new AppError("簇不存在，请先经 /api/v1/agent/clusters 创建。", 404, "NOT_FOUND");
   // R10.11-1 P0：平台归一与 UI 口同口径——未知值 400 带允许列表
-  const platform = normalizePlatform(parsed.platform);
-  if (!platform) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400);
+  const rawPlatforms = parsed.platforms?.length ? parsed.platforms : parsed.platform ? [parsed.platform] : [];
+  if (!rawPlatforms.length) throw new AppError(`platforms 或 platform 至少给一个；允许值：${PLATFORM_KEYS.join(", ")}。`, 400);
+  const platforms: string[] = [];
+  for (const raw of rawPlatforms) {
+    const p = normalizePlatform(raw);
+    if (!p) throw new AppError(`未知平台「${raw}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400);
+    if (!platforms.includes(p)) platforms.push(p); // 去重保序：重复平台无意义
+  }
+  const platform = platforms[0];
   const category = parsed.category ? normalizeCategory(parsed.category) ?? parsed.category : undefined;
   // R10.21-1 P0 + R10.26-4②：组校验锚「近 48h 最新 collectall 批」——堵跨零点窗与停摆日。
   // R10.27-A#6 复核：不扩到任意前缀——计划批在 external 下已无产生口（手动分析 R10.24 封死），
@@ -339,8 +350,8 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
   }
   const existing = parsed.id ? db.get<any>("outlines", parsed.id) : null;
   const outline = existing
-    ? { ...existing, clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) }
-    : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform, ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now(), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) };
+    ? { ...existing, clusterId: parsed.clusterId, platform, platforms, ...(parsed.recommendation !== undefined ? { recommendation: parsed.recommendation } : {}), ...(category ? { category } : {}), contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || existing.outline, keyPoints: parsed.keyPoints || existing.keyPoints, evidenceRefs: parsed.evidenceRefs || existing.evidenceRefs, ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) }
+    : { id: "out-" + randomUUID(), clusterId: parsed.clusterId, platform, platforms, ...(parsed.recommendation !== undefined ? { recommendation: parsed.recommendation } : {}), category, contentType: parsed.contentType, title: parsed.title, outline: parsed.outline || [], keyPoints: parsed.keyPoints || [], evidenceRefs: parsed.evidenceRefs || [], decision: "pending", ...(parsed.draftBody !== undefined ? { draftBody: parsed.draftBody } : {}), producedBy: by(ctx), createdAt: now(), ...(semanticSkipped ? { semanticDedupSkipped: true } : {}) };
   db.put("outlines", outline.id, outline);
   return json(outline, existing ? 200 : 201);
 }

@@ -24,18 +24,20 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
   const pending = outlines
     .filter((o) => o.decision === "pending")
     .sort((a, b) => outlineScore(b) - outlineScore(a) || b.createdAt.localeCompare(a.createdAt));
-  // 数据治理：同题聚合（与审查台同方案）——同题 pending 只显示最新一条，
-  // 徽章「同题 ×N」展开组明细；拍板=全组批量。
+  // 数据治理（R10.35）：同选题聚合——按选题身份（outline=clusterId，其余回退 title）。
+  // R10.35 前大纲按平台拆行、同簇标题各不相同，按 title 聚不起来（实测 48 个多行簇只能聚 2 个）；
+  // 现在一个选题一条大纲，platforms 标注适合投放的平台。
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const groups = (() => {
-    const byTitle = new Map<string, any[]>();
+    const byKey = new Map<string, any[]>();
     for (const o of pending) {
-      const key = o.title.trim();
-      const bucket = byTitle.get(key);
+      const key = o.sourceType === "outline" && o.clusterId ? "clu:" + o.clusterId : "title:" + String(o.title || "").trim();
+      const bucket = byKey.get(key);
       if (bucket) bucket.push(o);
-      else byTitle.set(key, [o]);
+      else byKey.set(key, [o]);
     }
-    return [...byTitle.values()].map((members) => ({
+    return [...byKey.entries()].map(([key, members]) => ({
+      key,
       title: members[0].title.trim(),
       members,
       primary: members[0],
@@ -93,7 +95,7 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                 <div className="row-content">
                   <div className="row-meta">
                     {dupCount > 1 && (
-                      <button className="pill" style={{ cursor: "pointer" }} onClick={() => setOpenGroups((prev) => { const next = new Set(prev); if (next.has(group.title)) next.delete(group.title); else next.add(group.title); return next; })}>
+                      <button className="pill" style={{ cursor: "pointer" }} onClick={() => setOpenGroups((prev) => { const next = new Set(prev); if (next.has(group.key)) next.delete(group.key); else next.add(group.key); return next; })}>
                         同题 ×{dupCount}
                       </button>
                     )}
@@ -133,7 +135,7 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                     </Select>
                   )}
                 </div>
-                {dupCount > 1 && openGroups.has(group.title) && (
+                {dupCount > 1 && openGroups.has(group.key) && (
                   <div style={{ width: "100%", borderTop: "1px dashed var(--line)", paddingTop: 8, display: "grid", gap: 8 }}>
                     {group.members.map((m) => (
                       <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -167,10 +169,14 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
   const evidenceRefs = o.evidenceRefs || [];
   const statusLabel = ({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[o.decision] || o.decision;
   const cycle: Record<string, string> = { pending: "approved", approved: "drafting", drafting: "published", published: "rejected", rejected: "deferred", deferred: "pending" };
+  // R10.35：适合平台 = platforms（新数据）或 [platform]（存量单平台行），只渲染这些平台的拍板徽章
+  const fitPlatforms = (o.platforms?.length ? o.platforms : [o.platform])
+    .map((p: string) => PLATFORM_KEYS.find((k) => k === p || PLATFORM_LABELS[k] === p))
+    .filter(Boolean) as string[];
   return (
     <Drawer
       title={o.title}
-      subtitle={[platformLabel(o.platform) || o.platform, o.category ? categoryLabel(o.category) : "", cluster ? cluster.topic : "选题收集箱", date(o.createdAt)].filter(Boolean).join(" · ")}
+      subtitle={[fitPlatforms.map((k) => PLATFORM_LABELS[k]).join(" / ") || platformLabel(o.platform), o.category ? categoryLabel(o.category) : "", cluster ? cluster.topic : "选题收集箱", date(o.createdAt)].filter(Boolean).join(" · ")}
       onClose={onClose}
       wide
     >
@@ -197,16 +203,34 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
         )}
       </div>
 
-      {/* 按平台拍板（第六轮批 B）：五平台徽章，点击循环状态——同题×N 互不连拍 */}
-      {onPlatformDecide && (
+      {/* 推荐建议（R10.35）：为什么这么写、投哪些平台、各平台怎么适配 */}
+      {o.recommendation && (
+        <section className="drawer-section">
+          <h3>推荐建议</h3>
+          <p style={{ margin: 0, lineHeight: 1.7 }}>{o.recommendation}</p>
+        </section>
+      )}
+
+      {/* 适合平台（R10.35）：一条选题标注适合投哪些平台，不再每平台各写一份大纲 */}
+      {fitPlatforms.length > 0 && (
+        <section className="drawer-section">
+          <h3>适合平台（{fitPlatforms.length}）</h3>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {fitPlatforms.map((k) => <span key={k} className="pill">{PLATFORM_LABELS[k]}</span>)}
+          </div>
+        </section>
+      )}
+
+      {/* 按平台拍板（第六轮批 B）：只列适合平台，点击循环状态——同题×N 互不连拍 */}
+      {onPlatformDecide && fitPlatforms.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} aria-label="按平台拍板">
-          {PLATFORM_KEYS.map((k) => {
+          {fitPlatforms.map((k) => {
             const st = (o.perPlatformDecision?.[k] || (platformLabel(o.platform) === PLATFORM_LABELS[k] ? o.decision : "pending")) as string;
             const color = st === "approved" || st === "published" ? "#1a7f4b" : st === "drafting" ? "#8a6d1a" : st === "rejected" ? "#8a3a3a" : undefined;
             return (
               <button key={k} className="pill" style={{ cursor: "pointer", color, borderColor: color }}
                 title={`点击拍板：${PLATFORM_LABELS[k]} → ${({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[cycle[st]] || cycle[st]}`}
-                disabled={busy || !o.id?.startsWith?.("out") && false}
+                disabled={busy}
                 onClick={() => void onPlatformDecide(k, cycle[st] || "pending")}>
                 {PLATFORM_LABELS[k]} · {({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[st] || st}
               </button>

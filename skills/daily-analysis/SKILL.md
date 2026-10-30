@@ -1,15 +1,15 @@
 ---
 name: daily-analysis
-description: 接管 DraftDesk 工作台的每日语义处理：把当日采集候选合并归组、判级写回、归档噪音、为强注意力组产出多平台大纲与应用机会卡。适用于任何能调 HTTP 的外部 Agent（OpenClaw/Hermes/自建脚本）。
+description: 接管 DraftDesk 工作台的每日语义处理：把当日采集候选合并归组、判级写回、归档噪音、为有注意力的组产出选题大纲（一选题一条 + 适合平台 + 推荐建议）与应用机会卡。适用于任何能调 HTTP 的外部 Agent（OpenClaw/Hermes/自建脚本）。
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # 每日主分析（DraftDesk 工作台接管流程）
 
 ## 你在做什么
 
-工作台每天 01:00 自动采集全部数据源落盘（一个批次，jobId 形如 `collectall-YYYY-MM-DD`）。你的任务是在它之后跑一次**全套语义处理**：通读全部候选 → 语义合并同事件 → 判级 → 写回组结构 → 归档噪音 → 给强组出多平台大纲 → 给应用缺口出机会卡。老大只在审查台拍板，其余全部由你完成。
+工作台每天 01:00 自动采集全部数据源落盘（一个批次，jobId 形如 `collectall-YYYY-MM-DD`）。你的任务是在它之后跑一次**全套语义处理**：通读全部候选 → 语义合并同事件 → 判级 → 写回组结构 → 归档噪音 → 给出选题大纲（一个选题一条，标注适合平台与推荐建议）→ 给应用缺口出机会卡。老大只在审查台拍板，其余全部由你完成。
 
 ## 前置：连接工作台
 
@@ -74,24 +74,39 @@ PUT $BASE/agent/triage/archive
 
 把判 none 的组写进归档（工作台里可查可恢复，不静默丢弃）。
 
-### ⑦ strong 组出多平台大纲
+### ⑦ 有注意力的组出选题大纲（一个选题一条）
+
+**核心口径（R10.35，老大 2026-10-30 拍板）：不要针对每个平台各写一份大纲。**
+一条大纲 = 一个选题方向（讲什么、怎么讲），用 `platforms` 标注它适合投放到哪几个平台，
+平台层面的差异（标题风格、篇幅、语气、分发策略）写进 `recommendation` 一句话推荐建议里。
 
 先查重（两道，都由工作台在写入时强制，但你要有意识）：
 - **标题级**：48h 内同标题（含全角/大小写变体）会被判 duplicate
 - **语义级**：与前 48h（不含当日）的组摘要向量相似度 >0.92 会被判 duplicate——**昨日/前日已有同事件组时，不要重复出题，挂到既有事件线上**（可用 `POST $BASE/agent/vectors/search {"index":"eventline","text":"<标题>","topK":5}` 检索历史事件线）
 
-对每个 strong 组，先 `PUT $BASE/agent/clusters` 建簇（`topic`=组标题、`kind`∈news/newtech/oss/selfproduct/thinking/hot），再按平台出大纲：
+对每个有注意力的组（strong 与 potential 都要，按组的实际价值定），先 `PUT $BASE/agent/clusters` 建簇（`topic`=组标题、`kind`∈news/newtech/oss/selfproduct/thinking/hot），再出大纲：
 
 ```
 PUT $BASE/agent/outlines
-{ "clusterId": "<簇id>", "platform": "gzh", "contentType": "长文", "title": "<选题句>", "outline": [...], "keyPoints": [...], "evidenceRefs": [组内url] }
+{
+  "clusterId": "<簇id>",
+  "platforms": ["gzh", "xhs-note"],          // 适合平台，1-4 个，按事件适配度选，不硬凑
+  "recommendation": "<推荐建议一句话：为什么这么写、主投哪个平台、各平台怎么适配>",
+  "contentType": "长文",
+  "title": "<选题句：带判断/承诺/角度，不是主题词>",
+  "outline": [...],                           // 大纲方向 3-8 项，写具体材料/例子/问题
+  "keyPoints": [...],
+  "evidenceRefs": [组内url]
+}
 ```
 
-平台适配（标题=选题句即角度，不是主题词；范例见 references/outline-samples.md）：
-- **gzh**：完整论证；标题给判断句或承诺句
-- **tiebuhao**：图卡组（3–6 张）；首图即观点；每张文案 ≤54 字
+**平台适配（写进 recommendation，不再各写一份大纲）**
+- **gzh**：完整论证；标题给判断句或承诺句；3-8 项递进
+- **tiebuhao**：图卡组（3-6 张）；首图即观点；每张文案 ≤54 字
 - **xhs-note**：清单体/教程体；标题带可收藏价值点
 - **threads**：中文选题的英文短评改写（≤500 字符）
+
+范例见 `references/outline-samples.md`。**一个组最多出一条大纲**——同一事件不要按平台拆成多条。
 
 ### ⑧ appGap 机会卡
 

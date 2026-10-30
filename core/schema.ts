@@ -205,10 +205,16 @@ export type ContentCluster = {
   suggestedPlatforms: string[];
   createdAt: string;
 };
+// R10.35（老大 2026-10-30 拍板）：大纲从「每平台一条」收敛为「一选题一条」。
+// 一条大纲=一个选题方向（这条内容讲什么、怎么讲），platforms 标注它适合投放到哪些平台；
+// platform 退化为「主平台」（=platforms[0]），仅为兼容存量读口与按平台拍板而保留。
+// 平台差异不再各自写一份大纲——同一选题在不同平台的差别写进 recommendation 里。
 export type ContentOutline = {
   id: string;
   clusterId: string;
-  platform: string; // 九平台枚举键（PLATFORM_KEYS 唯一定义，xhs-video 后置）
+  platform: string; // 主平台（九平台枚举键，=platforms[0]；兼容存量）
+  platforms?: string[]; // 这条选题适合的平台集合（R10.35 起为写入口主字段）
+  recommendation?: string; // 推荐建议：为什么这么写、投哪些平台、各平台怎么适配（R10.35）
   category?: string; // 题材六值键（newtech/news/oss/selfproduct/thinking/hot，第六轮批 A LLM 标注）
   contentType: string;
   title: string;

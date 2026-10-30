@@ -213,7 +213,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 - `platform` 五值枚举：`gzh`（公众号）/ `tiebuhao`（贴图号）/ `xhs-note`（小红书笔记）/ `xhs-video`（小红书视频笔记）/ `threads`。旧值（公众号/小红书/Threads）与中文标签提交时自动归一。
 - `category` 六值枚举：`newtech`（AI 新技术）/ `news`（新资讯）/ `oss`（开源工具）/ `selfproduct`（自研产品）/ `thinking`（个人思考）/ `hot`（社会热点）。
-- **资讯类簇强制覆盖贴图号（R8-2①）**：category=news/newtech 的簇，产出大纲时 tiebuhao 版必须覆盖（哪怕其他平台未拍）——图卡形态：3-6 张图卡、首图即观点、每张文案 ≤54 字、视觉风格关键词 3-5 个。内置侧 outlineDraftTick 已自动为同簇缺失 tiebuhao 的资讯行克隆补贴（ensureTiebuhaoClones），外部 Agent 编排时同规则执行。
+- **资讯类选题覆盖贴图号（R8-2① → R10.35 语义变更）**：category=news/newtech 的选题，`platforms` 里必须含 `tiebuhao`（图卡形态：3-6 张、首图即观点、每张 ≤54 字、视觉关键词 3-5 个）。**R10.35 起不再克隆出一条独立的 tiebuhao 大纲**，内置侧 ensureTiebuhaoClones 直接把 `tiebuhao` 补进该选题的 `platforms`；外部 Agent 编排时同规则执行（在 platforms 里带上即可，不要为贴图号单开一条）。
 - **机会引擎整理职责（R9-3，人不整理只拍板）**：opportunities 池的整理/去重/合并/遗弃建议由 AI/外部 Agent 巡检完成——platform 适配产出的多平台卡（同 url 不同 platform 的 site:ev:* 卡）按簇聚合、可标遗弃建议（老大批板后执行）。watch 候选命中多平台时每平台一张卡（dedupeKey 带 platform 后缀）；适配平台随策略 platformAffinity（当前 trend-radar 口径 gzh/xhs-note）。
 
 ### 提交大纲
@@ -225,7 +225,8 @@ curl -X PUT "$BASE/api/v1/agent/outlines" \
   -d '{
     "id": "out-optional-for-update",
     "clusterId": "clu-inbox",
-    "platform": "gzh",
+    "platforms": ["gzh", "xhs-note", "tiebuhao"],
+    "recommendation": "主投公众号做完整论证；小红书切片成清单笔记；贴图号出 4 张图卡（首图即结论）",
     "category": "newtech",
     "contentType": "长文",
     "title": "选题标题",
@@ -236,6 +237,7 @@ curl -X PUT "$BASE/api/v1/agent/outlines" \
   }'
 ```
 
+- **一选题一条大纲（R10.35）**：`platforms` 是主字段（适合投放的平台，1-4 个），`platform` 退化为「主平台」= `platforms[0]`（只为兼容存量读口与按平台拍板而保留，只给 platform 的老调用会自动收敛成 `platforms:[platform]`）。**不要为同一选题按平台各写一条**——平台差异写进 `recommendation`（一句话：主投哪个平台、其余怎么适配、哪个不出）。
 - ⚠️ **路径 id 怪癖**：`PUT /agent/outlines/<任意子路径>`（含 `/:id/draft`）都落大纲处理器且**以 body.id 为准**——按 REST 惯例带路径 id 而 body 无 id 会**新建**而非更新；更新一律 body 带 id。
 - approved 选题写完 `draftBody` 后，把决策推进到 drafting：`PUT /api/v1/outlines/:id/decision`（无令牌 UI 口）或集群工具同义口。
 - **提示词矩阵**（平台模板 × 题材角度，与内置 AI 共用的单一来源）随 Skill 包分发：`skills/prompts/outline-matrix.md`——按「平台模板节 + 题材角度节 + 选题素材」组合，不硬编码 24 组合。
