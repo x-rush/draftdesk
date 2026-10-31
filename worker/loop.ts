@@ -21,7 +21,6 @@ import { triageTick } from "../core/triage";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
 import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick, newWordsTick } from "../core/gephei-collect";
-import { infoReflowTick } from "../core/info-reflow";
 import { outlineCategoryTick } from "../core/outline-categorize";
 import { outlineDraftTick, ensureTiebuhaoClones } from "../core/outline-draft";
 import { requestModel } from "../core/model";
@@ -74,8 +73,6 @@ export async function runDailyChain(db: Store): Promise<void> {
   outlineCategoryTick(db, requestModel);
   // 资讯类簇强制覆盖贴图号：库内克隆不耗模型
   ensureTiebuhaoClones(db);
-  // info 型强词回流内容线
-  infoReflowTick(db);
   // 双端兜底链：builtin approved → 自动大纲；external 零动作
   outlineDraftTick(db, requestModel);
   // 词判定：【采集侧豁免·R10.25-1】
