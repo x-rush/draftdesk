@@ -16,6 +16,12 @@ export const routes: RouteDef[] = [
     }),
   },
   {
+    // R10.45 P1①：全量任务统计口（RunsView 统计卡不再按分页页算）——只回 state/outcome 轻量行
+    methods: ["GET"],
+    pattern: "jobs",
+    handler: ({ db }) => json({ items: db.list<any>("jobs").map((j) => ({ state: j.state, outcome: j.outcome })) }),
+  },
+  {
     methods: ["POST"],
     pattern: "jobs",
     handler: async ({ db, readBody }) => {
