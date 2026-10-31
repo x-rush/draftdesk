@@ -19,7 +19,6 @@ type Row = {
   creationStatus?: string;
   createdAt: string; evidenceCount?: number; clusterId?: string;
 };
-const STATUSES = ["pending", "approved", "drafting", "published", "rejected", "deferred"] as const;
 const statusLabels: Record<string, string> = {
   pending: "待决策", approved: "已通过", drafting: "写作中", published: "已发布", rejected: "已否决", deferred: "已暂缓",
 };
@@ -63,6 +62,9 @@ export function Review() {
   const [detail, setDetail] = useState<any>(null);
   const [status, setStatus] = useState<string>("pending");
   const [sourceFilter, setSourceFilter] = useState("all");
+  // R10.42④：平台多选筛选（与状态/来源正交叠加）——勾选的 platform 键集合，
+  // 行的适合平台（platforms ∪ platform）命中任一即显示。空集=不限。
+  const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchReason, setBatchReason] = useState("no-ai-signal");
   const [busy, setBusy] = useState(false);
@@ -118,7 +120,11 @@ export function Review() {
     rows.forEach((r) => { byDecision[r.decision] = (byDecision[r.decision] || 0) + 1; });
     return byDecision;
   }, [rows]);
-  const visible = rows.filter((r) => { if (status === "all") return true; const f = STATUS_CARD_FILTERS[status]; return f ? f.includes(r.decision) : r.decision === status; }).filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter);
+  const platformOfRow = (r: Row): string[] => [...new Set([...(r.platforms || []), r.platform].filter((x): x is string => !!x))]
+  .map((p) => PLATFORM_KEYS.find((k) => k === p || PLATFORM_LABELS[k] === p) ?? p); // 未归一值原样返回（匹配不上筛选集，无害）
+const visible = rows.filter((r) => { if (status === "all") return true; const f = STATUS_CARD_FILTERS[status]; return f ? f.includes(r.decision) : r.decision === status; })
+  .filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter)
+  .filter((r) => !platformFilter.size || platformOfRow(r).some((p) => platformFilter.has(p)));
   // 数据治理（根因 B + R10.35）：同选题聚合。
   // R10.35 前大纲按平台拆行（一簇 4 行、标题各不同），按 title 聚合只能聚 2/48 簇；
   // 现改按「选题身份」聚合——outline 用 clusterId（一簇=一个事件/选题方向），
@@ -250,7 +256,7 @@ export function Review() {
     { key: "pending", label: "待决策", count: stats.pending || 0, accent: true, states: ["pending"], small: "点卡片只看这一档，再点回全部" },
     { key: "approved", label: "已通过", count: stats.approved || 0, accent: false, states: ["approved"], small: "进入写作与发布流转" },
     { key: "active", label: "进行中", count: (stats.drafting || 0) + (stats.published || 0), accent: false, states: ["drafting", "published"], small: `写作中 ${stats.drafting || 0} · 已发布 ${stats.published || 0} 条` },
-    { key: "closed", label: "已否决·暂缓", count: (stats.rejected || 0) + (stats.deferred || 0), accent: false, states: ["rejected", "deferred"], small: `暂缓 ${stats.deferred || 0} 条` },
+    { key: "closed", label: "已否决·暂缓", count: (stats.rejected || 0) + (stats.deferred || 0), accent: false, states: ["rejected", "deferred"], small: `已否决 ${stats.rejected || 0} · 暂缓 ${stats.deferred || 0}` },
   ];
   return (
     <div>
@@ -292,14 +298,17 @@ export function Review() {
 
       {/* ② 工具行：状态/来源筛选 + 批量 + 规则 */}
       <div className="radar-toolbar">
+        {/* R10.42①②：nav 与快捷卡同一键空间（全部+四组合键）——点卡 nav 亮、点 nav 卡亮，
+            pending 不再只有卡入口（旧 nav 排除 pending 造成两套路径）。数字与卡完全一致。 */}
         <nav className="discovery-modes" aria-label="决策状态筛选">
           <button className={status === "all" ? "active" : ""} onClick={() => setStatus("all")}>全部 {rows.length}</button>
-          {STATUSES.filter((s) => s !== "pending").map((s) => (
-            <button key={s} className={status === s ? "active" : ""} onClick={() => setStatus(s)}>{statusLabels[s]} {stats[s] || 0}</button>
+          {statusCards.map((c) => (
+            <button key={c.key} className={status === c.key ? "active" : ""} aria-pressed={status === c.key}
+              onClick={() => setStatus(status === c.key ? "all" : c.key)}>{c.label} {c.count}</button>
           ))}
         </nav>
         <details className="filters-popover" data-popover>
-          <summary className="button" aria-label="筛选与批量操作" style={{ marginLeft: "auto" }}>来源与批量（已选 {selected.size}）</summary>
+          <summary className="button" aria-label="筛选与批量操作" style={{ marginLeft: "auto" }}>来源与批量（已选 {selected.size}{platformFilter.size ? ` · 平台 ${platformFilter.size}` : ""}）</summary>
           <div className="popover-panel">
             <Field label="来源筛选">
               <Select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
@@ -307,6 +316,21 @@ export function Review() {
                 <option value="outline">大纲</option>
                 <option value="manual">手动</option>
               </Select>
+            </Field>
+            <Field label={platformFilter.size ? `平台筛选（已选 ${platformFilter.size}）` : "平台筛选（适合平台含任一勾选）"}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="group" aria-label="平台多选筛选">
+                {PLATFORM_KEYS.filter((k) => rows.some((r) => platformOfRow(r).includes(k))).map((k) => (
+                  <button key={k} type="button" className={platformFilter.has(k) ? "pill" : "button-secondary"}
+                    style={{ cursor: "pointer", padding: "4px 10px", fontSize: 12 }}
+                    aria-pressed={platformFilter.has(k)}
+                    onClick={() => setPlatformFilter((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })}>
+                    {PLATFORM_LABELS[k]}{platformFilter.has(k) ? " ✓" : ""}
+                  </button>
+                ))}
+                {platformFilter.size > 0 && (
+                  <button type="button" className="button-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setPlatformFilter(new Set())}>清除</button>
+                )}
+              </div>
             </Field>
             <Field label="批量否决原因">
               <Select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
@@ -365,7 +389,7 @@ export function Review() {
               </div>
               {row.sourceType === "outline" && groupPlatforms(row, group.members).length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, alignItems: "center" }} aria-label="适合平台与按平台拍板">
-                  <span className="muted" style={{ fontSize: 11 }} title="这条选题适合投放的平台（点徽章可单独拍板）">适合</span>
+                  <span className="muted" style={{ fontSize: 11 }} title="这条选题适合投放的平台；点徽章=单独拍板该平台（循环状态），其余平台不受影响">适合 · 点徽章单拍</span>
                   {groupPlatforms(row, group.members).map((k) => {
                     const st = (row.perPlatformDecision?.[k] || (platformLabel(row.platform) === PLATFORM_LABELS[k] ? row.decision : "pending")) as string;
                     const color = st === "approved" || st === "published" ? "#1a7f4b" : st === "drafting" ? "#8a6d1a" : st === "rejected" ? "#8a3a3a" : undefined;
