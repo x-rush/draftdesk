@@ -13,7 +13,9 @@ export function ActivityBatchesPanel({ ws, data }: { ws: any; data: any }) {
   const [ignored, setIgnored] = useState<string[]>([]);
   const [promoteBatch, setPromoteBatch] = useState<string | null>(null);
   const [platform, setPlatform] = useState("公众号");
-  const visible = batches.filter((b) => !ignored.includes(b.id));
+  // R10.46④：归档已持久化（activity-categories reason=用户标记不感兴趣）——面板过滤掉，
+  // 刷新不再复活（此前仅本地 hidden）。
+  const visible = batches.filter((b) => !ignored.includes(b.id) && b.reason !== "用户标记不感兴趣");
   if (!batches.length) return null;
   return (
     <section className="surface" style={{ marginBottom: 14 }}>

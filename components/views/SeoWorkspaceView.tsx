@@ -138,7 +138,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         <div className="hero-grid">
           {heroes.map((t) => (
             <article className="hero-card" key={String(t.id)}>
-              <button className="hero-term" onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
+              <button className="hero-term" onClick={() => setDrawerTerm(t)} title="点击打开词详情（SEO 指标/判据）" >{t.term}</button>
               <div className="hero-badges">
                 <RegionBadge region={t.region} />
                 {isLongTail(t.term) && <span className="pill"><Crosshair size={11} /> 长尾</span>}
@@ -149,7 +149,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
               <div className="hero-foot">
                 <small className="muted">{t.intent ? DIG_INTENTS.find(([k]) => k === t.intent)?.[1] || t.intent : ""}{t.firstSeenAt ? ` · 首见 ${new Date(t.firstSeenAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}` : ""}</small>
                 <div className="term-actions">
-                  <button onClick={() => searchTerm(t.term)}>搜索 ↗</button>
+                  <button onClick={() => setDrawerTerm(t)} title="点击打开词详情（SEO 指标/判据）">搜索 ↗</button>
                   <button onClick={() => copyTerm(t.term)}>复制</button>
                 </div>
               </div>
@@ -196,7 +196,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
             {zoneLists[radarTab].map((t) => (
               <div className="term-row" key={String(t.id)}>
                 <div className="term-main">
-                  <button className="term-name" onClick={() => searchTerm(t.term)} title="点击去 Google 搜索验证">{t.term}</button>
+                  <button className="term-name" onClick={() => setDrawerTerm(t)} title="点击打开词详情（SEO 指标/判据）" >{t.term}</button>
                   <span className="term-meta">
                     <RelevanceBadge relevance={t.relevance} />
                     <RegionBadge region={t.region} />
@@ -208,7 +208,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                   </span>
                 </div>
                 <div className="term-actions">
-                  <button aria-label={`搜索：${t.term}`} onClick={() => searchTerm(t.term)}>搜索 ↗</button>
+                  <button aria-label={`搜索：${t.term}`} onClick={() => setDrawerTerm(t)} title="点击打开词详情（SEO 指标/判据）">搜索 ↗</button>
                   <button aria-label={`复制：${t.term}`} onClick={() => copyTerm(t.term)}>复制</button>
                 </div>
               </div>
@@ -275,7 +275,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
                       </div>
                       <div className="row-side">
                         <div className="term-actions">
-                          <button onClick={() => searchTerm(t.term)}>搜索 ↗</button>
+                          <button onClick={() => setDrawerTerm(t)} title="点击打开词详情（SEO 指标/判据）">搜索 ↗</button>
                           <button onClick={() => copyTerm(t.term)}>复制</button>
                         </div>
                       </div>
@@ -289,10 +289,12 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         </>
       )}
       {drawerTerm && <SeenTermDrawer ws={ws} term={drawerTerm} onClose={() => setDrawerTerm(null)} onSearch={() => searchTerm(drawerTerm.term)} />}
+      {/* R10.46①：站群门槛=全局设置，移出趋势 tab（原混在分区词表尾部） */}
       <details className="fold-card" style={{ marginTop: 12 }}>
         <summary><h2 style={{ display: "inline", margin: 0 }}>站群门槛</h2> <small className="muted">siteCandidate 判定的五个参数（改完全局生效，内置 sweep 与 Agent 复核同源）</small></summary>
         <SiteGateForm />
       </details>
+
 
     </>
   );

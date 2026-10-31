@@ -148,7 +148,7 @@ export function Settings({
           onClick={() =>
             void act(async () => {
               const r = await api("test-model", {});
-              setNotice("已保存配置：" + r.message);
+              setNotice("连接测试：" + r.message + "（配置未保存，点「保存」才落库）");
             })
           }
         >
@@ -184,9 +184,9 @@ export function Settings({
                 </tr>
               </thead>
               <tbody>
-                {metrics.slice(0, 2).map((m, i) => (
+                {metrics.map((m, i) => (
                   <tr key={m.id} style={{ background: i === 0 && spike ? "rgba(234,179,8,.14)" : undefined }}>
-                    <td style={{ padding: "4px 8px" }}>{i === 0 ? "今日" : "昨日"} {m.id}{i === 0 && spike ? " 🔶" : ""}</td>
+                    <td style={{ padding: "4px 8px" }}>{i === 0 ? "今日" : i === 1 ? "昨日" : ""} {m.id}{i === 0 && spike ? " 🔶" : ""}</td>
                     <td>{m.calls}</td>
                     <td>{m.tokens.toLocaleString()}</td>
                     <td>{m.byPlan?.cheap?.calls ?? 0} 次 / {(m.byPlan?.cheap?.tokens ?? 0).toLocaleString()}</td>
