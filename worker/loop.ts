@@ -16,7 +16,7 @@ import { judgeBackfillTick } from "../core/seen-extract";
 import { seenDiggingTick } from "../core/seen-dig";
 import { seenJudgeTick } from "../core/seen-judge";
 import { seoMetricsTick } from "../core/seo-gate";
-import { opportunityTick, watchTtlTick } from "../core/opportunity";
+import { watchTtlTick } from "../core/opportunity";
 import { triageTick } from "../core/triage";
 import { siteLaunchesTick } from "../core/site-launches";
 import { rootProbeTick } from "../core/seen-dig";
@@ -91,7 +91,6 @@ export async function runDailyChain(db: Store): Promise<void> {
   watchTtlTick(db);
   // 语义初筛补跑（builtin 才有动作）+ 机会自动生成（builtin）
   await triageTick(db);
-  opportunityTick(db);
   // 预算对账：R10.33 从每小时降为日批尾部一次（对账逻辑不变）
   budgetAuditTick(db);
   runJanitor(db);

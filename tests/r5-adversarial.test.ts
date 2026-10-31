@@ -112,11 +112,9 @@ test("02:00 预演：external 下 worker 关键 tick 真实跑一轮（门控零
   db.put("config", "consumerMode", "external");
   const { triageTick } = await import("../core/triage");
   const { seenJudgeTick } = await import("../core/seen-judge");
-  const { opportunityTick } = await import("../core/opportunity");
   const { collectAllTick } = await import("../core/collect-all");
   await triageTick(db);
   seenJudgeTick(db, (async () => { throw new Error("不应发起网络请求"); }) as never, { now: new Date() });
-  opportunityTick(db);
   await collectAllTick(db);
   assert.equal(db.get("meta", "collect-all-running"), undefined, "锁已释放无残留");
 });

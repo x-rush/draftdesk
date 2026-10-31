@@ -1,13 +1,9 @@
-// 机会引擎（第五轮 §1；R10.11-2 老大拍板 B 定稿）：四信号七生成器统一输入层。
-// **全引擎自动出卡，external 模式照跑**——应用机会从所有采集数据里找，热词趋势
-// 也是来源之一（老大 2026-10-18 10:44 原话）；机会生成属采集侧衍生，不受消费
-// 模式门控（互斥的是「分析消费」，不是「信号扫描」）。config.autoOpportunityGenerate
-// 可关（默认开；关闭后只保留组级手动转卡 from-group）。
-// R10.25-4②：HTTP 批量触发口 POST /opportunities/generate 已删（从未接线）；
-// 自动链=seo-gate/triage/collect-all 内部调用 + builtin opportunityTick。
-// R10.25 口径：组出卡只出 appGap 应用卡，内容线选题走 outlines 大纲链路。
-// 初筛联动（§1⑥）：watch 池 TTL（引用≥2 晋升 / 超 14 天未引用降级）+
-// plan.platformAffinity 平台适配（实测/教程→笔记线、深度/分析→长文线）二次精筛 watch 池。
+// 机会引擎（R10.40 归口重构，老大 10-31 定调）：**全部语义判断归外部 Agent**——
+// 工作台不再有任何自动出卡路径（原四信号七生成器 sweep 整体下线，存量 841 张
+// auto 卡已清理）。卡片唯一写口=PUT /agent/opportunities（小拾语义评估后写入，
+// 值得才写、verdictReason 带判断依据、≤15/日）；from-group 单组转卡保留为
+// 人工/小拾触发的机械转换口；site:cand 纯数值门槛标注照旧（只标注不落卡）。
+// watch 池 TTL 与平台适配精筛（初筛联动）保留，与出卡无关。
 import type { Store } from "./store";
 import { AppError } from "./errors";
 import { hash, now } from "./store";
@@ -189,180 +185,6 @@ function upsert(db: Store, draft: Draft, counters: Counters) {
   counters.bySignal[draft.signals[0]] = (counters.bySignal[draft.signals[0]] || 0) + 1;
 }
 
-// a. complaint：small-products 的 idea 产物 + selected 候选 + watch 池平台适配二次精筛。
-function generateFromComplaints(db: Store, source: "auto" | "agent", counters: Counters) {
-  const plans = db.list<any>("plans");
-  const oppPlan = plans.find((p) => p.kind === "opportunity");
-  const planByName = new Map(plans.map((p) => [p.name, p]));
-  const refCounts = watchRefCounts(db);
-  const evidenceByUrl = new Map(db.list<any>("evidence").map((e) => [urlKey(e.url), e]));
-  const claimedEvidence = new Set<string>();
-  for (const op of db.list<any>("opportunities")) for (const id of op.evidenceIds || []) claimedEvidence.add(id);
-  const claimedUrls = new Set<string>();
-  for (const op of db.list<any>("opportunities")) if (op.url) claimedUrls.add(urlKey(op.url));
-  // a1. idea 产物：AI 分析过的应用机会（证据最全）
-  for (const a of db.list<any>("artifacts")) {
-    if (a.kind !== "idea" || a.archived) continue;
-    for (const id of a.evidenceIds || []) claimedEvidence.add(id);
-    upsert(db, {
-      dedupeKey: `app:idea:${a.id}`, kind: "app", signals: ["complaint"], evidenceIds: a.evidenceIds || [],
-      title: a.title, oneLiner: a.details?.trigger || String(a.summary || "").slice(0, 160),
-      form: "web-app", verdict: a.quality === "ready" ? "可以试试" : "待验证",
-      verdictReason: a.quality === "ready" ? "质量审核通过的应用机会" : "待验证：证据或审核未齐",
-      verifyPlan: a.details?.experiment ? [a.details.experiment] : VERIFY.app(a.title),
-      source,
-    }, counters);
-  }
-  if (!oppPlan) return;
-  // a2/a3. 发现候选：selected（进过分析名额）直接成卡；watch 里平台适配命中的做内容线机会。
-  for (const record of db.list<any>("discovery")) {
-    if (record.planName !== oppPlan.name) continue;
-    const affinity = planByName.get(record.planName)?.platformAffinity;
-    for (const c of record.candidates || []) {
-      const k = urlKey(c.url);
-      if (claimedUrls.has(k)) continue;
-      if (c.status === "selected") {
-        const ev = evidenceByUrl.get(k);
-        if (ev && claimedEvidence.has(ev.id)) { claimedUrls.add(k); continue; }
-        if (ev) { claimedEvidence.add(ev.id); claimedUrls.add(k); }
-        upsert(db, {
-          dedupeKey: `app:ev:${hash(k).slice(0, 24)}`, kind: "app", signals: ["complaint"],
-          evidenceIds: ev ? [ev.id] : [], url: c.url, title: c.title.slice(0, 120),
-          oneLiner: c.reason || "符合策略的已选证据候选", form: "web-app",
-          verdict: "待验证", verdictReason: "候选证据待人工复核需求真伪",
-          verifyPlan: VERIFY.app(c.title.slice(0, 60)), source,
-        }, counters);
-      } else if (c.status === "watch") {
-        // R9-3③：一条候选命中多平台 → 每平台一张卡（dedupeKey 带 platform 区分），
-        // 不再 find 首个即止；affinity 顺序即产出顺序。
-        const fits = platformFitsOf(c.title, affinity);
-        if (!fits.length || claimedUrls.has(k)) continue;
-        claimedUrls.add(k);
-        for (const fit of fits) {
-          upsert(db, {
-            dedupeKey: `site:ev:${hash(k).slice(0, 24)}:${fit}`, kind: "site", signals: ["complaint"],
-            evidenceIds: [], url: c.url, title: c.title.slice(0, 120),
-            oneLiner: `平台适配命中（${PLATFORM_LABELS[fit] || fit}）：题材匹配当前内容线`,
-            form: undefined, // 内容线机会无产品形态（W7-5 四值为产品形态）
-            verdict: "待验证", verdictReason: "watch 候选平台适配二次精筛，未进过分析名额",
-            verifyPlan: VERIFY.site(c.title.slice(0, 40)), source, platform: fit,
-            watchRefs: refCounts.get(k) ?? 0,
-          }, counters);
-        }
-      }
-    }
-  }
-}
-
-// b. newtech：daily-editorial 的 news 产物（产品级变化）→ 推演配套缺口。
-function generateFromNewtech(db: Store, source: "auto" | "agent", counters: Counters, since: number) {
-  for (const a of db.list<any>("artifacts")) {
-    if (a.kind !== "news" || a.archived) continue;
-    if (Date.parse(a.createdAt || "") < since) continue;
-    const changed = String(a.details?.whatChanged || "");
-    if (!passesLaunchGate(a.title, changed)) continue;
-    upsert(db, {
-      dedupeKey: `app:evlist:${(a.evidenceIds || []).slice().sort().join(",") || a.id}`,
-      kind: "app", signals: ["newtech"], evidenceIds: a.evidenceIds || [],
-      title: a.title, oneLiner: `「${(changed || a.title).slice(0, 80)}」上线后的配套缺口推演（${GAP_FORMS}，按适用做减法）`,
-      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
-      verdictReason: "缺口为规则推演，未经需求验证",
-      verifyPlan: VERIFY.app((changed || a.title).slice(0, 40)), source,
-    }, counters);
-  }
-}
-
-// c. news：官方 RSS 源的新品条目（官方域名证据）→ 同上推演；已被产物引用的证据不重出卡。
-function generateFromNews(db: Store, source: "auto" | "agent", counters: Counters, since: number) {
-  const officialHosts = new Set<string>();
-  for (const s of db.list<any>("sources")) {
-    if (s.sourceType !== "official" || s.enabled === false) continue;
-    for (const d of s.officialDomains || []) officialHosts.add(d.toLowerCase());
-    if (s.url) { try { officialHosts.add(new URL(s.url).hostname.replace(/^www\./, "")); } catch { /* 忽略坏 url */ } }
-  }
-  if (!officialHosts.size) return;
-  const claimed = new Set<string>();
-  for (const op of db.list<any>("opportunities")) for (const id of op.evidenceIds || []) claimed.add(id);
-  for (const e of db.list<any>("evidence")) {
-    if (claimed.has(e.id) || e.sourceType !== "official") continue;
-    if (Date.parse(e.collectedAt || "") < since) continue;
-    let host = ""; try { host = new URL(e.url).hostname.replace(/^www\./, ""); } catch { continue; }
-    if (![...officialHosts].some((h) => host === h || host.endsWith("." + h))) continue;
-    if (!passesLaunchGate(e.title, e.excerpt)) continue;
-    upsert(db, {
-      dedupeKey: `app:ev:${e.id}`, kind: "app", signals: ["news"], evidenceIds: [e.id],
-      title: e.title.slice(0, 120), oneLiner: `官方新品：「${e.title.slice(0, 80)}」→ 配套缺口推演（${GAP_FORMS}）`,
-      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
-      verdictReason: "官方发布推演缺口，未经需求验证",
-      verifyPlan: VERIFY.app(e.title.slice(0, 40)), source,
-    }, counters);
-  }
-}
-
-// d. trend：seen-terms verdict=推荐 → site 蓝海词卡；toolSignal 强（工具意图+强相关+多观测）→ app 卡；
-// alternative 词根（词根探针 seed=alternative）的 strong 词 = 替代缺口信号 → complaint app 卡（批 2b §4.8①）。
-export function toolSignalOf(t: { intent?: string; relevance?: string; observations?: number }): boolean {
-  return (t.intent === "comparison" || t.intent === "commercial") && t.relevance === "strong" && (t.observations ?? 0) >= 2;
-}
-function isAlternativeProbe(t: { term?: string; seed?: string }): boolean {
-  if (t.seed === "alternative") return true;
-  return /(^|[\s-])alternative(s)?($|[\s-])/i.test(t.term || "");
-}
-// R10.12-1 P0：trend 生成器限定当日/近三日活跃词——只吃 obsByDay 近 3 日有增量的词
-//（原扫全量 17637 词库一次倾倒 2437 张卡，失控）。蓝海词卡代表「正在上升的搜索需求」，
-// 存量老词无当日增量不成卡。
-export const TREND_ACTIVE_DAYS = 3;
-function hasRecentObservation(t: any): boolean {
-  const obs = t.obsByDay;
-  if (!obs || typeof obs !== "object") return false;
-  const cutoff = Date.now() - TREND_ACTIVE_DAYS * 86400000;
-  for (const day of Object.keys(obs)) {
-    const ts = Date.parse(day);
-    if (Number.isFinite(ts) && ts >= cutoff && (obs[day] ?? 0) > 0) return true;
-  }
-  return false;
-}
-function generateFromTrend(db: Store, source: "auto" | "agent", counters: Counters) {
-  for (const t of db.list<any>("seen-terms")) {
-    if (t.status === "archived" || t.offTopic) continue;
-    if (!hasRecentObservation(t)) continue; // 近 3 日无增量不出卡（R10.12-1）
-    const { verdict, reason } = judgeVerdict(t);
-    if (verdict === "推荐" && (t.region ?? "global") === "global") {
-      upsert(db, {
-        dedupeKey: `site:term:${t.id}`, kind: "site", signals: ["trend"], term: t.term,
-        evidenceIds: [], title: t.term,
-        oneLiner: `蓝海词：${reason}，静态平台零竞争站`, form: "site-group", monetization: FORM_MONETIZATION["site-group"],
-        verdict: "推荐", verdictReason: reason, verifyPlan: VERIFY.site(t.term), source,
-      }, counters);
-    }
-    if (toolSignalOf(t)) {
-      upsert(db, {
-        dedupeKey: `app:term:${t.id}`, kind: "app", signals: ["trend"], term: t.term,
-        evidenceIds: [], title: t.term,
-        oneLiner: `工具意图词（${t.intent === "comparison" ? "对比/替代" : "价格/商业"}）观测 ${t.observations} 次`,
-        form: "tool", monetization: FORM_MONETIZATION.tool, verdict: "可以试试", verdictReason: `relevance=strong 且 intent=${t.intent}，需求形状偏工具`,
-        verifyPlan: VERIFY.app(t.term), source,
-      }, counters);
-    }
-    if (t.relevance === "strong" && isAlternativeProbe(t)) {
-      upsert(db, {
-        dedupeKey: `app:altterm:${t.id}`, kind: "app", signals: ["complaint"], term: t.term,
-        evidenceIds: [], title: t.term,
-        oneLiner: `替代缺口词：「${t.term}」的搜索=对现有方案不满（alternative 词根探针产出）`,
-        form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
-        verdictReason: "alternative 搜索=替代缺口信号，待核验被替代方与缺口真伪",
-        verifyPlan: VERIFY.app(t.term), source,
-      }, counters);
-    }
-  }
-}
-
-// f. 语义初筛组卡（R9-6⑤⑥）：trend-radar 等 trends 批次的 AI 归组按「组」消费——
-// 有注意力的组出内容线卡（四平台角度，每角度一张），判 web/app 配套缺口的组再出应用卡；
-// 双线互挂 relatedIds（id 由 dedupeKey 确定性派生，可先算后写）。组 id 幂等：重复 generate 不重出卡。
-// 跨日重复接受存在（当日整理当日数据，AI 不背历史组记忆），小拾整理时人工注明。
-export const TRIAGE_GROUPS_LOOKBACK_DAYS = 3;
-// 批量落卡（R10.7：单组转卡口与 Agent 写口共用 upsert 面）
 export function upsertOpportunityDrafts(db: Store, drafts: Draft[], source: "auto" | "agent") {
   const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
   for (const d of drafts) upsert(db, { ...d, source }, counters);
@@ -404,75 +226,6 @@ export function writeAgentOpportunity(db: Store, draft: { title: string; oneLine
   return { ok: true, created: counters.created, merged: counters.merged };
 }
 
-// R10.26-2 P0：与 groupOpportunityDrafts 同口径——组出卡只出 appGap 应用卡，
-// 内联 angles 内容线出卡段已删（R10.25 只改了 groupOpportunityDrafts，此处是漏网；
-// 经 seo-gate 触发点可在 external 下重建已归档的内容线卡）。
-function generateFromGroups(db: Store, source: "auto" | "agent", counters: Counters) {
-  const cutoff = Date.now() - TRIAGE_GROUPS_LOOKBACK_DAYS * 86400000;
-  for (const record of db.list<TriageRecord>("candidate-groups")) {
-    if (Date.parse(record.at || "") < cutoff) continue;
-    for (const g of record.groups || []) {
-      if (!g?.id || g.attention === "none") continue;
-      const appId = g.appGap ? "opp-" + hash(`app:grp:${g.id}`).slice(0, 20) : undefined;
-      if (!g.appGap || !appId) continue;
-      const verdictReason = `注意力 ${ATTENTION_LABELS[g.attention]}（${(g.sources || []).join("/") || "AI 语义初筛"}）：${g.reason}`.slice(0, 160);
-      upsert(db, {
-        dedupeKey: `app:grp:${g.id}`, kind: "app", signals: ["news"],
-        evidenceIds: [], url: g.representativeUrl, title: `${g.title.slice(0, 90)}｜应用缺口`,
-        oneLiner: `应用缺口路线（AI 语义初筛）：${g.appGap.slice(0, 120)}`,
-        form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "待验证",
-        verdictReason, verifyPlan: [g.appGap.slice(0, 80), ...VERIFY.app(g.title)].slice(0, 4), source,
-      }, counters);
-    }
-  }
-}
-
-// g. 新站复刻（R10 第3段）：site-launches 中动机=商业/痛点 且 HN 热度达标或撞词的新站
-// → 「复刻已验证」机会卡（别人已上线并拿到曝光的形态，比纯推演风险低一档）。
-export function generateFromLaunches(db: Store, source: "auto" | "agent", counters: Counters) {
-  for (const l of db.list<any>("site-launches")) {
-    if (!l.host || (l.motive !== "business" && l.motive !== "pain")) continue;
-    const hnScore = Number(l.hnScore) || 0;
-    const clashed = (l.clashTerms || []).length > 0;
-    if (hnScore < 50 && !clashed) continue;
-    upsert(db, {
-      dedupeKey: `launch:${l.host}`, kind: "app", signals: ["newtech"],
-      evidenceIds: [], url: l.siteUrl || l.sourceUrl, title: String(l.titleZh || l.title || l.host).slice(0, 120),
-      oneLiner: `复刻已验证：${l.motive === "business" ? "商业动机" : "痛点动机"}新站${hnScore ? `（HN ${hnScore} 分）` : ""}${clashed ? "，核心词命中我们热词库" : ""}——形态已被市场验证，复刻风险低于纯推演`,
-      form: "web-app", monetization: FORM_MONETIZATION["web-app"], verdict: "可以试试",
-      verdictReason: `新站六类判定=${l.motive}${l.motiveSource === "quote" ? "（作者原话）" : "（推测）"}${hnScore ? ` + HN ${hnScore}` : ""}${clashed ? ` + 撞词 ${l.clashTerms.slice(0, 3).join("/")}` : ""}`,
-      verifyPlan: [`${l.host} 的形态与获客路径一周观察`, ...VERIFY.app(String(l.titleZh || l.host))].slice(0, 4), source,
-    }, counters);
-  }
-}
-
-
-export function generateOpportunities(db: Store, opts: { source?: "auto" | "agent"; lookbackDays?: number } = {}): { created: number; merged: number; bySignal: Record<OpportunitySignal, number>; capped?: boolean } {
-  const source = opts.source ?? "agent";
-  const since = Date.now() - (opts.lookbackDays ?? 30) * 86400000;
-  const counters: Counters = { created: 0, merged: 0, bySignal: { complaint: 0, newtech: 0, news: 0, trend: 0 } };
-  // R10.11-2②：config.autoOpportunityGenerate 开关（默认开=全引擎；关=只保留组级转卡）
-  const auto = db.get<any>("config", "autoOpportunityGenerate");
-  const groupsOnly = auto?.enabled === false;
-  if (!groupsOnly) {
-    generateFromComplaints(db, source, counters);
-    // R10.12-2：news/newtech 窗口收紧到 3 日（原随 lookbackDays=30 日扫全量 evidence
-    // 产 691 张 news 卡——当日新闻信号不需要 30 天窗口）
-    const since3d = Date.now() - 3 * 86400000;
-    generateFromNewtech(db, source, counters, since3d);
-    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromNews(db, source, counters, since3d);
-    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromTrend(db, source, counters);
-    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromSiteCandidates(db, source, counters);
-    if (counters.created < OPPORTUNITY_DAILY_CAP) generateFromLaunches(db, source, counters);
-    if (counters.created >= OPPORTUNITY_DAILY_CAP) console.warn(`[opportunity] 出卡护栏触发：已达 ${OPPORTUNITY_DAILY_CAP} 上限，后续生成器跳过（检查是否有生成器在倾倒）`);
-  }
-  const capped = counters.created >= OPPORTUNITY_DAILY_CAP;
-  if (!capped) generateFromGroups(db, source, counters);
-  return { created: counters.created, merged: counters.merged, bySignal: counters.bySignal, ...(groupsOnly ? { groupsOnly: true as const } : {}), ...(capped ? { capped: true } : {}) };
-}
-
-// 存量 news/newtech 卡复检（批 1 收尾②）：按收紧后的 launch gate 重跑，
-// 不符合的降档「不值得做」并标注营销推演——迁移 opportunity-news-tighten-v1 调用。
 export function retightenNewsOpportunities(db: Store): { checked: number; demoted: number } {
   let checked = 0, demoted = 0;
   for (const op of db.list<any>("opportunities")) {
@@ -490,57 +243,10 @@ export function retightenNewsOpportunities(db: Store): { checked: number; demote
   return { checked, demoted };
 }
 
-// e. siteCandidate（应用机会页单入口 §2.5②）：站群门槛达标词（内置 sweep 自动标注或外部 Agent 标注）
-// → 站群机会卡（form=tool）。哥飞三指标新鲜（W7-3）带 seoMetrics+综合价值分；
-// 无新鲜指标打 valueUnverified（「价值未验证」徽章，配 token 后自动升级）。
-// 竞品档案组装（读时派生，无外呼）：词的 SERP 前 10（seen-terms serpAll 优先，降级 serpHosts）
-// + 静态平台识别 + 量级档位（web-traffic 缓存：哥飞 source 优先）。DR 留待哥飞联调补全。
-function competitorsOf(db: Store, term: string): { host: string; platform?: string; tier?: string; dr?: number }[] {
-  const seen = db.get<any>("seen-terms", termId(term));
-  const rows: { host: string; url?: string }[] = seen?.serpAll?.length ? seen.serpAll : (seen?.serpHosts || []).map((h: string) => ({ host: h }));
-  return rows.slice(0, 10).map((r) => ({
-    host: String(r.host),
-    platform: platformOf(String(r.host)),
-    tier: db.get<any>("web-traffic", String(r.host).toLowerCase())?.tier,
-  }));
-}
-
-function generateFromSiteCandidates(db: Store, source: "auto" | "agent", counters: Counters) {
-  for (const t of db.list<any>("seo-terms")) {
-    if (t.siteCandidate !== true || !t.term) continue;
-    const score = valueScoreOf(t);
-    const fresh = score !== undefined && typeof t.monthlySearch === "number" && typeof t.kd === "number" && typeof t.cpc === "number";
-    const competitors = competitorsOf(db, String(t.term));
-    upsert(db, {
-      dedupeKey: `site:cand:${termId(String(t.term))}`, kind: "site", signals: ["trend"], term: String(t.term),
-      evidenceIds: [], title: String(t.term),
-      oneLiner: `站群候选词（siteCandidate 标注）：${[t.siteType, ...(Array.isArray(t.sources) ? t.sources : [])].filter(Boolean).join(" · ") || "站群门槛达标"}`,
-      form: "site-group", monetization: FORM_MONETIZATION["site-group"], verdict: "待验证",
-      verdictReason: String(t.siteRationale || "siteCandidate 标注（站群门槛达标）").slice(0, 110),
-      verifyPlan: VERIFY.site(String(t.term)), source,
-      ...(fresh ? { seoMetrics: { monthlySearch: t.monthlySearch, kd: t.kd, cpc: t.cpc, valueScore: score! }, valueUnverified: undefined } : { valueUnverified: true, seoMetrics: undefined }),
-      competitors,
-      ...(Array.isArray(t.domainSuggestions) && t.domainSuggestions.length ? { domainSuggestions: t.domainSuggestions.slice(0, 5) } : { domainSuggestions: undefined }),
-      ...(t.valuation ? { valuation: String(t.valuation).slice(0, 120) } : { valuation: undefined }),
-    }, counters);
-  }
-}
-
-// ---- worker tick（每日一道闸）----
-// watch TTL 是初筛的一部分（初筛保留，不受 consumerMode 影响，§4）；机会自动生成只在 builtin 跑。
 export function watchTtlTick(db: Store, nowDate: Date = new Date()) {
   const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "watch-ttl-done:" + day)) return;
   const r = watchPoolMaintenance(db, { now: nowDate });
   db.put("meta", "watch-ttl-done:" + day, { at: now(), ...r });
   if (r.promoted || r.demoted) console.log(`[opportunity] watch 池 TTL：晋升 ${r.promoted} / 降级 ${r.demoted}（扫描 ${r.scanned}）`);
-}
-
-export function opportunityTick(db: Store, nowDate: Date = new Date()) {
-  if ((db.get("config", "consumerMode") || "external") !== "builtin") return;
-  const day = shanghaiDayOf(nowDate); // R10.31：上海日
-  if (db.get("meta", "opportunity-auto-done:" + day)) return;
-  const r = generateOpportunities(db, { source: "auto" });
-  db.put("meta", "opportunity-auto-done:" + day, { at: now(), ...r });
-  console.log(`[opportunity] builtin 自动生成：新增 ${r.created} / 合并 ${r.merged}`);
 }

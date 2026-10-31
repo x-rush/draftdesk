@@ -6,7 +6,6 @@
 // 依赖方向：seo-gate → seo-source / seen-terms / store（opportunity 出卡为动态 import，避免循环）
 import type { Store } from "./store";
 import { shanghaiDayOf } from "./tick-guard";
-import { generateOpportunities } from "./opportunity";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { GEPHEI_TTL_MS, seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, fetchKeywordMetrics, seoApi } from "./seo-source";
 
@@ -248,16 +247,6 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
         marked++;
       }
       db.put("meta", "seo-metrics-done:" + day, { at: nowDate.toISOString(), checked: terms.length, stamped, marked, skippedLang, note: `英文 ${terms.length} 词（中文 ${skippedLang} 词无数据跳过）；额度 ${seoBudgetLeft(db, "metrics")} 次剩余` });
-      if (marked > 0) {
-        // 出卡触发（W7-8 链路末端）：动态 import 避免与 opportunity.ts 的模块循环
-        // R10.26-2 P0：external 模式不触发出卡——机会卡由外部 Agent 经 PUT /agent/opportunities 写回
-        if ((db.get<any>("config", "consumerMode") || "external") === "builtin") {
-                    const r = generateOpportunities(db, { source: "auto" });
-          console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → 触发机会生成：新增 ${r.created} 卡`);
-        } else {
-          console.log(`[seo-metrics] 哥飞日更出标 ${marked} 词 → external 模式不触发出卡（外部 Agent 经 PUT /agent/opportunities 写回）`);
-        }
-      }
       if (terms.length || marked) console.log(`[seo-metrics] 哥飞指标日更：补查 ${terms.length} 词（落库 ${stamped}，中文跳过 ${skippedLang}）/ 全门槛新出标 ${marked}`);
     } catch (e) {
       console.error("[seo-metrics] 哥飞指标日更失败（次日重试）:", e instanceof Error ? e.message : e);

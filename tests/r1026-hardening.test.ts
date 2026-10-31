@@ -10,7 +10,7 @@ delete process.env.REDIS_URL;
 process.env.DRAFTDESK_DATA_DIR = dir;
 const { handle } = await import("../core/http");
 const { store } = await import("../core/store");
-const { generateOpportunities } = await import("../core/opportunity");
+const { groupOpportunityDrafts } = await import("../core/opportunity");
 const { purgeTerminalJobs, purgeBudgetAuditKeys } = await import("../core/janitor");
 
 const request = (route: string, data?: unknown, headers: Record<string, string> = {}, method?: string) => {
@@ -65,12 +65,15 @@ test("P0-2：generateFromGroups 内联内容线出卡已删——angles-only 组
       { id: "g-angles-only", title: "只有角度的组", attention: "strong", reason: "r", memberUrls: [], representativeUrl: "", sources: [], angles: [{ platform: "gzh", angle: "角度A" }, { platform: "xhs-note", angle: "角度B" }] },
       { id: "g-with-gap", title: "带缺口组", attention: "strong", reason: "r", memberUrls: [], representativeUrl: "", sources: [], angles: [{ platform: "gzh", angle: "角度C" }], appGap: "做个工具站" },
     ] });
-  const before = db.list<any>("opportunities").length;
-  const r = generateOpportunities(db, { source: "auto" });
-  const cards = db.list<any>("opportunities").slice(before);
-  assert.equal(cards.filter((o) => String(o.dedupeKey).startsWith("site:grp:")).length, 0, "内容线卡零产出（内联段已删）");
-  assert.ok(cards.some((o) => o.dedupeKey === "app:grp:g-with-gap" && o.form === "web-app"), "appGap 组出应用卡");
-  assert.ok(!cards.some((o) => o.dedupeKey === "app:grp:g-angles-only"), "无 appGap 组零出卡");
+  // R10.40：自动转卡下线——组草案仅经 groupOpportunityDrafts 机械转换（from-group 口同源）
+  const record = db.get<any>("candidate-groups", "tg-r26a");
+  const withGap = groupOpportunityDrafts(record.groups.find((g: any) => g.id === "g-with-gap"));
+  assert.equal(withGap.length, 1, "appGap 组出 1 条应用草案");
+  assert.equal(withGap[0].dedupeKey, "app:grp:g-with-gap");
+  assert.equal(withGap[0].form, "web-app");
+  const anglesOnly = groupOpportunityDrafts(record.groups.find((g: any) => g.id === "g-angles-only"));
+  assert.equal(anglesOnly.length, 0, "无 appGap 组零草案");
+  assert.equal(db.list<any>("opportunities").length, 0, "库面零自动新增");
 });
 
 test("4①：PUT groups 增量合并——分片回写不丢前批；缩减重放保留既有判级", async () => {

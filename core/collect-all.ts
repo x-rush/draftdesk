@@ -8,7 +8,6 @@
 // · 采集完内联跑 triage（默认全开，config.aiPolicy.triage）——判级/归组/双线草案复用
 //   R9-6 管线；none 组进归档队列（triage-archive 集合，可查可恢复），不静默留池。
 import type { Store } from "./store";
-import { generateOpportunities } from "./opportunity";
 import { now } from "./store";
 import type { Source } from "./schema";
 import type { DiscoveryCandidate, DiscoveryRecord, SourceCoverage } from "./discovery";
@@ -107,9 +106,6 @@ async function runCollectAll(db: Store, ctx: { day: string; doneKey: string; job
           db.put("discovery", jobId, live);
         }
         console.log(`[collect-all] 语义初筛：${triage.groups.length} 组（强 ${triage.groups.filter((g) => g.attention === "strong").length}/潜 ${triage.groups.filter((g) => g.attention === "potential").length}），归档 ${archived.archived} 组（${archived.candidates} 条）`);
-        // R10.20-A3：appGap 转卡在 builtin 门内（R10.19 后 external 由 Agent 直接写机会卡）
-                const gen = generateOpportunities(db, { source: "auto" });
-        if (gen.created) console.log(`[collect-all] 机会卡自动生成：新增 ${gen.created} / 合并 ${gen.merged}`);
       }
     } catch (e) {
       // R10.2②：失败留痕与 collect() 同款——triage-fail 键 + 候选「待语义初筛」标注（tick 补跑机制凭此发现）

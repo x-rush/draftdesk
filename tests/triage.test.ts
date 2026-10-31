@@ -13,7 +13,7 @@ import {
   triageShardMessages, mergeInputOf, MERGE_INPUT_CAP,
   type Attention, type TriageGroup, type TriageRecord, type TriageRunner,
 } from "../core/triage";
-import { generateOpportunities } from "../core/opportunity";
+import { groupOpportunityDrafts } from "../core/opportunity";
 import { planSchema } from "../core/schema";
 import type { DiscoveryCandidate, DiscoveryRecord } from "../core/discovery";
 
@@ -372,21 +372,16 @@ test("generateFromGroups：R10.26 口径只出 appGap 应用卡（无内容线/�
     db.put("candidate-groups", "tg-j1", record);
     const old: TriageRecord = { ...record, jobId: "j0", at: new Date(Date.now() - 5 * 86400000).toISOString(), groups: [group("grp-old", "strong", ["https://old/1"], { angles: [{ platform: "gzh", angle: "老角度" }] })] };
     db.put("candidate-groups", "tg-j0", old);
-    const first = generateOpportunities(db!, { source: "agent" });
-    assert.equal(first.created, 1, "R10.26：只出 1 张 appGap 应用卡（内容线走大纲链路；none 组与老批次不出）");
-    const byKey = (k: string) => db!.get<any>("opportunities", "opp-" + hash(k).slice(0, 20));
-    const gzh = byKey("site:grp:grp-aaa:gzh");
-    const app = byKey("app:grp:grp-aaa");
-    assert.equal(gzh, undefined, "内容线卡不再产出");
-    assert.ok(app, "应用卡按 dedupeKey 落库");
-    assert.equal(app.kind, "app");
-    assert.equal(app.form, "web-app", "R10 六值");
-    assert.deepEqual(app.relatedIds, undefined, "互挂已随内容线卡移除");
-    assert.ok(app.verifyPlan[0].includes("对比工具"), "appGap 进验证计划首条");
-    assert.equal(app.url, "https://a/1", "代表条目 url");
-    // 幂等：重跑不重出
-    const second = generateOpportunities(db!, { source: "agent" });
-    assert.equal(second.created, 0, "重跑零新增");
+    // R10.40：补跑路径自动转卡已下线——组草案仅经 groupOpportunityDrafts 机械转换
+    assert.equal(db!.list<any>("opportunities").length, 0, "补跑零自动转卡");
+    const rec = db!.get<any>("candidate-groups", "tg-j1");
+    const grpA = rec.groups.find((g: any) => g.id === "grp-aaa")!;
+    const drafts = groupOpportunityDrafts(grpA);
+    assert.equal(drafts.length, 1, "appGap 组出 1 条应用草案（内容线走大纲链路）");
+    assert.equal(drafts[0].dedupeKey, "app:grp:grp-aaa");
+    assert.equal(drafts[0].form, "web-app", "R10 六值");
+    assert.ok(drafts[0].verifyPlan[0].includes("对比工具"), "appGap 进验证计划首条");
+    assert.equal(drafts[0].url, "https://a/1", "代表条目 url");
   } finally {
     db?.close();
     cleanup(dir);

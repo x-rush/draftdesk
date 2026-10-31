@@ -392,10 +392,10 @@ export function applyManualGephei(
       const score = item.monthlySearch !== undefined && item.kd !== undefined && item.cpc !== undefined
         ? Math.round((item.monthlySearch * item.cpc / Math.max(1, item.kd)) * 10) / 10
         : undefined;
-      const cardId = "opp-" + hash(`site:cand:${id}`).slice(0, 20); // 与 opportunity.upsert 同口径
-      const card = db.get<any>("opportunities", cardId);
+      // R10.40：卡片唯一来源=agent 评估写卡——点亮按 term+kind 匹配（原 site:cand 确定性 id 已随 sweep 退役）
+      const card = db.list<any>("opportunities").find((o) => o.kind === "site" && o.term === item.term.trim());
       if (card) {
-        db.put("opportunities", cardId, {
+        db.put("opportunities", card.id, {
           ...card,
           ...(score !== undefined ? { seoMetrics: { monthlySearch: item.monthlySearch, kd: item.kd, cpc: item.cpc, valueScore: score }, valueUnverified: undefined } : {}),
           updatedAt: stamp,

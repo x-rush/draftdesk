@@ -175,7 +175,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 ## 机会引擎口径（R10.11-2 老大拍板 B，2026-10-18 定稿）
 
-**全引擎自动出卡，external 模式照跑**——「应用机会就是都要从所有采集数据里找，热词趋势也是应用机会来源」（老大原话）。七生成器（抱怨/新产品/官方动态/热词/站群候选/组级 appGap/新站复刻）每日初筛后自动执行，产出属采集侧衍生，不受消费模式互斥门控。config.autoOpportunityGenerate 可关（默认开；关闭只留组级 from-group 手动转卡）。
+**R10.40 归口重构：工作台零自动出卡，全部语义判断归外部 Agent**——四信号七生成器 sweep 已整体下线（存量 auto 卡已清理）。卡片唯一写口=`PUT /agent/opportunities`：小拾每日对四个信号源（组 appGap / info-tool 强词站群化候选 / 官方动态缺口 / 新品复刻）做语义评估，**值得才写**（≤15 张/日，verdictReason 必须带具体判断依据，模板句=废卡）。site:cand 纯数值门槛标注照旧（只标注不落卡）。
 
 ## R10 四段流水线（2026-10-17 终版，外部 Agent 必读）
 
@@ -202,7 +202,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 - **总开关**：`config.aiPolicy.triage`（off/cheap/full，审查台「内置 AI 参与开关」可改；off=回退来源均衡分配，不跑 AI）。计划级 `plan.aiPolicy` 可微调：`enabled`（缺省 trends 类计划开）/`attentionCriteria`（追加判级标准，优先级最高）/`groupGranularity`（coarse=同大事件并组，fine=只有同一事件才并组）。
 - **触发**：正常批次在采集时内联跑（初筛，不受 consumerMode 门控）；失败批次标「待语义初筛」由 worker tick 自动补跑（日上限 3 批）。显式补跑：`POST /api/v1/triage/generate`（可带 `{"jobId":"…"}` 定向；**不要带令牌**，本机无鉴权口）。
 - **读结果**：`GET /api/v1/triage/groups?jobId=…`（组+成员+判级+草案）；`GET /api/v1/triage/status?jobId=…`（done/failed/pending）。
-- **组卡（双线）**：`POST /api/v1/opportunities/from-group`（UI 组卡按钮在用，`{jobId,groupId}`）——有 appGap 的组一张应用卡（`app:grp:*`）；内容线选题走 outlines（大纲链路），不再产出内容线机会卡（R10.25 口径）。外部 Agent 写卡走 `PUT /agent/opportunities`（form 必填六值）。
+- **组卡（机械转换口）**：`POST /api/v1/opportunities/from-group`（UI 组卡按钮在用，`{jobId,groupId}`）——有 appGap 的组一张应用卡（`app:grp:*`），属人工触发的机械转换；**常规路径是外部 Agent 语义评估后走 `PUT /agent/opportunities`**（form 必填六值）。内容线选题走 outlines（大纲链路）。
 - **分工边界**：内置 AI 出「组+判级+双线草案」；**外部 Agent（小拾）对组做主分析**（哪些组值得写、写什么角度、app 路线深挖——草案是输入不是替代）+ 质量巡检（抽查归类准确性，归错组超标报用户调 prompt/aiPolicy）；拍板只在审查台。跨日重复组（同一事件分属两天批次）是已知形态，小拾主分析时在拍板建议里注明「与 X 日某组同事件」。
 
 ## ⑧ 大纲提交（选题体系 · 第六轮批 B）

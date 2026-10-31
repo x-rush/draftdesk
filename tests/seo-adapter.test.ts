@@ -13,7 +13,6 @@ import {
 import { gepheiTierOf } from "../core/seen-judge";
 import { evalSiteGate, valueScoreOf, siteGateAutoMark, DEFAULT_SITE_GATE } from "../core/seo-gate";
 import { normalizeForm } from "../core/platforms";
-import { generateOpportunities } from "../core/opportunity";
 import { migrations } from "../core/store/migrations";
 import { termId } from "../core/seen-terms";
 
@@ -219,18 +218,8 @@ test("站群卡：form=site-group（R10 六值）；无新鲜指标打 valueUnve
     db.put("seo-terms", "无指标词", { id: "无指标词", term: "无指标词", siteCandidate: true, siteRationale: "降级门槛达标" });
     // 有新鲜指标：价值分路径
     db.put("seo-terms", "有指标词", { id: "有指标词", term: "有指标词", siteCandidate: true, siteRationale: "全门槛达标", monthlySearch: 2000, kd: 20, cpc: 0.4, gepheiFetchedAt: new Date().toISOString() });
-    generateOpportunities(db, { source: "agent" });
-    const plain = db.list<any>("opportunities").find((o) => o.term === "无指标词");
-    assert.ok(plain, "无指标词出卡");
-    assert.equal(plain.form, "site-group");
-    assert.equal(plain.valueUnverified, true);
-    assert.equal(plain.seoMetrics, undefined);
-    const rich = db.list<any>("opportunities").find((o) => o.term === "有指标词");
-    assert.ok(rich, "有指标词出卡");
-    assert.equal(rich.form, "site-group");
-    assert.equal(rich.valueUnverified, undefined, "有指标无未验证徽章");
-    assert.equal(rich.seoMetrics?.valueScore, Math.round(2000 * 0.4 / 20 * 10) / 10, "价值分 = 40");
-    assert.equal(rich.seoMetrics?.monthlySearch, 2000);
+    // R10.40：siteCandidate 只标注不落卡——零自动出卡（评估归小拾，PUT /agent/opportunities）
+    assert.equal(db.list<any>("opportunities").length, 0, "站群词零自动出卡");
   } finally {
     db?.close();
     cleanup(dir);

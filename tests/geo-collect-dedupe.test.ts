@@ -15,7 +15,6 @@ import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick, rootSlowdownRe
 import { nextRootBatch } from "../core/seen-dig";
 import { tokenize, coverageOf, markCoveredVariants, coveredVariantDoc } from "../core/topic-dedupe";
 import { querySeenTerms } from "../core/seen-terms";
-import { generateOpportunities } from "../core/opportunity";
 import { migrations } from "../core/store/migrations";
 
 function cleanup(dir: string) {
@@ -180,11 +179,8 @@ test("哥飞指标日更（W7-8）：批量补查落库+全门槛出标+域名�
     assert.equal(seo.siteCandidate, true, "全门槛达标自动出标");
     assert.ok(String(seo.siteRationale).includes("全门槛达标"));
     assert.deepEqual(seo.domainSuggestions, ["zzmocktool.com", "zzmocktool.io"], "可注册域名清单落 doc");
-    generateOpportunities(db, { source: "agent" });
-    const card = db.list<any>("opportunities").find((o) => o.term === "zz mock tool" && o.dedupeKey?.startsWith("site:cand"));
-    assert.ok(card, "出卡");
-    assert.equal(card.seoMetrics?.valueScore, Math.round(880 * 0.6 / 12 * 10) / 10, "卡带价值分");
-    assert.ok(Array.isArray(card.competitors), "卡带竞品档案结构");
+    // R10.40：siteCandidate 只标注不落卡——站群化评估归小拾（PUT /agent/opportunities）
+    assert.equal(db.list<any>("opportunities").filter((o) => String(o.dedupeKey).startsWith("site:cand")).length, 0, "零自动出卡");
     // 日闸：同日第二次不重跑
     const usedBefore = seoBudgetUsed(db, "metrics");
     seoMetricsTick(db, fakeFetch);

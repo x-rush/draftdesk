@@ -13,7 +13,6 @@ const { collectAllTick } = await import("../core/collect-all");
 const { archiveNoneGroups, restoreArchived, triageTick } = await import("../core/triage");
 const { COLLECT_ALL_PLAN_NAME } = await import("../core/triage");
 const { triageEnabledOf, ANGLE_PLATFORMS } = await import("../core/triage");
-const { generateOpportunities } = await import("../core/opportunity");
 const { normalizeForm, FORM_LABELS, FORM_MONETIZATION, PLATFORM_KEYS } = await import("../core/platforms");
 const { handle } = await import("../core/http");
 
@@ -247,17 +246,8 @@ test("generateFromLaunches：business/pain 且 HN≥50 或撞词的新站出「�
   db.put("site-launches", "l2", { host: "b.example", title: "hobby site", motive: "hobby", hnScore: 300, siteUrl: "https://b.example" });
   db.put("site-launches", "l3", { host: "c.example", title: "pain low score but clashed", motive: "pain", hnScore: 5, clashTerms: ["ai resume"], siteUrl: "https://c.example" });
   db.put("site-launches", "l4", { host: "d.example", title: "low score no clash", motive: "business", hnScore: 5, siteUrl: "https://d.example" });
-  const run = generateOpportunities(db, { source: "agent" });
-  assert.ok(run.created >= 2, "l1+l3 出卡");
-  const all = db.list<any>("opportunities");
-  const card = all.find((o) => o.dedupeKey === "launch:a.example");
-  assert.ok(card, "复刻卡存在");
-  assert.match(card.oneLiner, /复刻已验证/);
-  assert.equal(card.form, "web-app");
-  assert.equal(card.monetization, FORM_MONETIZATION["web-app"]);
-  assert.equal(card.verdict, "可以试试");
-  assert.ok(!all.some((o) => o.dedupeKey === "launch:b.example"), "hobby 动机不出卡");
-  assert.ok(!all.some((o) => o.dedupeKey === "launch:d.example"), "低分无撞词不出卡");
+  // R10.40：新站复刻自动出卡下线——launch 数据只存不算卡，复刻评估归小拾
+  assert.equal(db.list<any>("opportunities").length, 0, "launch 零自动出卡");
 });
 
 test("消费回执：POST agent/consume-report 落键；summary/today 暴露 stale 判定", async () => {

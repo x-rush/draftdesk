@@ -12,7 +12,7 @@ import { benchmarkSitesTick, linkProspectsTick, newWordsTick, applyManualGephei 
 import { nextRootBatch } from "../core/seen-dig";
 import { buildRelevanceRubric } from "../core/seen-extract";
 import { termId } from "../core/seen-terms";
-import { generateOpportunities } from "../core/opportunity";
+import { writeAgentOpportunity } from "../core/opportunity";
 
 function cleanup(dir: string) {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
@@ -168,9 +168,10 @@ test("手动回传落库（W7-11④）：✋manual-gephei 落指标字段+seo-te
     const now = new Date().toISOString();
     db.put("seen-terms", termId("已标回传词"), { id: termId("已标回传词"), term: "已标回传词", status: "sustained", observations: 9, sources: ["hn"], relatedSearches: [], daysSeen: [], firstSeenAt: now, lastSeenAt: now, relevance: "strong", region: "global", serpDedicated: 0, intent: "informational", createdAt: now, updatedAt: now });
     db.put("seo-terms", "已标回传词", { id: "已标回传词", term: "已标回传词", siteCandidate: true, siteCandidateBy: "builtin-gate-v1", siteRationale: "降级门槛达标" });
-    generateOpportunities(db, { source: "agent" });
+    // R10.40：卡片唯一写口=agent（回传点亮 agent 卡的价值面板）
+    writeAgentOpportunity(db, { title: "已标回传词", oneLiner: "站群候选（siteCandidate 标注）", form: "site-group", term: "已标回传词" });
     const cardBefore = db.list<any>("opportunities").find((o) => o.term === "已标回传词");
-    assert.ok(cardBefore?.valueUnverified, "回传前价值未验证");
+    assert.ok(cardBefore, "agent 卡在库");
     // 手动回传（JSON，带 intent 与内置 informational 冲突）
     const r = applyManualGephei(db, '[{"keyword":"已标回传词","volume":880,"kd":12,"cpc":0.6,"intent":"commercial"}]');
     assert.equal(r.applied, 1);
