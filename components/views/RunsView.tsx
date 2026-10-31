@@ -20,7 +20,7 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   // R10.45 P1①：统计卡原按当前分页页算——数字随翻页漂移。改挂 jobs 全量接口按全量算。
   const [jobStats, setJobStats] = useState<{ active: number; failed: number; completed: number; empty: number } | null>(null);
   useEffect(() => {
-    void api<any>("jobs?all=1&fields=state,outcome,no-findings").then((r) => {
+    void api<any>("jobs").then((r) => {
       const all: any[] = r.items || [];
       setJobStats({
         active: all.filter((j) => ["queued", "running"].includes(j.state)).length,

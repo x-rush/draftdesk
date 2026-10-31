@@ -66,6 +66,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, dev
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror: ${String(e.message).slice(0, 120)}`));
 page.on("console", (m) => { if (m.type() === "error") errors.push(`console: ${m.text().slice(0, 120)}`); });
+page.on("response", (r) => { if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url().slice(0, 140)}`); });
 
 const summary = [];
 for (const view of views) {
@@ -93,16 +94,20 @@ for (const view of views) {
 // 交互动画（关键链路冒烟，不写生产数据——回传用探针词且立即清理）
 try {
   await page.goto(`${BASE}/?view=trends`, { waitUntil: "networkidle" });
+  // R10.45 P2⑦：查看全部改为跳词库页（带筛选）——交互检查同步新契约
   const expand = page.locator("button", { hasText: "查看全部" });
-  if (await expand.count()) await expand.first().click();
-  await page.waitForTimeout(800);
-  const chip = page.locator("button", { hasText: "哥飞注入" });
-  if (!(await chip.count())) throw new Error("来源 chips 未渲染");
-  await chip.first().click();
-  await page.waitForTimeout(800);
-  const chipCount = await page.locator("button", { hasText: "常规采集" }).count();
-  if (!chipCount) throw new Error("常规采集 chip 消失");
-  summary.push({ view: "trends-交互", ok: true, note: "来源 chips 切换生效" });
+  if (await expand.count()) {
+    await expand.first().click();
+    await page.waitForTimeout(800);
+    if (!page.url().includes("view=library")) throw new Error("查看全部未跳转词库页");
+    summary.push({ view: "trends-交互", ok: true, note: "查看全部→词库页跳转生效" });
+  } else {
+    const chip = page.locator("button", { hasText: "哥飞注入" });
+    if (!(await chip.count())) throw new Error("来源 chips 未渲染");
+    await chip.first().click();
+    await page.waitForTimeout(800);
+    summary.push({ view: "trends-交互", ok: true, note: "来源 chips 切换生效" });
+  }
   await page.screenshot({ path: "data/e2e-trends-interaction.png" });
 } catch (e) {
   errors.push(`trends 交互: ${String(e.message).slice(0, 120)}`);
