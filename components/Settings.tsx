@@ -353,15 +353,6 @@ export function Settings({
               >
                 {seoSaving ? "保存中…" : "保存 SEO 数据源配置"}
               </button>
-              {(seoSrc?.autoMetrics || seoSrc?.autoCollect) && (
-                <p role="alert" style={{ margin: "0 0 8px", padding: "8px 10px", background: "rgba(234,179,8,.14)", borderRadius: 6, fontSize: 13 }}>
-                  ⚠️ 当前为自动模式，将消耗购买积分（v4 已改手动优先：每日赠送额度仅限网页使用，API 只扣 wallet 余额）。如无需要请关闭授权。
-                  <button type="button" className="text-button" onClick={() => {
-                    setSeoSrc({ ...seoSrc, autoMetrics: false, autoCollect: false });
-                    void api<any>("seoDataSource", { autoMetrics: false, autoCollect: false }).then(() => setSeoMsg({ text: "已关闭自动模式（零余额消耗，待查清单+手动回传不受影响）。", ok: true })).catch(() => {});
-                  }}>一键关闭自动模式</button>
-                </p>
-              )}
               <button
                 type="button"
                 disabled={seoSaving}

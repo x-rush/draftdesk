@@ -2307,3 +2307,9 @@ legend {
   /* 决策行操作区在窄屏留足指距 */
   main .decision-row .card-actions { gap: 8px; }
 }
+
+/* ── R10.44① 可点性视觉区分（发现页概览）：可点卡=↗提示+hover 抬升；纯展示卡=降饱和无边框 ── */
+.overview-links div.stat-card { opacity: .82; border-style: dashed; }
+.overview-links button { transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+.overview-links button:hover { border-color: var(--green); box-shadow: 0 2px 10px rgba(37,59,50,.10); transform: translateY(-1px); }
+.overview-links button small { color: var(--green); }

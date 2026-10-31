@@ -32,6 +32,7 @@ function producedByLabel(by?: string): string {
   return by;
 }
 const sourceFilterLabels: Record<string, string> = { outline: "大纲", manual: "手动" };
+const c2n = (n: number) => String(n);
 // R10.37 C②：状态快捷卡的组合过滤口径——「进行中」=drafting+published、「已否决·暂缓」=rejected+deferred
 //（单状态值来自工具行按钮，不在表内按原值过滤）。
 const STATUS_CARD_FILTERS: Record<string, string[]> = {
@@ -62,6 +63,11 @@ export function Review() {
   const [detail, setDetail] = useState<any>(null);
   const [status, setStatus] = useState<string>("pending");
   const [sourceFilter, setSourceFilter] = useState("all");
+  // R10.43①②：大按钮范围确认——平台数≥2 时先问「全部/仅主平台」；默认项随否决原因语义分家
+  // （内容级原因 no-ai-signal/写不透/已写过=只废主平台的内容角度；平台级 off-domain/不感兴趣=全平台）。
+  const [scopeConfirm, setScopeConfirm] = useState<{ decision: string; reason?: string; platforms: string[]; primaryPlatform: string; rowIds: string[] } | null>(null);
+  // R10.43④：平台级批量——勾选行 × 选定平台的 platform-decision 批量写
+  const [batchPlatform, setBatchPlatform] = useState("");
   // R10.42④：平台多选筛选（与状态/来源正交叠加）——勾选的 platform 键集合，
   // 行的适合平台（platforms ∪ platform）命中任一即显示。空集=不限。
   const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
@@ -160,17 +166,29 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
   // 同题×N 不再连拍（第六轮批 B §2① + R10.37 A-1）：组拍板=对选题的「适合平台并集」
   // 逐平台拍（与徽章渲染 groupPlatforms 同源）——R10.35 一选题一条后，单行多平台的
   // 全部适合平台一起拍，不再只拍主平台；旧多行簇（克隆行）的各平台经并集自然覆盖。
+  async function applyGroupScope(decision: string, platforms: string[], scope: "all" | "primary", rowId: string) {
+    await act(async () => {
+      const targets = scope === "all" ? platforms : platforms.slice(0, 1);
+      for (const key of targets) {
+        await api(`outlines/${rowId}/platform-decision`, { platform: key, decision });
+      }
+      await reload();
+      setNotice(scope === "all"
+        ? `已按平台拍板 ${targets.length} 个平台（${decision}）——各平台状态独立，可点平台徽章分别改。`
+        : `已仅拍主平台（${targets[0]}，${decision}）——其余平台保持待决策。`);
+    });
+  }
+  const CONTENT_REASONS = ["no-ai-signal", "写不透", "已写过"];
   async function decideGroup(group: { primary: Row; members: Row[] }, decision: string, reason?: string) {
     if (group.primary.sourceType !== "outline") return decide(group.primary, decision, reason);
     const platforms = groupPlatforms(group.primary, group.members);
     if (!platforms.length) return decide(group.primary, decision, reason);
-    await act(async () => {
-      for (const key of platforms) {
-        await api(`outlines/${group.primary.id}/platform-decision`, { platform: key, decision });
-      }
-      await reload();
-      setNotice(`已按平台拍板 ${platforms.length} 个平台（${decision}）——各平台状态独立，可点平台徽章分别改。`);
-    });
+    // R10.43①②：平台数≥2 → 范围确认框（默认随原因语义分家）；=1 直拍
+    if (platforms.length >= 2) {
+      setScopeConfirm({ decision, reason, platforms, primaryPlatform: platforms[0], rowIds: [group.primary.id] });
+      return;
+    }
+    return applyGroupScope(decision, platforms, "all", group.primary.id);
   }
 
   // 平台徽章点拍：主行 perPlatformDecision 单平台改状态（其他平台不动）
@@ -185,6 +203,24 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
     if (!selected.size) return setNotice("先勾选要拍板的条目。");
     if (decision === "rejected" && !rejectReasons.includes(batchReason)) return;
     await act(async () => {
+      // R10.43④：选了平台 → 平台级批量（对勾选中 platforms 含该平台的行写 per-platform）；
+      // 未选 → 行级批量（原语义）。
+      if (batchPlatform) {
+        const rowsById = new Map(rows.map((r) => [r.id, r]));
+        let applied = 0;
+        for (const id of selected) {
+          const r = rowsById.get(id);
+          if (!r || r.sourceType !== "outline") continue;
+          const keys = platformOfRow(r);
+          if (!keys.includes(batchPlatform)) continue;
+          await api(`outlines/${id}/platform-decision`, { platform: batchPlatform, decision });
+          applied++;
+        }
+        await reload();
+        setSelected(new Set());
+        setNotice(`已批量拍板 ${applied} 条的 ${PLATFORM_LABELS[batchPlatform] || batchPlatform} 平台（${decision}）——行级状态随聚合更新。`);
+        return;
+      }
       const r = await api<{ applied: number; failed: any[] }>("decisions/batch", {
         ids: [...selected], decision, ...(decision === "rejected" ? { rejectReason: batchReason } : {}),
       });
@@ -199,6 +235,19 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
       await api(path, { decision, ...(decision === "rejected" ? { rejectReason: reason || "其他" } : {}) });
       await reload();
     });
+  }
+  // R10.43⑤：已拍行快速改判——rejected/deferred 行内「翻回待定」（outlines 走行级翻转端点）
+  async function flipRow(row: Row) {
+    await act(async () => {
+      const path = row.sourceType === "outline" ? `outlines/${row.id}/decision` : row.sourceType === "artifact" ? `artifacts/${row.id}/decision` : `decisions/${row.id}/decision`;
+      await api(path, { decision: "pending" });
+      await reload();
+      setNotice("已翻回待决策。");
+    });
+  }
+  // R10.43③：approved 行内「开始写作」——直接进详情草稿区
+  function startWriting(row: Row) {
+    setDetail(row);
   }
   async function publish(row: Row) {
     const publishedRef = publishRef[row.id]?.trim();
@@ -262,6 +311,26 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
     <div>
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
+      {scopeConfirm && (
+        <div role="dialog" aria-modal aria-label="拍板范围确认" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", zIndex: 60 }} onClick={() => setScopeConfirm(null)}>
+          <div className="surface" style={{ maxWidth: 420, width: "92%", padding: 20 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 16 }}>拍板范围确认（{scopeConfirm.decision === "approved" ? "通过" : scopeConfirm.decision === "rejected" ? "否决" : "暂缓"}）</h3>
+            <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>
+              该选题标注了 {scopeConfirm.platforms.length} 个适合平台（{scopeConfirm.platforms.map((k) => PLATFORM_LABELS[k] || k).join(" / ")}）。
+              {scopeConfirm.reason && ["off-domain", "不感兴趣", "其他"].includes(scopeConfirm.reason) ? "平台级原因（如域外/不感兴趣）通常适用于全部平台。" : "内容级原因（写不透/已写过/无信号）通常只影响主平台的内容角度。"}
+            </p>
+            <div style={{ display: "grid", gap: 8 }}>
+              <button className="primary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void applyGroupScope(c.decision, c.platforms, "all", c.rowIds[0]); }}>
+                应用到全部 {scopeConfirm.platforms.length} 个平台{scopeConfirm.reason && ["off-domain", "不感兴趣", "其他"].includes(scopeConfirm.reason) ? "（推荐）" : ""}
+              </button>
+              <button className="button-secondary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void applyGroupScope(c.decision, c.platforms, "primary", c.rowIds[0]); }}>
+                仅主平台 {PLATFORM_LABELS[scopeConfirm.primaryPlatform] || scopeConfirm.primaryPlatform}{scopeConfirm.reason && ["no-ai-signal", "写不透", "已写过"].includes(scopeConfirm.reason) ? "（推荐）" : ""}
+              </button>
+              <button style={{ minHeight: 32 }} onClick={() => setScopeConfirm(null)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ⓪ 今日总览（R10.8 P1-2 六段）：采集→精简→组→待拍→已拍→机会卡→外部回执 */}
       {today && (
@@ -335,6 +404,14 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
             <Field label="批量否决原因">
               <Select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
                 {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+              </Select>
+            </Field>
+            <Field label={batchPlatform ? "批量范围：仅该平台（R10.43④）" : "批量范围：行级（选平台改按平台拍）"}>
+              <Select aria-label="批量平台选择" value={batchPlatform} onChange={(e) => setBatchPlatform(e.target.value)}>
+                <option value="">不限（行级拍板）</option>
+                {PLATFORM_KEYS.filter((k) => rows.some((r) => platformOfRow(r).includes(k))).map((k) => (
+                  <option key={k} value={k}>{PLATFORM_LABELS[k]}</option>
+                ))}
               </Select>
             </Field>
             <div className="card-actions">
@@ -482,6 +559,12 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                     <button disabled={busy} onClick={() => setReasonOpen(new Set([...reasonOpen, row.id]))}>否决</button>
                   )}
                 </>
+              )}
+              {row.decision === "approved" && row.sourceType === "outline" && (
+                <button className="button-secondary" disabled={busy} onClick={() => startWriting(row)}>开始写作</button>
+              )}
+              {(row.decision === "rejected" || row.decision === "deferred") && (
+                <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>
               )}
               {["approved", "drafting"].includes(row.decision) && (
                 <>

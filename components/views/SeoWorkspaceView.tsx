@@ -218,12 +218,13 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
           新词是每日提取的原始信号，观测 1 次不代表真需求——连续出现才晋级突增。
         </p>
+        {/* R10.45 P2⑦：查看全部改为跳词库页（带本 tab 状态筛选）——原页内 fullMode 展示的是全量词表，与「N 条」承诺不符 */}
         <button className="text-button" onClick={() => {
-          setFullMode(true);
           ws.setSeenStatus(radarTab === "new" ? "new" : radarTab === "sustained" ? "sustained" : "");
           ws.setSeenIntent("");
-          ws.setSeenRegion(""); // R10.21：查看全部时清区域筛选——分区扫描的海外/中文是 tab 级视觉标记，全量词表须看到该区全部
+          ws.setSeenRegion("");
           ws.setSeenPage(1);
+          ws.navigate("library");
         }}>查看全部 {zoneTotals[radarTab] || 0} 条 →</button>
       </section>
       </>}

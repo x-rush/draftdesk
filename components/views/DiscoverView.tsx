@@ -27,7 +27,8 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
         <div className="overview-links">
           <button onClick={() => navigate("hotspots")}><span>原始热点 · 近 14 天</span><strong>{data.stats.hotspotRemaining}</strong><small>未消费 · 共 {data.stats.hotspotTotal} 条（已消费 {data.stats.hotspotConsumed}）↗</small></button>
           <div className="stat-card"><strong>{today?.collectAll?.raw ?? "—"}</strong><span>今日采集（{today?.collectAll?.sources ?? "—"} 源）</span><small>组 强{today?.groups?.strong ?? 0}/潜{today?.groups?.potential ?? 0}</small></div>
-          <div className="stat-card"><strong>{(today?.pendingOutlines ?? 0) + (today?.pendingDecisions ?? 0)}</strong><span>待拍</span><small>今日已拍 {today?.decidedToday ?? 0} · 机会卡 {today?.opportunities ?? 0}</small></div>
+          <button onClick={() => navigate("decisions")}><span>选题待拍</span><strong>{today?.pendingOutlines ?? 0}</strong><small>与审查台同口径（outlines pending）· 点击跳审查台 ↗</small></button>
+          <div className="stat-card"><strong>{today?.decidedToday ?? 0}</strong><span>今日已拍</span><small>机会卡 {today?.opportunities ?? 0} 张在库</small></div>
           <button onClick={() => { setDiscoveryMode("results"); setQuality("ready"); setPage(1); }}><span>通过检查</span><strong>{data.stats.qualityCounts.ready}</strong><small>查看可考虑的推荐 ↗</small></button>
           <button onClick={() => { setDiscoveryMode("results"); setQuality("review"); setPage(1); }}><span>待验证</span><strong>{data.stats.qualityCounts.review}</strong><small>查看缺失证据 ↗</small></button>
           <button onClick={() => { setDiscoveryMode("results"); setQuality("rejected"); setPage(1); }}><span>已否决</span><strong>{data.stats.qualityCounts.rejected}</strong><small>查看排除理由 ↗</small></button>
@@ -94,7 +95,7 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           >
             {jobId ? <button onClick={() => { const id = jobId; navigate("runs"); setRunId(id); }}>查看研究说明与缺失证据</button> : view === "library"
               ? "从每日发现收藏值得继续的内容。"
-              : view === "activities" ? "可查看待验证活动、检查官方规则，或从四平台活动中心导入新活动。" : quality === "ready" && data.stats.review > 0 ? <button onClick={() => { setQuality("review"); setPage(1); }}>查看待验证内容与缺失证据</button> : "运行一条研究策略，或在外部接入页导入证据包，再进行分析。"}
+              : view === "activities" ? "可查看待验证活动、检查官方规则，或从四平台活动中心导入新活动。" : quality === "ready" && data.stats.review > 0 ? <button onClick={() => { setQuality("review"); setPage(1); }}>查看待验证内容与缺失证据</button> : "跑一次分析口径（采集+初筛），或在外部接入页导入证据包，再进行分析。"}
           </Empty>
         ) : (
           <div className="discovery-list">

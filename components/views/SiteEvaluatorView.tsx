@@ -1,7 +1,7 @@
 "use client";
 // 应用机会 · 站群评估器（信息架构 v2-5）：
 // 数据源 = seo-terms 中 siteCandidate:true 的词；域名/站型/需求大纲均来自外部 Agent 数据。
-// [讨论][推进=立项建站（site-projects, pending）]；忽略为会话级隐藏。
+// 忽略=会话级隐藏（R10.45 P2⑥ 落地）；立项建站走站群项目页（site-projects）。
 // 站点发现 tab（海外定位批 6）：site-discoveries 独立站卡片（host/命中词/首次发现/它做的是什么）。
 // 机会引擎 tab（第五轮 §1）：四信号源统一机会卡（opportunities），auto/agent 来源标注 + 生成按钮。
 // 新站发现 tab（第五轮 §2）：site-launches Show HN/PH 新站（六类判定/中文转译/核心词/撞词标记）。
@@ -57,7 +57,10 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   // 数据通道（300 缓存供 chips/关联卡查找）不动，只治渲染爆炸
   const [visible, setVisible] = useState(50);
   useEffect(() => { setVisible(50); }, [form, signal, source]);
-  const shown = filtered.slice(0, visible);
+  // R10.45 P2⑥：忽略=会话级隐藏（头注释宣称的行为落地）；刷新恢复
+  const [ignored, setIgnored] = useState<Set<string>>(new Set());
+  const visibleList = filtered.filter((o) => !ignored.has(o.id));
+  const shown = visibleList.slice(0, visible);
 
   return (
     <>
@@ -80,7 +83,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
         <Select aria-label="按来源筛选" placeholder="全部来源" value={source} onChange={(e) => setSource(e.target.value)}>
           <option value="">全部来源</option>
           <option value="agent">agent（外部 Agent 生成）</option>
-          <option value="auto">auto（内置 tick 生成）</option>
         </Select>
         </div>
       </details>
@@ -103,7 +105,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
             )}
           </div>
         ) :
-        <Empty title="还没有机会卡。">
+        <Empty title={ignored.size && !visibleList.length ? "本会话已忽略全部筛选结果。" : "还没有机会卡。"}>
           机会引擎每日随采集自动扫描四信号源（small-products 候选 / news 产物配套缺口推演 / 官方新品 / verdict=推荐 蓝海词）；外部 Agent 也可经 PUT /agent/opportunities 直接写卡。内容线选题走大纲链路（审查台）。
         </Empty>
       ) : (
@@ -123,6 +125,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                   {o.platform && <span>{o.platform}</span>}
                   {typeof o.watchRefs === "number" && o.watchRefs > 0 && <span>引用 {o.watchRefs} 次</span>}
                   <span>{date(o.createdAt)}</span>
+                  <button className="text-button" title="本会话隐藏该卡（刷新恢复）" onClick={() => setIgnored((prev) => new Set(prev).add(o.id))}>忽略</button>
                 </div>
                 <button className="article-title" style={{ fontSize: 16, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(o.title); setNotice("已复制：" + o.title); }}>{o.title}</button>
                 <p style={{ margin: "4px 0 0" }}>{o.oneLiner}</p>

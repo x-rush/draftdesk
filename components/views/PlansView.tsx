@@ -59,9 +59,9 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
     <>
       {/* ① 统计条 */}
       <div className="stat-strip">
-        <div className="stat-card"><strong>{plans.length}</strong><span>研究策略</span><small>分析口径配置 · 每日 01:00 全量采集统一执行</small></div>
+        <div className="stat-card"><strong>{plans.length}</strong><span>分析口径</span><small>分析口径配置 · 每日 01:00 全量采集统一执行</small></div>
         <div className="stat-card accent"><strong>{enabledSources}</strong><span><RadioTower size={13} /> 全量采集源</span><small>每日 01:00 一次采回</small></div>
-        <div className="stat-card"><strong>{enabledSources}</strong><span><RadioTower size={13} /> 数据源启用</span><small>共 {(data.sources || []).length} 个可配置</small></div>
+        <div className="stat-card"><strong>{(data.sources || []).length}</strong><span><RadioTower size={13} /> 数据源总数</span><small>启用 {enabledSources} · 停用 {(data.sources || []).length - enabledSources}</small></div>
         <div className="stat-card"><strong>{activeRuns}</strong><span><Play size={12} /> 运行中</span><small>{activeRuns ? "运行记录页可查进度" : "当前无运行任务"}</small></div>
       </div>
 
@@ -71,7 +71,8 @@ export function PlansView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           setPlan({
             ...plans[0],
             id: crypto.randomUUID(),
-            name: "新的研究策略",
+            kind: plans.find((p) => p.kind !== "activities")?.kind || "trends", // R10.45 P3：新建不再继承当前选中卡的 kind（如 activities）
+            name: "新的分析口径",
             scheduleEnabled: false,
           })
         }>＋ 新建策略</button>

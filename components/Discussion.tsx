@@ -275,7 +275,7 @@ export function Discussion({
             </span>
             <div className="toolbar">
               <button
-                title={(!context || !conversation.messages.length) ? "需要关联研究产物且至少一条消息后可用" : undefined}
+                title={(!context || !conversation.messages.length) ? "从发现/热点列表点「讨论」进入（自动关联产物），并至少一条消息后可用" : undefined}
                 disabled={busy || working || !context || !conversation.messages.length}
                 onClick={() => {
                   setWorking(true);
@@ -288,7 +288,7 @@ export function Discussion({
                 整理为内容选题
               </button>
               <button
-                title={(!context || !conversation.messages.length) ? "需要关联研究产物且至少一条消息后可用" : undefined}
+                title={(!context || !conversation.messages.length) ? "从发现/热点列表点「讨论」进入（自动关联产物），并至少一条消息后可用" : undefined}
                 disabled={busy || working || !context || !conversation.messages.length}
                 onClick={() => {
                   setWorking(true);

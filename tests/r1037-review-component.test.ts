@@ -102,6 +102,10 @@ test("R10.37 UI③（A-1）：主行「通过」=按平台并集拍板——3 �
   const approve = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").trim() === "通过") as HTMLElement;
   assert.ok(approve, "找到主行通过按钮");
   await act(async () => { approve.click(); });
+  const dlg = document.querySelector('[aria-label="拍板范围确认"]');
+  assert.ok(dlg, "多平台先出范围确认框（R10.43）");
+  const apply = Array.from(dlg!.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("应用到全部")) as HTMLElement;
+  await act(async () => { apply.click(); });
   const pd = posted.filter((p) => p.path === "outlines/out-ui-1/platform-decision");
   assert.equal(pd.length, 3, "对主行发 3 次平台拍板（并集，非仅主平台）");
   assert.deepEqual(pd.map((p) => p.body.platform).sort(), ["gzh", "tiebuhao", "xhs-note"]);
@@ -119,6 +123,10 @@ test("R10.37 UI④（C⑤）：键盘流——J 高亮首行、A 触发通过（
   const first = document.querySelector(".decision-row") as HTMLElement;
   assert.ok(first.style.outline.includes("var(--ink)"), "J 高亮第一行");
   await press("a");
+  const dlg = document.querySelector('[aria-label="拍板范围确认"]');
+  assert.ok(dlg, "键盘 A 后确认框在");
+  const apply = Array.from(dlg!.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("应用到全部")) as HTMLElement;
+  await act(async () => { apply.click(); });
   const pd = posted.filter((p) => p.path === "outlines/out-ui-1/platform-decision");
-  assert.equal(pd.length, 3, "A=通过当前组（3 平台并集）");
+  assert.equal(pd.length, 3, "A=确认后并集拍板（3 平台）");
 });

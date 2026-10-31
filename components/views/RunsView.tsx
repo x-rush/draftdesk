@@ -7,7 +7,7 @@ import { api, date, download, Empty } from "../ui";
 import { X } from "lucide-react";
 import { Play, XCircle, CheckCircle2 } from "lucide-react";
 import { ResearchBrief } from "../ResearchBrief";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 
 const STATE_LABELS: Record<string, string> = { queued: "等待", running: "运行中", completed: "完成", failed: "失败", cancelled: "已取消" };
@@ -17,13 +17,29 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const [runFilter, setRunFilter] = useState<"all" | "completed" | "failed" | "active">("all");
   const [hideNoFindings, setHideNoFindings] = useState(true);
   const isNoFindings = (j: any) => j.state === "completed" && j.outcome === "no-findings";
-  const jobsAll = data.jobs;
-  const activeCount = jobsAll.filter((j) => ["queued", "running"].includes(j.state)).length;
-  const failedCount = jobsAll.filter((j) => j.state === "failed").length;
-  const completedCount = jobsAll.filter((j) => j.state === "completed" && !isNoFindings(j)).length;
-  const emptyCount = jobsAll.filter(isNoFindings).length;
+  // R10.45 P1①：统计卡原按当前分页页算——数字随翻页漂移。改挂 jobs 全量接口按全量算。
+  const [jobStats, setJobStats] = useState<{ active: number; failed: number; completed: number; empty: number } | null>(null);
+  useEffect(() => {
+    void api<any>("jobs?all=1&fields=state,outcome,no-findings").then((r) => {
+      const all: any[] = r.items || [];
+      setJobStats({
+        active: all.filter((j) => ["queued", "running"].includes(j.state)).length,
+        failed: all.filter((j) => j.state === "failed").length,
+        completed: all.filter((j) => j.state === "completed" && j.outcome !== "no-findings").length,
+        empty: all.filter((j) => j.state === "completed" && j.outcome === "no-findings").length,
+      });
+    }).catch(() => {});
+  }, []);
+  const pageActive = data.jobs.filter((j) => ["queued", "running"].includes(j.state)).length;
+  const pageFailed = data.jobs.filter((j) => j.state === "failed").length;
+  const pageCompleted = data.jobs.filter((j) => j.state === "completed" && !isNoFindings(j)).length;
+  const pageEmpty = data.jobs.filter(isNoFindings).length;
+  const activeCount = jobStats?.active ?? pageActive;
+  const failedCount = jobStats?.failed ?? pageFailed;
+  const completedCount = jobStats?.completed ?? pageCompleted;
+  const emptyCount = jobStats?.empty ?? pageEmpty;
   const pct = data.budget.limit ? Math.min(999, Math.round((data.budget.reserved / data.budget.limit) * 100)) : 0;
-  const jobs = jobsAll
+  const jobs = data.jobs
     .filter((j) => (runFilter === "all" ? true : runFilter === "active" ? ["queued", "running"].includes(j.state) : j.state === runFilter))
     .filter((j) => !(hideNoFindings && isNoFindings(j)));
 
@@ -52,7 +68,7 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
           <span className="muted" style={{ fontSize: 12 }}>已隐藏 {emptyCount} 条空跑</span>
         )}
         <nav className="discovery-modes" aria-label="运行状态筛选">
-          {([["all", "全部", jobsAll.length], ["active", "进行中", activeCount], ["failed", "失败", failedCount], ["completed", "完成", jobsAll.filter((j) => j.state === "completed").length]] as const).map(([key, label, count]) => (
+          {([["all", "全部", jobStats ? jobStats.active + jobStats.failed + jobStats.completed + jobStats.empty : data.jobs.length], ["active", "进行中", activeCount], ["failed", "失败", failedCount], ["completed", "完成", data.jobs.filter((j: any) => j.state === "completed").length]] as const).map(([key, label, count]) => (
             <button key={key} className={runFilter === key ? "active" : ""} aria-current={runFilter === key ? "page" : undefined} onClick={() => setRunFilter(key)}>{label} {count}</button>
           ))}
         </nav>
@@ -67,8 +83,8 @@ export function RunsView({ ws, data }: { ws: Workspace; data: Snapshot }) {
 
       {/* ③ 运行行 */}
       {!jobs.length ? (
-        <Empty title={jobsAll.length ? "当前筛选下没有任务" : "研究尚未开始"}>
-          {jobsAll.length ? "调整上方筛选或隐藏开关再看。" : "在研究策略中运行一次，完整流程会记录在这里。"}
+        <Empty title={data.jobs.length ? "当前筛选下没有任务" : "研究尚未开始"}>
+          {data.jobs.length ? "调整上方筛选或隐藏开关再看。" : "在分析口径页运行一次，完整流程会记录在这里。"}
         </Empty>
       ) : (
         <div className="term-list">

@@ -249,11 +249,11 @@ export function Connections({
           <h2>两条研究路径</h2>
           <p className="helper-text">二选一，随时切换：<strong>内置管线</strong>零额外组件；<strong>外部回传</strong>适合已有个人助理 Agent 的用户。</p>
           {plans.find(p=>p.id===plan)?.scheduleEnabled&&<p role="status" className="activity-attention">
-            所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请到「研究策略」关闭「每天自动运行」。
+            所选策略「{plans.find(p=>p.id===plan)?.name}」的内置每日定时仍在启用。两条路径同时在跑会重复消耗模型额度；要改用外部回传，请在「设置→执行方」切到外部 Agent（R10.24 起内置每日定时已随 auto-runs 退役，当前为提示性检查）。
           </p>}
           <details className="fold-card">
             <summary>路径说明与接入步骤</summary>
-            <p className="helper-text">内置管线是默认路径，在「研究策略」打开「每天自动运行」即可。外部回传：关掉内置定时，让 Agent 按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，替代内置管线。接收后先待审，需要时再交给内置研究流程。</p>
+            <p className="helper-text">内置管线经「设置→执行方」切 builtin 即可（R10.24 起自动运行开关已退役）。外部回传：关掉内置定时，让 Agent 按导出的策略自主搜罗、整理，并在自己的调度里定时回传统一证据包，替代内置管线。接收后先待审，需要时再交给内置研究流程。</p>
             <ol className="setup-steps">
               <li>下载 Skill 包，交给你的智能体安装。</li>
               <li>创建令牌（勾选读取/消费可让 Agent 读取并标记搜罗数据），通过环境变量配置地址和令牌。</li>
@@ -261,7 +261,7 @@ export function Connections({
             </ol>
             <p className="helper-text">分步操作、各运行器 MCP 配置示例与排障见 <a href="https://github.com/x-rush/draftdesk/blob/main/docs/agent-integration.md" target="_blank" rel="noreferrer">外部 Agent 接入指南</a>。</p>
           </details>
-          <Field label="交给外部工具的研究策略">
+          <Field label="交给外部工具的分析口径">
             <Select value={plan} onChange={(e) => setPlan(e.target.value)}>
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>

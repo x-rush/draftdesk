@@ -19,7 +19,6 @@ export function outlineScore(o: any): number {
 
 export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   const { outlines, clusters, setNotice, busy, navigate } = ws;
-  const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
   const pending = outlines
     .filter((o) => o.decision === "pending")
@@ -69,12 +68,13 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
     );
   }
 
+  // R10.45 P2④：这里不是「今日」——是当前队列生命周期口径（窗口过滤后），文案同步改「已处理」
   const totalToday = outlines.filter((o) => o.decision !== "pending").length + pending.length;
   const doneToday = outlines.filter((o) => o.decision !== "pending").length;
   return (
     <>
       {totalToday > 0 && <div className="queue-progress" style={{ marginBottom: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--muted)" }}><span>今天还剩 {pending.length} 条待拍</span><span>已处理 {doneToday}/{totalToday}</span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--muted)" }}><span>今天还剩 {pending.length} 条待拍</span><span title="当前队列生命周期口径（非今日）">已处理 {doneToday}/{totalToday}</span></div>
         <div style={{ height: 6, background: "var(--line)", borderRadius: 3 }}><div style={{ height: 6, borderRadius: 3, background: "var(--ink)", width: Math.round((doneToday / totalToday) * 100) + "%" }} /></div>
       </div>}
       {pending.length === 0 ? (
@@ -114,26 +114,16 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
                     {(o.evidenceRefs || []).slice(0, 1).map((ref: string) => (
                       <a key={ref} href={ref} target="_blank" rel="noopener noreferrer">数据源 ↗</a>
                     ))}
-                    {(o.evidenceRefs?.length || 0) > 1 && <span>+{o.evidenceRefs.length - 1}</span>}
+                    {(o.evidenceRefs?.length || 0) > 1 && (o.evidenceRefs?.length || 0) <= 3 && <span>+{o.evidenceRefs.length - 1}</span>}
                     {(o.evidenceRefs?.length || 0) > 3 && <span>+{o.evidenceRefs.length - 3}</span>}
                   </div>
                 </div>
                 <div className="row-side">
                   <small>{o.evidenceRefs?.length || 0} 条数据源</small>
-                  {/* R10.8 P1-4：拍板口收敛到审查台（唯一拍板口），队列侧只读+跳转 */}
+                  {/* R10.45 P2⑫：队列=快速拍板页（卡片按钮+键盘 A/X 直拍，R10.37 起与审查台同权）；详情抽屉拍板经 onDecide 回调同写一套状态机 */}
                   <div style={{ display: "flex", gap: 6 }}>
                     <button className="primary" onClick={() => navigate("decisions")}>去审查台拍板 ↗</button>
                   </div>
-                  {reasonFor === o.id && (
-                    <Select aria-label={o.title + " 否决原因"} placeholder="选否决原因…" onChange={(e) => { const v = e.target.value; if (v) { setReasonFor(null); void decideGroup(group, "rejected", v); } }} style={{ marginTop: 6 }}>
-                      <option value="off-domain">超出领域</option>
-                      <option value="no-ai-signal">没有 AI 信号</option>
-                      <option value="已写过">已经写过</option>
-                      <option value="写不透">写不透</option>
-                      <option value="不感兴趣">不感兴趣</option>
-                      <option value="其他">其他</option>
-                    </Select>
-                  )}
                 </div>
                 {dupCount > 1 && openGroups.has(group.key) && (
                   <div style={{ width: "100%", borderTop: "1px dashed var(--line)", paddingTop: 8, display: "grid", gap: 8 }}>
