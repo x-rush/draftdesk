@@ -285,6 +285,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const [ignored, setIgnored] = useState<string[]>([]);
   // 单入口（第六轮批 B §2.5①）：站群候选独立 tab 撤销——应用形态机会统一在「机会引擎」（kind 筛选），站群卡不再孤岛
   const [tab, setTab] = useState<"sites" | "launches" | "opportunities" | "links">("opportunities");
+  const [siteSubTab, setSiteSubTab] = useState("discover"); // R10.46②：sites 内四子导航
   const [linkProspects, setLinkProspects] = useState<any[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
   const [launchRefreshing, setLaunchRefreshing] = useState(false);
@@ -340,10 +341,18 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
         )
       )}
       {tab === "opportunities" && <OpportunitiesTab ws={ws} opportunities={opportunityList} />}
-      {tab === "sites" && <TodayCheckPanel ws={ws} />}
-      {tab === "sites" && <ManualReturnPanel ws={ws} />}
-      {tab === "sites" && <BenchmarkPanel ws={ws} />}
       {tab === "sites" && (
+        <>
+        {/* R10.46②：子导航——三个低频 SEO 面板收进子 tab，站点发现保持默认主内容 */}
+        <nav className="discovery-modes" aria-label="站点 tab 子导航" style={{ marginBottom: 10 }}>
+          {[["discover", "站点发现"], ["today", "今日待查"], ["manual", "手动回传"], ["benchmark", "标杆站"]].map(([k, label]) => (
+            <button key={k} className={siteSubTab === k ? "active" : ""} onClick={() => setSiteSubTab(k)}>{label}</button>
+          ))}
+        </nav>
+        {siteSubTab === "today" && <TodayCheckPanel ws={ws} />}
+        {siteSubTab === "manual" && <ManualReturnPanel ws={ws} />}
+        {siteSubTab === "benchmark" && <BenchmarkPanel ws={ws} />}
+      {tab === "sites" && siteSubTab === "discover" && (
         discoveries.length === 0 ? (
           <Empty title="还没有站点发现。">
             判定层每天对 score TOP100 强相关海外词查 SERP 竞争度（vercel/github.io/pages.dev/netlify.app），
@@ -386,6 +395,8 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
           </div>
           </>
         )
+      )}
+      </>
       )}
     </>
   );
