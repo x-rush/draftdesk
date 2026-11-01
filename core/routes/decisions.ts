@@ -111,6 +111,7 @@ export const routes: RouteDef[] = [
     // 不触发状态。传 { platform } 切换增删；传 { platforms } 整组覆写。
     methods: ["PUT", "POST"],
     pattern: "outlines/:id/platforms",
+    scope: "suggest",
     handler: async ({ db, params, readBody }) => {
       const parsed = z.object({
         platform: z.string().min(1).max(30).optional(),
