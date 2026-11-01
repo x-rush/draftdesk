@@ -66,9 +66,7 @@ export function Review() {
   const [sourceFilter, setSourceFilter] = useState("all");
   // R10.43①②：大按钮范围确认——平台数≥2 时先问「全部/仅主平台」；默认项随否决原因语义分家
   // （内容级原因 no-ai-signal/写不透/已写过=只废主平台的内容角度；平台级 off-domain/不感兴趣=全平台）。
-  const [scopeConfirm, setScopeConfirm] = useState<{ decision: string; reason?: string; platforms: string[]; primaryPlatform: string; rowIds: string[] } | null>(null);
-  // R10.43④：平台级批量——勾选行 × 选定平台的 platform-decision 批量写
-  const [batchPlatform, setBatchPlatform] = useState("");
+  const [scopeConfirm, setScopeConfirm] = useState<{ decision: string; reason?: string; platforms: string[]; primaryPlatform: string; rowIds: string[]; batch?: boolean } | null>(null);
   // R10.42④：平台多选筛选（与状态/来源正交叠加）——勾选的 platform 键集合，
   // 行的适合平台（platforms ∪ platform）命中任一即显示。空集=不限。
   const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
@@ -201,28 +199,40 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
     setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
 
+  // R10.47 补丁（老大 11-01 认可）：批量范围自动推导，零选择——
+  // 勾选行平台一致 → 批量=全平台通过（无确认）；平台不一致 → 确认框列共同平台（其余不动）；
+  // 想单独批量某平台 → 平台筛选先筛再勾选，范围自然就是它（筛选与拍板正交）。
   async function batch(decision: string) {
     if (!selected.size) return setNotice("先勾选要拍板的条目。");
     if (decision === "rejected" && !rejectReasons.includes(batchReason)) return;
-    await act(async () => {
-      // R10.43④：选了平台 → 平台级批量（对勾选中 platforms 含该平台的行写 per-platform）；
-      // 未选 → 行级批量（原语义）。
-      if (batchPlatform) {
-        const rowsById = new Map(rows.map((r) => [r.id, r]));
-        let applied = 0;
-        for (const id of selected) {
-          const r = rowsById.get(id);
-          if (!r || r.sourceType !== "outline") continue;
-          const keys = platformOfRow(r);
-          if (!keys.includes(batchPlatform)) continue;
-          await api(`outlines/${id}/platform-decision`, { platform: batchPlatform, decision });
-          applied++;
+    const rowsById = new Map(rows.map((r) => [r.id, r]));
+    const outlineIds = [...selected].filter((id) => rowsById.get(id)?.sourceType === "outline");
+    const sets = outlineIds.map((id) => platformOfRow(rowsById.get(id)!));
+    const union = [...new Set(sets.flat())];
+    const common = union.filter((p2) => sets.every((s2) => s2.includes(p2)));
+    const consistent = sets.length > 0 && sets.every((s2) => s2.length === sets[0].length && s2.every((p2) => sets[0].includes(p2)));
+    const scope = { outlineIds, union, common, consistent };
+    if (outlineIds.length === selected.size) {
+      // 全部是大纲行 → 平台级批量（自动推导范围）
+      const targets = consistent ? union : common;
+      if (!targets.length) return setNotice("勾选行没有共同平台——请分别拍板或调整勾选。");
+      if (!scope.consistent) {
+        setScopeConfirm({ decision, reason: batchReason, platforms: targets, primaryPlatform: targets[0], rowIds: outlineIds, batch: true });
+        return;
+      }
+      await act(async () => {
+        for (const id of outlineIds) {
+          for (const key of scope.union) {
+            await api(`outlines/${id}/platform-decision`, { platform: key, decision });
+          }
         }
         await reload();
         setSelected(new Set());
-        setNotice(`已批量拍板 ${applied} 条的 ${PLATFORM_LABELS[batchPlatform] || batchPlatform} 平台（${decision}）——行级状态随聚合更新。`);
-        return;
-      }
+        setNotice(`已批量拍板 ${outlineIds.length} 条 × ${union.length} 平台（${decision}）——行级状态随聚合更新。`);
+      });
+      return;
+    }
+    await act(async () => {
       const r = await api<{ applied: number; failed: any[] }>("decisions/batch", {
         ids: [...selected], decision, ...(decision === "rejected" ? { rejectReason: batchReason } : {}),
       });
@@ -335,18 +345,36 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
       {scopeConfirm && (
         <div role="dialog" aria-modal aria-label="拍板范围确认" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", zIndex: 60 }} onClick={() => setScopeConfirm(null)}>
           <div className="surface" style={{ maxWidth: 420, width: "92%", padding: 20 }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: "0 0 6px", fontSize: 16 }}>拍板范围确认（{scopeConfirm.decision === "approved" ? "通过" : scopeConfirm.decision === "rejected" ? "否决" : "暂缓"}）</h3>
+            <h3 style={{ margin: "0 0 6px", fontSize: 16 }}>拍板范围确认（{scopeConfirm.decision === "approved" ? "通过" : scopeConfirm.decision === "rejected" ? "否决" : "暂缓"}{scopeConfirm.batch ? ` · ${scopeConfirm.rowIds.length} 条批量` : ""}）</h3>
             <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>
-              该选题标注了 {scopeConfirm.platforms.length} 个适合平台（{scopeConfirm.platforms.map((k) => PLATFORM_LABELS[k] || k).join(" / ")}）。
-              {scopeConfirm.reason && ["off-domain", "不感兴趣", "其他"].includes(scopeConfirm.reason) ? "平台级原因（如域外/不感兴趣）通常适用于全部平台。" : "内容级原因（写不透/已写过/无信号）通常只影响主平台的内容角度。"}
+              {scopeConfirm.batch
+                ? `勾选行平台不一致——只拍共同都有的平台（${scopeConfirm.platforms.map((k) => PLATFORM_LABELS[k] || k).join(" / ")}），其余平台不动。想单独批量某平台：用平台筛选筛出后再勾选。`
+                : `该选题标注了 ${scopeConfirm.platforms.length} 个适合平台（${scopeConfirm.platforms.map((k) => PLATFORM_LABELS[k] || k).join(" / ")}）。${scopeConfirm.reason && ["off-domain", "不感兴趣", "其他"].includes(scopeConfirm.reason) ? "平台级原因（如域外/不感兴趣）通常适用于全部平台。" : "内容级原因（写不透/已写过/无信号）通常只影响主平台的内容角度。"}`}
             </p>
             <div style={{ display: "grid", gap: 8 }}>
-              <button className="primary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void applyGroupScope(c.decision, c.platforms, "all", c.rowIds[0]); }}>
-                应用到全部 {scopeConfirm.platforms.length} 个平台{scopeConfirm.reason && ["off-domain", "不感兴趣", "其他"].includes(scopeConfirm.reason) ? "（推荐）" : ""}
-              </button>
-              <button className="button-secondary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void applyGroupScope(c.decision, c.platforms, "primary", c.rowIds[0]); }}>
-                仅主平台 {PLATFORM_LABELS[scopeConfirm.primaryPlatform] || scopeConfirm.primaryPlatform}{scopeConfirm.reason && ["no-ai-signal", "写不透", "已写过"].includes(scopeConfirm.reason) ? "（推荐）" : ""}
-              </button>
+              {scopeConfirm.batch ? (
+                <button className="primary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void (async () => {
+                  await act(async () => {
+                    for (const id of c.rowIds) {
+                      for (const key of c.platforms) await api(`outlines/${id}/platform-decision`, { platform: key, decision: c.decision });
+                    }
+                    await reload();
+                    setSelected(new Set());
+                    setNotice(`已批量拍板 ${c.rowIds.length} 条 × ${c.platforms.length} 平台（${c.decision}）。`);
+                  });
+                })(); }}>
+                  只拍共同平台 {scopeConfirm.platforms.map((k) => PLATFORM_LABELS[k] || k).join(" / ")}（其余平台不动）
+                </button>
+              ) : (
+                <>
+                  <button className="primary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void applyGroupScope(c.decision, c.platforms, "all", c.rowIds[0]); }}>
+                    应用到全部 {scopeConfirm.platforms.length} 个平台{scopeConfirm.reason && ["off-domain", "不感兴趣", "其他"].includes(scopeConfirm.reason) ? "（推荐）" : ""}
+                  </button>
+                  <button className="button-secondary" style={{ minHeight: 36 }} onClick={() => { const c = scopeConfirm; setScopeConfirm(null); void applyGroupScope(c.decision, c.platforms, "primary", c.rowIds[0]); }}>
+                    仅主平台 {PLATFORM_LABELS[scopeConfirm.primaryPlatform] || scopeConfirm.primaryPlatform}{scopeConfirm.reason && ["no-ai-signal", "写不透", "已写过"].includes(scopeConfirm.reason) ? "（推荐）" : ""}
+                  </button>
+                </>
+              )}
               <button style={{ minHeight: 32 }} onClick={() => setScopeConfirm(null)}>取消</button>
             </div>
           </div>
@@ -425,14 +453,6 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
             <Field label="批量否决原因">
               <Select aria-label="批量否决原因" value={batchReason} onChange={(e) => setBatchReason(e.target.value)}>
                 {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
-              </Select>
-            </Field>
-            <Field label={batchPlatform ? "批量范围：仅该平台（R10.43④）" : "批量范围：行级（选平台改按平台拍）"}>
-              <Select aria-label="批量平台选择" value={batchPlatform} onChange={(e) => setBatchPlatform(e.target.value)}>
-                <option value="">不限（行级拍板）</option>
-                {PLATFORM_KEYS.filter((k) => rows.some((r) => platformOfRow(r).includes(k))).map((k) => (
-                  <option key={k} value={k}>{PLATFORM_LABELS[k]}</option>
-                ))}
               </Select>
             </Field>
             <div className="card-actions">
@@ -555,15 +575,12 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                   )}
                 </>
               )}
-              {row.decision === "approved" && row.sourceType === "outline" && (
-                <button className="button-secondary" disabled={busy} onClick={() => void copyBrief(row)}>复制创作简报</button>
-              )}
               {(row.decision === "rejected" || row.decision === "deferred") && (
                 <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>
               )}
               {["approved", "drafting"].includes(row.decision) && (
                 <>
-                  <button disabled={busy} onClick={() => void decide(row, "drafting")}>开始写作</button>
+                  {row.sourceType === "outline" && <button disabled={busy} onClick={() => void copyBrief(row)}>复制创作简报</button>}
                   <input
                     aria-label={`发布链接 ${row.title}`}
                     placeholder="发布后回填链接"

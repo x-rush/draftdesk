@@ -8,6 +8,9 @@ export function usePopoverAutoClose() {
   useEffect(() => {
     function onPointerDown(e: MouseEvent | PointerEvent) {
       const target = e.target as HTMLElement;
+      // R10.47 补丁：Radix Select 下拉面板 Portal 到 body（不在 details 内）——
+      // 点选项=「外部点击」误关弹层。target 落在 popper wrapper 内视为内部，不关闭。
+      if (target.closest("[data-radix-popper-content-wrapper]")) return;
       document.querySelectorAll("details[data-popover][open]").forEach((d) => {
         if (!d.contains(target)) d.removeAttribute("open");
       });
