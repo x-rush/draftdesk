@@ -37,7 +37,7 @@ const c2n = (n: number) => String(n);
 // R10.37 C②：状态快捷卡的组合过滤口径——「进行中」=drafting+published、「已否决·暂缓」=rejected+deferred
 //（单状态值来自工具行按钮，不在表内按原值过滤）。
 const STATUS_CARD_FILTERS: Record<string, string[]> = {
-  pending: ["pending"], approved: ["approved"], active: ["drafting", "published"], closed: ["rejected", "deferred"],
+  pending: ["pending"], approved: ["approved"], writing: ["drafting"], published: ["published"], closed: ["rejected", "deferred"],
 };
 
 // R10.35：一条选题的「适合平台」= 组内各行的 platforms 并集（主行优先保序）。
@@ -335,7 +335,8 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
   const statusCards: Array<{ key: string; label: string; count: number; accent: boolean; states: string[]; small: string }> = [
     { key: "pending", label: "待决策", count: stats.pending || 0, accent: true, states: ["pending"], small: "点卡片只看这一档，再点回全部" },
     { key: "approved", label: "已通过", count: stats.approved || 0, accent: false, states: ["approved"], small: "进入写作与发布流转" },
-    { key: "active", label: "进行中", count: (stats.drafting || 0) + (stats.published || 0), accent: false, states: ["drafting", "published"], small: `写作中 ${stats.drafting || 0} · 已发布 ${stats.published || 0} 条` },
+    { key: "writing", label: "写作中", count: stats.drafting || 0, accent: false, states: ["drafting"], small: "已批待出稿（builtin 兜底出稿在此档）" },
+    { key: "published", label: "已发布", count: stats.published || 0, accent: false, states: ["published"], small: "流程终点 · 可回填发布链接" },
     { key: "closed", label: "已否决·暂缓", count: (stats.rejected || 0) + (stats.deferred || 0), accent: false, states: ["rejected", "deferred"], small: `已否决 ${stats.rejected || 0} · 暂缓 ${stats.deferred || 0}` },
   ];
   return (

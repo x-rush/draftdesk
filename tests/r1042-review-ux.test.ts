@@ -73,12 +73,16 @@ test("R10.42 ①②：nav 与卡同键空间——点卡 nav 亮、点 nav 卡�
     mkRow("d", "rejected", ["threads"]), mkRow("e", "deferred", ["tiebuhao"]),
   ]);
   const navLabels = Array.from(document.querySelectorAll('nav[aria-label="决策状态筛选"] button')).map((b) => (b.textContent || "").trim());
-  assert.equal(navLabels.length, 5, "五键：全部+四组合键");
+  assert.equal(navLabels.length, 6, "六键：全部+五组合键（R10.49 published 拆出）");
   assert.ok(navLabels.some((t) => t.startsWith("待决策")), "pending 有 nav 入口（旧 nav 排除 pending 已修）");
-  // 点卡 → nav 同亮
-  await act(async () => { card("进行中").click(); });
-  assert.ok((navBtn("进行中") as HTMLElement).className.includes("active"), "点卡后 nav 同亮");
-  assert.deepEqual(rowsOf().sort(), ["行-b", "行-c"], "进行中=drafting+published 组合过滤");
+  // 点卡 → nav 同亮；「写作中」=仅 drafting
+  await act(async () => { card("写作中").click(); });
+  assert.ok((navBtn("写作中") as HTMLElement).className.includes("active"), "点卡后 nav 同亮");
+  assert.deepEqual(rowsOf(), ["行-b"], "写作中=drafting 单态");
+  // 「已发布」卡=仅 published
+  await act(async () => { card("已发布").click(); });
+  assert.ok((navBtn("已发布") as HTMLElement).className.includes("active"), "点已发布卡后 nav 同亮");
+  assert.deepEqual(rowsOf(), ["行-c"], "published 独立卡（R10.49）");
   // 点 nav → 卡同亮
   await act(async () => { navBtn("已否决·暂缓").click(); });
   assert.ok((card("已否决·暂缓") as HTMLElement).className.includes("active"), "点 nav 后卡同亮");

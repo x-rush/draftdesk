@@ -83,14 +83,16 @@ test("R10.37 UI①：多平台选题渲染——适合平台徽章=platforms 全
   assert.ok((document.body.textContent || "").includes("推荐 · 主投公众号"), "推荐建议行渲染");
 });
 
-test("R10.37 UI②：状态卡组合过滤——「进行中」=drafting+published，「已否决·暂缓」=rejected+deferred", async () => {
+test("R10.49 更新：状态卡组合过滤——「写作中」=drafting、「已发布」=published 独立卡（流程终点≠进行中）", async () => {
   const now = new Date().toISOString();
   const mk = (id: string, decision: string) => ({ sourceType: "manual", id, kind: "manual", title: "行-" + id, decision, createdAt: now });
   await render([mk("dr", "drafting"), mk("pb", "published"), mk("rj", "rejected"), mk("df", "deferred")]);
   const card = (label: string) => Array.from(document.querySelectorAll(".stat-card.clickable")).find((c) => (c.textContent || "").includes(label)) as HTMLElement;
   const visibleTitles = () => Array.from(document.querySelectorAll(".decision-title")).map((t) => t.textContent);
-  await act(async () => { card("进行中").click(); });
-  assert.deepEqual(visibleTitles().sort(), ["行-dr", "行-pb"], "进行中卡过滤 drafting+published");
+  await act(async () => { card("写作中").click(); });
+  assert.deepEqual(visibleTitles().sort(), ["行-dr"], "写作中卡仅 drafting");
+  await act(async () => { card("已发布").click(); });
+  assert.deepEqual(visibleTitles().sort(), ["行-pb"], "已发布卡仅 published");
   await act(async () => { card("已否决·暂缓").click(); });
   assert.deepEqual(visibleTitles().sort(), ["行-df", "行-rj"], "已否决·暂缓卡过滤 rejected+deferred");  await act(async () => { card("已否决·暂缓").click(); }); // 再点回全部
   assert.equal(visibleTitles().length, 4, "再点回全部");
