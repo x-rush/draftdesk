@@ -1,6 +1,7 @@
 // 第七轮批 4 守护：付费接口双重门控（autoMetrics/autoCollect）+ 月池 + obs≥5 +
 // search_intent 内置化 + newWordsTick + 手动回传（解析/落库/卡点亮/intentConflict）+ 深链常量。
 import { test } from "node:test";
+import { shanghaiDayOf } from "../core/tick-guard";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -79,13 +80,23 @@ test("双重门控（W7-11①）：autoMetrics 关=tick 零调用；开=恢复�
     assert.equal(db.get<any>("seen-terms", termId("zzb4 weak obs"))?.monthlySearch, undefined, "obs<5 不查");
     assert.ok(calls.some((u) => u.includes("keyword_volume")), "三指标调用");
     assert.ok(!calls.some((u) => u.includes("search_intent")), "search_intent 永久内置 AI（批4②不自动查）");
-    // 月池：不同日期同月累计（在 tick 已消耗基础上 +20；次月重置）
+    // 月池：不同日期同月累计（在 tick 已消耗基础上 +20；次月重置）。
+    // R10.47：日期动态锚定当前真实月——硬编码 2026-10 在月翻转日（每月 1 日）会与
+    // tick 实耗月份分家（同上海日测试债一类），锚定后任何日期跑都对。
+    const nowR = new Date();
+    // 锚「上海月」（poolKey 口径=en-CA Asia/Shanghai YYYY-MM）——本地月在上海翻转窗会分家
+    const ym = shanghaiDayOf(nowR).slice(0, 7); // YYYY-MM
+    const inMonth = (day: number) => new Date(`${ym}-${String(day).padStart(2, "0")}T04:00:00Z`); // 04:00Z=上海 12:00 同日
+    const y = Number(ym.slice(0, 4)), mth = Number(ym.slice(5, 7));
+    const nextMonthStart = new Date(`${mth === 12 ? y + 1 : y}-${String(mth === 12 ? 1 : mth + 1).padStart(2, "0")}-01T04:00:00Z`);
     const usedBefore = seoBudgetUsed(db, "metrics");
-    seoSpend(db, "metrics", 10, new Date("2026-10-05T00:00:00Z"));
-    seoSpend(db, "metrics", 10, new Date("2026-10-25T00:00:00Z"));
-    assert.equal(seoBudgetUsed(db, "metrics", new Date("2026-10-20T00:00:00Z")), usedBefore + 20, "同月跨日累计");
-    assert.equal(seoBudgetLeft(db, "metrics", new Date("2026-10-20T00:00:00Z")), Math.max(0, 30 - usedBefore - 20), "月池 30 扣减");
-    assert.equal(seoBudgetUsed(db, "metrics", new Date("2026-11-01T00:00:00Z")), 0, "次月重置");
+    seoSpend(db, "metrics", 10, inMonth(5));
+    seoSpend(db, "metrics", 10, inMonth(25));
+    const probe = inMonth(20);
+    const usedAtProbe = seoBudgetUsed(db, "metrics", probe);
+    assert.equal(usedAtProbe, usedBefore + 20, "同月跨日累计");
+    assert.equal(seoBudgetLeft(db, "metrics", probe), Math.max(0, 30 - usedBefore - 20), "月池 30 扣减");
+    assert.equal(seoBudgetUsed(db, "metrics", nextMonthStart), 0, "次月重置");
   } finally {
     db?.close();
     cleanup(dir);

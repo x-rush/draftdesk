@@ -6,6 +6,7 @@ import { json } from "../http/middleware";
 import { paginatedSql } from "../http/pagination";
 import { AppError, now } from "../store";
 import { agentHotspots, agentEvidence, agentArtifacts, agentArtifact, agentStats, mcpRpc } from "../agent-read";
+import { seoSourceOf, seoBudgetUsed } from "../seo-source";
 import { siteGateOf } from "../seo-gate";
 
 const listQuery = (query: URLSearchParams) => {
@@ -106,6 +107,20 @@ export const routes: RouteDef[] = [
   },
   { methods: ["GET"], pattern: "agent/persona", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "persona") || null) },
   { methods: ["GET"], pattern: "agent/aiPolicy", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "aiPolicy") || null) },
+  {
+    // R10.47：哥飞 pools 只读校验口（生产迁移后外部 Agent 无容器内 DB 通道，
+    // 每日主分析第 8 步「验证 tier.budget=0」凭此闭环）——与 UI 口同款脱敏（token 只回 hasToken）。
+    methods: ["GET"],
+    pattern: "agent/seoDataSource",
+    scope: "read",
+    methodGuardFirst: true,
+    handler: ({ db }) => {
+      const src = seoSourceOf(db);
+      const budgetKeys = { tier: "builtinTierBudget", metrics: "builtinMetricsBudget", collect: "builtinCollectBudget" } as Record<string, "builtinTierBudget" | "builtinMetricsBudget" | "builtinCollectBudget">;
+      const pools = (["tier", "metrics", "collect"] as const).map((p) => ({ pool: p, used: seoBudgetUsed(db, p), budget: src[budgetKeys[p]] }));
+      return json({ enabled: src.enabled, provider: src.provider, pools, hasToken: !!src.token, autoMetrics: src.autoMetrics, autoCollect: src.autoCollect });
+    },
+  },
   { methods: ["GET"], pattern: "agent/consumerMode", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "consumerMode") || null) },
   // siteGate 站群门槛（第七轮 W7-4）：外部 Agent 标注逻辑读同一份规则（规则同源，v1 硬编码白名单废弃）
   { methods: ["GET"], pattern: "agent/siteGate", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(siteGateOf(db)) },
