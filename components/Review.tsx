@@ -18,6 +18,7 @@ type Row = {
   draftBody?: string;
   creationStatus?: string;
   createdAt: string; evidenceCount?: number; clusterId?: string;
+  evidenceRefs?: string[];
 };
 const statusLabels: Record<string, string> = {
   pending: "待决策", approved: "已通过", drafting: "写作中", published: "已发布", rejected: "已否决", deferred: "已暂缓",
@@ -78,7 +79,6 @@ export function Review() {
   const [error, setError] = useState("");
   const [manual, setManual] = useState({ title: "", notes: "", platforms: "" });
   const [publishRef, setPublishRef] = useState<Record<string, string>>({});
-  const [draftText, setDraftText] = useState<Record<string, string>>({});
   const [persona, setPersona] = useState<any>(null);
   const [personaText, setPersonaText] = useState("");
   const [aiPolicy, setAiPolicy] = useState<any>(null);
@@ -249,9 +249,26 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
     });
     setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
-  // R10.43③：approved 行内「开始写作」——直接进详情草稿区
-  function startWriting(row: Row) {
-    setDetail(row);
+  // R10.47 修订c（老大 11-01 定：写正文在小拾侧完成，工作台不设草稿区）——
+  // approved 行内「复制创作简报」：结构化 markdown 一次带全（标题/推荐建议/大纲方向/证据源），
+  // 粘贴给任何 AI 助手即开写正文；按钮用通用词，目的地由老大自选。
+  const NL = String.fromCharCode(10);
+  function briefMarkdown(row: Row): string {
+    const lines: string[] = [];
+    lines.push("# 创作简报：" + row.title);
+    if (row.recommendation) lines.push(NL + NL + "## 推荐建议" + NL + row.recommendation);
+    if (row.outline?.length) lines.push(NL + NL + "## 大纲方向" + NL + row.outline.map((o, i) => `${i + 1}. ${o}`).join(NL));
+    if (row.evidenceRefs?.length) lines.push(NL + NL + "## 证据源" + NL + row.evidenceRefs.map((u) => "- " + u).join(NL));
+    lines.push(NL + NL + "（来源：拾题 DraftDesk 审查台）");
+    return lines.join(NL);
+  }
+  async function copyBrief(row: Row) {
+    try {
+      await navigator.clipboard.writeText(briefMarkdown(row));
+      setNotice("创作简报已复制——粘贴给小拾/任意 AI 助手即可开写正文。");
+    } catch {
+      setNotice("复制失败（浏览器剪贴板权限），请手动选择内容复制。");
+    }
   }
   async function publish(row: Row) {
     const publishedRef = publishRef[row.id]?.trim();
@@ -518,33 +535,7 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                   ))}
                 </div>
               )}
-              {(row.draftBody || ["approved", "drafting", "published"].includes(row.decision)) && (
-                <details className="row-fold">
-                  <summary>草稿正文{row.decision === "pending" && row.draftBody ? "（有草稿 · pending 只读预览）" : "（可直接读、改、发布）"}</summary>
-                  {row.decision === "pending" ? (
-                    <Field label="草稿正文（只读预览——拍板通过后可编辑）">
-                      <div className="draft-preview"><MessageContent text={row.draftBody || ""} /></div>
-                    </Field>
-                  ) : (
-                    <>
-                      <Field label="草稿正文">
-                        <textarea
-                          rows={6}
-                          value={draftText[row.id] ?? row.draftBody ?? ""}
-                          onChange={(e) => setDraftText({ ...draftText, [row.id]: e.target.value })}
-                        />
-                      </Field>
-                      {row.decision !== "published" && (
-                        <button disabled={busy} onClick={() => void act(async () => {
-                          await api(`decisions/${row.id}/draft`, { draftBody: draftText[row.id] ?? "" });
-                          await reload();
-                          setNotice("草稿正文已保存。");
-                        })}>保存草稿</button>
-                      )}
-                    </>
-                  )}
-                </details>
-              )}
+
             </div>
             <div className="decision-actions">
               {row.decision === "pending" && (
@@ -565,7 +556,7 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                 </>
               )}
               {row.decision === "approved" && row.sourceType === "outline" && (
-                <button className="button-secondary" disabled={busy} onClick={() => startWriting(row)}>开始写作</button>
+                <button className="button-secondary" disabled={busy} onClick={() => void copyBrief(row)}>复制创作简报</button>
               )}
               {(row.decision === "rejected" || row.decision === "deferred") && (
                 <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>

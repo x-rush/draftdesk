@@ -121,7 +121,9 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
         rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
           decision: o.decision, platform: o.platform, // R10.35：platform 为主平台（=platforms[0]），platforms 为适合平台全集
           platforms: o.platforms?.length ? o.platforms : [o.platform], recommendation: o.recommendation, category: o.category, perPlatformDecision: o.perPlatformDecision, outline: o.outline,
-          suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt });
+          suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt,
+          evidenceRefs: o.evidenceRefs }); // R10.47 修订c：创作简报需要全部证据源 URL
+
       for (const d of fetchRows("decisions"))
         rows.push({ sourceType: "manual", id: d.id, kind: "manual", title: d.title, summary: d.notes, decision: d.decision,
           platforms: d.platforms, suggestions: d.suggestions, rejectReason: d.rejectReason, publishedRef: d.publishedRef, producedBy: d.producedBy || "human", draftBody: d.draftBody, createdAt: d.createdAt });

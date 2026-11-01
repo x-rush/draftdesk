@@ -129,3 +129,40 @@ test("R10.42 ⑤：徽章引导常显（适合 · 点徽章单拍）", async () 
   const label = Array.from(document.querySelectorAll('[aria-label="适合平台与按平台拍板"] span')).map((s) => s.textContent || "").join("");
   assert.ok(label.includes("点徽章单拍"), "常显引导在徽章行");
 });
+
+
+test("R10.47 修订c：approved 行内「复制创作简报」——结构化 markdown 一次带全（标题/推荐/大纲/证据源）", async () => {
+  const written: string[] = [];
+  // jsdom 无 clipboard——直接在 navigator 上定义（Node navigator 无该属性）
+  Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText: async (t: string) => { written.push(t); } }, configurable: true });
+  await render([
+    { sourceType: "outline", id: "z1", kind: "长文", title: "英特尔代工突围：三个被忽视的细节", clusterId: "clu-z",
+      decision: "approved", platform: "gzh", platforms: ["gzh"], recommendation: "用成本曲线切入，避开情绪化叙事",
+      outline: ["成本曲线对比", "良率爬坡时间线", "对国产供应链的影响"], evidenceRefs: ["https://example.org/a", "https://example.org/b"],
+      createdAt: new Date().toISOString() },
+  ]);
+  // Review 默认档=pending——先回「全部」让 approved 行可见
+  await act(async () => {
+    const all = Array.from(document.querySelectorAll('nav[aria-label="决策状态筛选"] button')).find((x) => (x.textContent || "").startsWith("全部")) as HTMLElement;
+    all.click();
+  });
+  const btn = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").includes("复制创作简报")) as HTMLElement;
+  assert.ok(btn, "简报按钮在 approved 行内");
+  await act(async () => { btn.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  assert.equal(written.length, 1, "剪贴板收到一次写入");
+  const md = written[0];
+  assert.ok(md.includes("# 创作简报：英特尔代工突围"), "标题");
+  assert.ok(md.includes("## 推荐建议") && md.includes("成本曲线切入"), "推荐建议段");
+  assert.ok(md.includes("## 大纲方向") && md.includes("1. 成本曲线对比"), "大纲方向段");
+  assert.ok(md.includes("## 证据源") && md.includes("https://example.org/a") && md.includes("https://example.org/b"), "证据源全量");
+  assert.ok((document.body.textContent || "").includes("粘贴给小拾/任意 AI 助手"), "通知引导");
+});
+
+test("R10.47 修订b：草稿正文区已拆除——审查台行内不再渲染草稿编辑器", async () => {
+  await render([
+    { sourceType: "outline", id: "g1", kind: "长文", title: "行-g1 草稿区验证", clusterId: "c", decision: "approved",
+      platform: "gzh", platforms: ["gzh"], draftBody: "## 旧草稿内容", createdAt: new Date().toISOString() },
+  ]);
+  assert.ok(!(document.body.textContent || "").includes("草稿正文"), "草稿区不在 DOM（draftBody 字段保留不展示）");
+});

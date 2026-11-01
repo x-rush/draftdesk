@@ -286,13 +286,7 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
         </section>
       )}
 
-      {/* 草稿正文（Markdown 渲染——贴图号图卡组/视频分镜是结构化内容；pending 有草稿同样可见） */}
-      {o.draftBody && (
-        <section className="drawer-section">
-          <h3>草稿正文{o.decision === "pending" ? "（有草稿 · pending 只读）" : ""}</h3>
-          <div className="draft-preview"><MessageContent text={o.draftBody} /></div>
-        </section>
-      )}
+      {/* R10.47 修订b：草稿正文区拆除——写正文在小拾侧完成，工作台不设草稿区（draftBody 字段保留不展示） */}
     </Drawer>
   );
 }
