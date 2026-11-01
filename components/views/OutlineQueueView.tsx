@@ -155,13 +155,13 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
         </div>
       )}
       {detail && <OutlineDrawer outline={detail} cluster={clusterOf(detail)} onClose={() => setDetail(null)} onDecide={async (d, rr) => { const id = detail.id; await decide(detail, d, rr); syncDetailAfterDecision(id); }}
-        onPlatformDecide={async (platform, decision) => { const id = detail.id; await ws.act(async () => { await api(`outlines/${id}/platform-decision`, { platform, decision }); }); syncDetailAfterDecision(id); }}
+        onPlatformToggle={async (platform) => { const id = detail.id; await ws.act(async () => { await api(`outlines/${id}/platforms`, { platform }); }); syncDetailAfterDecision(id); }}
         onCategory={async (category) => { const id = detail.id; await ws.act(async () => { await api(`outlines/${id}/category`, { category }); }); syncDetailAfterDecision(id); }} />}
     </>
   );
 }
 
-export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatformDecide, onCategory }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void>; onPlatformDecide?: (platform: string, decision: string) => Promise<void>; onCategory?: (category: string) => Promise<void> }) {
+export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatformToggle, onCategory }: { outline: any; cluster: any; onClose: () => void; onDecide: (d: string, rr?: string) => Promise<void>; onPlatformToggle?: (platform: string) => Promise<void>; onCategory?: (category: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const evidenceRefs = o.evidenceRefs || [];
   const statusLabel = ({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[o.decision] || o.decision;
@@ -218,18 +218,18 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
         </section>
       )}
 
-      {/* 按平台拍板（第六轮批 B）：只列适合平台，点击循环状态——同题×N 互不连拍 */}
-      {onPlatformDecide && fitPlatforms.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} aria-label="按平台拍板">
-          {fitPlatforms.map((k) => {
-            const st = (o.perPlatformDecision?.[k] || (platformLabel(o.platform) === PLATFORM_LABELS[k] ? o.decision : "pending")) as string;
-            const color = st === "approved" || st === "published" ? "#1a7f4b" : st === "drafting" ? "#8a6d1a" : st === "rejected" ? "#8a3a3a" : undefined;
+      {/* 平台编辑器（R10.50）：platforms 只是适配标注——九平台全列，成员实心✓/非成员虚线+，点徽章增删不触发状态 */}
+      {onPlatformToggle && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} aria-label="适合平台编辑器">
+          {PLATFORM_KEYS.map((k) => {
+            const member = fitPlatforms.includes(k);
             return (
-              <button key={k} className="pill" style={{ cursor: "pointer", color, borderColor: color }}
-                title={`点击拍板：${PLATFORM_LABELS[k]} → ${({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[cycle[st]] || cycle[st]}`}
+              <button key={k} className="pill" style={{ cursor: "pointer", opacity: member ? 1 : 0.45,
+                borderStyle: member ? "solid" : "dashed", background: member ? "var(--soft)" : "transparent" }}
+                title={member ? `${PLATFORM_LABELS[k]}：适合平台（点击移除标注）` : `${PLATFORM_LABELS[k]}：点此标注为适合平台`}
                 disabled={busy}
-                onClick={() => void onPlatformDecide(k, cycle[st] || "pending")}>
-                {PLATFORM_LABELS[k]} · {({pending:"待决策",approved:"已通过",drafting:"写作中",published:"已发布",rejected:"已否决",deferred:"已暂缓"} as Record<string,string>)[st] || st}
+                onClick={() => void onPlatformToggle(k)}>
+                {member ? "✓ " : "+ "}{PLATFORM_LABELS[k]}
               </button>
             );
           })}

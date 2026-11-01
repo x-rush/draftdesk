@@ -230,10 +230,7 @@ test("选题体系批 B：按平台拍板聚合 + siteCandidate 只标注不落�
   try {
     db = new Store(dir);
     db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
-    const { aggregateOutlineDecision } = await import("../core/platforms");
-    assert.equal(aggregateOutlineDecision({ decision: "pending" }), "pending");
-    assert.equal(aggregateOutlineDecision({ decision: "approved", perPlatformDecision: { gzh: "published", "xhs-note": "pending" } }), "published", "分化取最前进正向");
-    assert.equal(aggregateOutlineDecision({ decision: "approved", perPlatformDecision: { gzh: "rejected", "xhs-note": "deferred" } }), "rejected");
+    // R10.50：aggregateOutlineDecision 已随 perPlatformDecision 退役——决策全局唯一无聚合
 
     // R10.40：siteCandidate 纯数值门槛标注照旧，但不再落卡
     db.put("seo-terms", "pdfconverter", { term: "pdf converter", siteCandidate: true, siteType: "工具站", sources: ["hn-algolia"], siteRationale: "工具意图强且竞争弱" });

@@ -235,19 +235,19 @@ test("R10.35 裁决⑪：同簇防线——48h 内同簇第二条大纲（不同
   assert.equal(fresh.status, 201, "同簇但超 48h：放行");
 });
 
-test("R10.35 裁决⑫：rejected→pending 翻转清 perPlatformDecision——合并行两套状态不打架", async () => {
+test("R10.50 更新：rejected→pending 翻转——perPlatformDecision 已退役，翻回仅切状态", async () => {
   const db = store();
   seedCluster(db, "clu-flip");
   const id = "out-flip";
   db.put("outlines", id, {
     id, clusterId: "clu-flip", platform: "gzh", platforms: ["gzh", "xhs-note"], category: "news",
     contentType: "长文", title: "翻转清态", outline: ["a"], keyPoints: ["k"], evidenceRefs: [],
-    decision: "rejected", perPlatformDecision: { gzh: "rejected", "xhs-note": "deferred" },
+    decision: "rejected",
     rejectReason: "空壳大纲", createdAt: new Date().toISOString(),
   });
   const flipped = await jsonReq("outlines/" + id + "/decision", { decision: "pending" }, {}, "POST");
   assert.equal(flipped.status, 200);
   assert.equal(flipped.body.decision, "pending");
-  assert.equal(flipped.body.perPlatformDecision, undefined, "per-platform 状态随翻回一并复位");
+  assert.equal(flipped.body.decision, "pending", "状态翻回（R10.50：无 per 字段可清）");
   assert.equal(flipped.body.rejectReason, undefined);
 });

@@ -241,7 +241,7 @@ curl -X PUT "$BASE/api/v1/agent/outlines" \
 - ⚠️ **路径 id 怪癖**：`PUT /agent/outlines/<任意子路径>`（含 `/:id/draft`）都落大纲处理器且**以 body.id 为准**——按 REST 惯例带路径 id 而 body 无 id 会**新建**而非更新；更新一律 body 带 id。
 - approved 选题写完 `draftBody` 后，把决策推进到 drafting：`PUT /api/v1/outlines/:id/decision`（无令牌 UI 口）或集群工具同义口。
 - **提示词矩阵**（平台模板 × 题材角度，与内置 AI 共用的单一来源）随 Skill 包分发：`skills/prompts/outline-matrix.md`——按「平台模板节 + 题材角度节 + 选题素材」组合，不硬编码 24 组合。
-- **按平台拍板**：`PUT /api/v1/outlines/:id/platform-decision`，body `{"platform":"gzh","decision":"approved"}`——写 `perPlatformDecision[platform]` 并同步同题同平台的行；同题 ×N 聚合组内各平台分别拍，互不连拍。聚合 `decision` 取最前进正向状态（published > drafting > approved > rejected > deferred > pending）。
+- **拍板（R10.50）**：`POST /api/v1/outlines/:id/decision`，body `{"decision":"approved"}`——决策全局唯一（待决策/已通过/写作中/已发布/否决/暂缓），与平台彻底解耦：`platforms` 只是适配标注（`POST /outlines/:id/platforms` 增删，状态零联动）；发布经 `POST /decisions/:id/publish`（publishedRef 可空直切状态；platform 可选，按平台存 `publishedRefs` 互不覆盖）。
 
 ### 向量事件线（R10.23：idx:eventline 组摘要 / idx:termcluster 增量词）
 

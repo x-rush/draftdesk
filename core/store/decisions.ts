@@ -31,7 +31,7 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
     decisionTarget,
     // 拍板。联动规则（P3）：rejected/published 自动消费该产物证据对应的热榜；
     // approved/drafting/deferred 不消费（避免把待办藏起来）。手动题（decisions）无热榜映射，不消费。
-    setDecision(id: string, input: { decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string; decidedBy?: "human" | "agent" }) {
+    setDecision(id: string, input: { decision: string; platforms?: string[]; rejectReason?: string; publishedRef?: string; platform?: string; decidedBy?: "human" | "agent" }) {
       const { collection, row } = decisionTarget(id);
       if (collection === "artifacts" && row.archived) throw new AppError("已归档产物不可再拍板。");
       // rejected/deferred→pending 翻转（信息架构 v2-C + R10.37 C①：deferred 对齐徽章 cycle）：
@@ -49,9 +49,8 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
             unconsumeNotFound = r.notFound ?? 0;
           }
         }
-        // R10.35 裁决：翻回 pending 同时清 perPlatformDecision——不清会让按平台徽章停在
-        // rejected 而行级已 pending（或反向），合并行（一选题多平台）上两套状态互相打架。
-        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined, perPlatformDecision: undefined, unconsumedCount, unconsumeExpired, unconsumeNotFound };
+        // R10.50：perPlatformDecision 已随状态/平台解耦退役，翻回无需清理旧字段
+        const reverted: any = { ...row, decision: "pending", decidedBy: input.decidedBy ?? "human", decidedAt: now(), rejectReason: undefined, unconsumedCount, unconsumeExpired, unconsumeNotFound };
         kv.put(collection, id, reverted);
         return reverted;
       }
@@ -65,18 +64,16 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
         ...(input.publishedRef !== undefined ? { publishedRef: input.publishedRef } : {}),
       };
       if (collection === "artifacts") { next.revision = (row.revision ?? 0) + 1; next.updatedAt = now(); }
-      // R10.37 A-1（同根修 P2-7）：大纲行级拍板同步写 perPlatformDecision——行级 decision 与
-      // 平台徽章永远一致（旧语义只改 decision，主行 approved 后徽章仍全 pending 呈矛盾态）。
-      // 平台键全集 = platforms ∪ [platform] ∪ per 既有键；全部置为本次拍板值。
-      if (collection === "outlines") {
-        const base = (next.platforms as string[] | undefined) || row.platforms || [];
-        const keys = [...new Set([...base, row.platform, ...Object.keys(row.perPlatformDecision || {})].filter(Boolean))] as string[];
-        if (keys.length) next.perPlatformDecision = Object.fromEntries(keys.map((k) => [k, input.decision]));
-      }
       kv.put(collection, id, next);
       // 联动消费：rejected/published 时消费对应条目（P0-2 返工：按形态分支）。
       // artifacts 的 evidenceIds 是 ev-xxx 证据 ID（去 evidence 集合拿 url）；
       // outlines 的 evidenceRefs 直接就是热点 url（urlKey 归一化后即消费身份）。
+      // R10.50：publishedRefs 按平台存发布链接（多平台互不覆盖）；publishedRef 保留为首写镜像（老读口兼容）
+      if (collection === "outlines" && input.decision === "published") {
+        const pkey = input.platform || row.platform || "main";
+        next.publishedRefs = { ...(row.publishedRefs || {}), [pkey]: input.publishedRef ?? "" };
+        if (!next.publishedRef && input.publishedRef) next.publishedRef = input.publishedRef;
+      }
       if (input.decision === "rejected" || input.decision === "published") {
         const ids = linkedHotspotIds(row);
         let consumedCount = 0;
@@ -120,7 +117,7 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
       for (const o of fetchRows("outlines"))
         rows.push({ sourceType: "outline", id: o.id, kind: o.contentType, title: o.title, summary: (o.keyPoints || []).join("；"), clusterId: o.clusterId,
           decision: o.decision, platform: o.platform, // R10.35：platform 为主平台（=platforms[0]），platforms 为适合平台全集
-          platforms: o.platforms?.length ? o.platforms : [o.platform], recommendation: o.recommendation, category: o.category, perPlatformDecision: o.perPlatformDecision, outline: o.outline,
+          platforms: o.platforms?.length ? o.platforms : [o.platform], recommendation: o.recommendation, category: o.category, publishedRefs: o.publishedRefs, outline: o.outline,
           suggestions: o.suggestions, rejectReason: o.rejectReason, publishedRef: o.publishedRef, producedBy: o.producedBy, draftBody: o.draftBody, createdAt: o.createdAt,
           evidenceRefs: o.evidenceRefs }); // R10.47 修订c：创作简报需要全部证据源 URL
 

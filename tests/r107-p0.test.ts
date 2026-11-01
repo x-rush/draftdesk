@@ -61,11 +61,11 @@ test("P0-4：POST /outlines 平台归一（公众号→gzh；未知值 400 带�
   assert.equal(bad.status, 400);
   assert.match(await bad.text(), /gzh/);
   const created = okBody.id;
-  const pd = await request(`outlines/${created}/platform-decision`, { platform: "不是平台", decision: "approved" });
-  assert.equal(pd.status, 400, "拍板口未知平台拒绝（原静默失效）");
-  const pdOk = await request(`outlines/${created}/platform-decision`, { platform: "小红书笔记", decision: "approved" });
+  const pd = await request(`outlines/${created}/platforms`, { platform: "不是平台" });
+  assert.equal(pd.status, 400, "platforms 编辑口未知平台拒绝（原静默失效）");
+  const pdOk = await request(`outlines/${created}/platforms`, { platform: "小红书笔记" });
   assert.equal(pdOk.status, 200);
-  assert.equal(store().get<any>("outlines", created)?.perPlatformDecision?.["xhs-note"], "approved", "标签归一后按平台拍板生效（从库读）");
+  assert.ok(store().get<any>("outlines", created)?.platforms?.includes("xhs-note"), "标签归一后 xhs-note 入 platforms（从库读）");
 });
 
 test("P0-5：PUT /agent/opportunities（suggest 令牌写 form 六值；未知 form 400）；from-group 单组转卡", async () => {

@@ -78,10 +78,5 @@ export function normalizeCategory(v: string): CategoryKey | undefined {
 export const DECISION_PRIORITY = ["published", "drafting", "approved", "rejected", "deferred", "pending"] as const;
 export type OutlineDecision = (typeof DECISION_PRIORITY)[number];
 
-export function aggregateOutlineDecision(o: { decision?: string; perPlatformDecision?: Record<string, string> }): OutlineDecision {
-  const per = Object.values(o.perPlatformDecision || {}) as OutlineDecision[];
-  if (per.length) {
-    for (const s of DECISION_PRIORITY) if (per.includes(s)) return s;
-  }
-  return (o.decision as OutlineDecision) || "pending";
-}
+// R10.50：aggregateOutlineDecision 随 perPlatformDecision 退役——选题状态全局唯一，无聚合。
+// DECISION_PRIORITY 保留：迁移脚本用它取各平台最优态回填行级。

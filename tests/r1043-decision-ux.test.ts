@@ -71,33 +71,23 @@ after(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("R10.43 ①②：多平台否决（X）→ 确认框（平台级原因默认推荐全部）→ 仅主平台执行只拍 1 次", async () => {
+test("R10.50 更新：多平台否决（X）→ 行级直拍零确认（状态与平台解耦）", async () => {
   calls.length = 0;
   await render([mkRow("c1", ["gzh", "xhs-note"])]);
   await press("j");
-  await press("x"); // X=否决（原因「其他」=平台级）
+  await press("x"); // X=否决（原因「其他」）
   const dlg = document.querySelector('[aria-label="拍板范围确认"]');
-  assert.ok(dlg, "确认框出现");
-  assert.ok((dlg!.textContent || "").includes("应用到全部 2 个平台（推荐）"), "平台级原因默认推荐全部");
-  await clickIn((t) => t.startsWith("仅主平台"), dlg!);
-  const pd = calls.filter((c) => c.path.startsWith("outlines/") && c.path.endsWith("platform-decision"));
-  assert.equal(pd.length, 1, "仅主平台=1 次调用");
-  assert.equal(pd[0].body.platform, "gzh");
-  assert.equal(pd[0].body.decision, "rejected");
+  assert.equal(dlg, null, "范围确认框已退役（R10.50）");
+  assert.ok(calls.some((c) => c.path === "outlines/c1/decision" && c.body.decision === "rejected"), "行级 decision 直拍");
 });
 
-test("R10.43 ②：通过（A）→ 确认框 → 应用到全部=并集逐平台", async () => {
+test("R10.50 更新：通过（A）→ 行级直拍（无并集逐平台）", async () => {
   calls.length = 0;
   await render([mkRow("c2", ["gzh", "xhs-note", "threads"])]);
   await press("j");
   await press("a");
-  const dlg = document.querySelector('[aria-label="拍板范围确认"]');
-  assert.ok((dlg!.textContent || "").includes("应用到全部 3 个平台"), "全部选项在");
-  await clickIn((t) => t.startsWith("应用到全部"), dlg!);
-  const pd = calls.filter((c) => c.path.startsWith("outlines/") && c.path.endsWith("platform-decision"));
-  assert.equal(pd.length, 3, "并集三平台各一次");
-  assert.deepEqual(pd.map((c) => c.body.platform).sort(), ["gzh", "threads", "xhs-note"]);
-  assert.ok(pd.every((c) => c.body.decision === "approved"));
+  assert.ok(!calls.some((c) => c.path.includes("platform-decision")), "无平台分流调用");
+  assert.ok(calls.some((c) => c.path === "outlines/c2/decision"), "行级 decision");
 });
 
 test("R10.43 ⑤：rejected 行内「翻回待定」调用行级翻转端点", async () => {

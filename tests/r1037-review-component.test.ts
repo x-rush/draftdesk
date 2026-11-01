@@ -77,9 +77,9 @@ after(async () => {
 
 test("R10.37 UI①：多平台选题渲染——适合平台徽章=platforms 全集（3 枚），推荐建议在行内", async () => {
   await render([multiRow()]);
-  const badges = Array.from(document.querySelectorAll('[aria-label="适合平台与按平台拍板"] button')).map((b) => (b.textContent || "").trim());
-  assert.equal(badges.length, 3, "只渲染适合平台（gzh/xhs-note/tiebuhao），不再九平台全列");
-  assert.ok(badges.some((t) => t.includes("公众号")) && badges.some((t) => t.includes("小红书笔记")) && badges.some((t) => t.includes("贴图号")));
+  const badges = Array.from(document.querySelectorAll('[aria-label="适合平台编辑器"] button')).map((b) => (b.textContent || "").trim());
+  assert.equal(badges.length, 9, "R10.50：九平台全列编辑器（成员✓/非成员+）");
+  assert.ok(badges.filter((t) => t.startsWith("✓")).length === 3, "platforms 三枚成员=✓（gzh/xhs-note/threads）");
   assert.ok((document.body.textContent || "").includes("推荐 · 主投公众号"), "推荐建议行渲染");
 });
 
@@ -98,24 +98,18 @@ test("R10.49 更新：状态卡组合过滤——「写作中」=drafting、「�
   assert.equal(visibleTitles().length, 4, "再点回全部");
 });
 
-test("R10.37 UI③（A-1）：主行「通过」=按平台并集拍板——3 个适合平台各发一次 platform-decision（同一主行）", async () => {
+test("R10.37 UI③（R10.50 更新）：主行「通过」=行级直拍——decision 全局唯一，无确认框无平台分流", async () => {
   posted.length = 0;
   await render([multiRow()]);
   const approve = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").trim() === "通过") as HTMLElement;
   assert.ok(approve, "找到主行通过按钮");
   await act(async () => { approve.click(); });
-  const dlg = document.querySelector('[aria-label="拍板范围确认"]');
-  assert.ok(dlg, "多平台先出范围确认框（R10.43）");
-  const apply = Array.from(dlg!.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("应用到全部")) as HTMLElement;
-  await act(async () => { apply.click(); });
-  const pd = posted.filter((p) => p.path === "outlines/out-ui-1/platform-decision");
-  assert.equal(pd.length, 3, "对主行发 3 次平台拍板（并集，非仅主平台）");
-  assert.deepEqual(pd.map((p) => p.body.platform).sort(), ["gzh", "tiebuhao", "xhs-note"]);
-  assert.ok(pd.every((p) => p.body.decision === "approved"));
-  assert.ok((document.body.textContent || "").includes("已按平台拍板 3 个平台"), "通知文案报并集数");
+  assert.ok(!posted.some((p) => p.path.includes("platform-decision")), "platform-decision 已退役");
+  assert.ok(posted.some((p) => p.path === "outlines/out-ui-1/decision"), "行级 decision 调用");
+
 });
 
-test("R10.37 UI④（C⑤）：键盘流——J 高亮首行、A 触发通过（并集拍板）", async () => {
+test("R10.37 UI④（C⑤ R10.50 更新）：键盘流——J 高亮首行、A 触发行级通过", async () => {
   posted.length = 0;
   await render([multiRow(), { sourceType: "manual", id: "m2", kind: "manual", title: "另一行", decision: "pending", createdAt: new Date().toISOString() }]);
   const press = (key: string) => act(async () => {
@@ -125,10 +119,5 @@ test("R10.37 UI④（C⑤）：键盘流——J 高亮首行、A 触发通过（
   const first = document.querySelector(".decision-row") as HTMLElement;
   assert.ok(first.style.outline.includes("var(--ink)"), "J 高亮第一行");
   await press("a");
-  const dlg = document.querySelector('[aria-label="拍板范围确认"]');
-  assert.ok(dlg, "键盘 A 后确认框在");
-  const apply = Array.from(dlg!.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("应用到全部")) as HTMLElement;
-  await act(async () => { apply.click(); });
-  const pd = posted.filter((p) => p.path === "outlines/out-ui-1/platform-decision");
-  assert.equal(pd.length, 3, "A=确认后并集拍板（3 平台）");
+  assert.ok(posted.some((p) => p.path === "outlines/out-ui-1/decision"), "A=行级通过");
 });

@@ -75,7 +75,7 @@ const selectAll = async () => {
   const boxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
   await act(async () => { boxes.forEach((b) => (b as HTMLInputElement).click()); });
 };
-const pdCalls = () => calls.filter((c) => c.path.startsWith("outlines/") && c.path.endsWith("platform-decision"));
+const pdCalls = () => calls.filter((c) => c.path.endsWith("/decision") || c.path === "decisions/batch");
 
 after(async () => {
   await act(async () => root.unmount());
@@ -105,32 +105,29 @@ test("R10.47 ①：筛选弹窗在 Radix popper 内点击不误关；外部点�
   wrapper.remove();
 });
 
-test("R10.47 ②a：勾选行平台一致 → 批量通过=全平台直拍（无确认框）", async () => {
+test("R10.50 更新 ②a：批量通过=行级直拍（平台一致也不分流）", async () => {
   calls.length = 0;
   await render([mkRow("a1", ["gzh", "xhs-note"]), mkRow("a2", ["gzh", "xhs-note"])]);
   await selectAll();
   await clickBtn((t) => t === "批量通过");
+  await new Promise((r) => setTimeout(r, 40)); // 异步批量落库
   assert.equal(document.querySelector('[aria-label="拍板范围确认"]'), null, "一致 → 无确认框");
-  const pd = pdCalls();
-  assert.equal(pd.length, 4, "2 行 × 2 平台");
-  assert.ok(pd.every((c) => c.body.decision === "approved"));
+  const batchCall = pdCalls().find((c) => c.path === "decisions/batch");
+  assert.ok(batchCall, "单次 decisions/batch 行级直拍");
+  assert.equal(batchCall.body.decision, "approved");
+  assert.ok(!calls.some((c) => c.path.includes("/platforms") || c.path.includes("platform-decision")), "无平台分流");
 });
 
-test("R10.47 ②b：勾选行平台不一致 → 确认框列共同平台，确认后只拍交集", async () => {
+test("R10.50 更新 ②b：平台不一致 → 行级直拍（交集确认框已退役）", async () => {
   calls.length = 0;
   await render([mkRow("b1", ["gzh", "xhs-note"]), mkRow("b2", ["gzh", "threads"])]);
   await selectAll();
   await clickBtn((t) => t === "批量通过");
-  const dlg = document.querySelector('[aria-label="拍板范围确认"]');
-  assert.ok(dlg, "不一致 → 确认框出现");
-  const text = dlg!.textContent || "";
-  assert.ok(text.includes("只拍共同平台 公众号（其余平台不动）"), "确认框列共同平台（交集仅 gzh）");
-  const applyBtn = Array.from(dlg!.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("只拍共同平台")) as HTMLElement;
-  assert.ok(applyBtn, "确认按钮存在");
-  await act(async () => { applyBtn.click(); });
-  const pd = pdCalls();
-  assert.equal(pd.length, 2, "2 行 × 共同平台 1 个");
-  assert.ok(pd.every((c) => c.body.platform === "gzh" && c.body.decision === "approved"), "只拍交集平台");
+  await new Promise((r) => setTimeout(r, 40)); // 异步批量落库
+  assert.equal(document.querySelector('[aria-label="拍板范围确认"]'), null, "交集确认框已退役");
+  const batchCall = pdCalls().find((c) => c.path === "decisions/batch");
+  assert.ok(batchCall, "行级 batch 调用在");
+  assert.deepEqual(batchCall.body.ids.sort(), ["b1", "b2"], "两行都进 batch（平台不一致也不分流）");
 });
 
 test("R10.47 ②c：筛选+勾选组合——平台筛选筛出后再勾选，范围自然限定", async () => {
@@ -145,8 +142,8 @@ test("R10.47 ②c：筛选+勾选组合——平台筛选筛出后再勾选，�
   await act(async () => { pill.click(); });
   await selectAll();
   await clickBtn((t) => t === "批量通过");
-  const pd = pdCalls();
-  // c1/c3 平台集相同（gzh+xhs-note）→ 一致直拍：2 行 × 2 平台；c2（threads）不在勾选集
-  assert.equal(pd.length, 4, "筛选后的勾选集=2 行 × 2 平台");
-  assert.ok(pd.every((c) => c.body.platform !== "threads"), "c2 未被卷入");
+  await new Promise((r) => setTimeout(r, 40)); // 异步批量落库
+  const batchCall = pdCalls().find((c) => c.path === "decisions/batch");
+  assert.ok(batchCall, "batch 调用在");
+  assert.deepEqual(batchCall.body.ids.sort(), ["c1", "c3"], "筛选后的勾选集 c1/c3（c2 未被卷入）");
 });

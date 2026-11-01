@@ -268,6 +268,25 @@ export const migrations: Migration[] = [
       if (r.checked) console.log(`[migration] opportunity-news-tighten-v1：复检 ${r.checked} 张 news/newtech 卡，降档 ${r.demoted} 张`);
     },
   },
+  {
+    // R10.50 选题状态与平台解耦：perPlatformDecision 退役——取各平台最优态回填行级
+    // （DECISION_PRIORITY 序），然后剥字段。幂等：字段缺失即跳过。
+    id: "r1050-decouple",
+    run: ({ kv }) => {
+      const priority = ["published", "drafting", "approved", "rejected", "deferred", "pending"];
+      let migrated = 0;
+      for (const doc of kv.list<any>("outlines")) {
+        if (!doc.perPlatformDecision) continue;
+        const states = Object.values(doc.perPlatformDecision) as string[];
+        let best = doc.decision || "pending";
+        for (const st of priority) if (states.includes(st) || best === st) { best = st; break; }
+        const { perPlatformDecision, ...rest } = doc;
+        kv.put("outlines", doc.id, { ...rest, decision: best, updatedAt: now() });
+        migrated++;
+      }
+      if (migrated) console.log(`[r1050] 选题状态与平台解耦迁移：${migrated} 行 perPlatformDecision 已回填行级并剥除`);
+    },
+  },
 ];
 
 export function runMigrations(ctx: MigrationCtx) {

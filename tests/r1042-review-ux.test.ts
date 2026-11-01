@@ -128,10 +128,10 @@ test("R10.42 ④：平台多选筛选可用，且与状态筛选正交叠加", a
   assert.equal(rowsOf().length, 4, "清除恢复全部");
 });
 
-test("R10.42 ⑤：徽章引导常显（适合 · 点徽章单拍）", async () => {
+test("R10.50 更新：徽章引导常显（适合 · 点徽章增删）", async () => {
   await render([mkRow("y1", "pending", ["gzh", "xhs-note"])]);
-  const label = Array.from(document.querySelectorAll('[aria-label="适合平台与按平台拍板"] span')).map((s) => s.textContent || "").join("");
-  assert.ok(label.includes("点徽章单拍"), "常显引导在徽章行");
+  const label = Array.from(document.querySelectorAll('[aria-label="适合平台编辑器"] span')).map((s) => s.textContent || "").join("");
+  assert.ok(label.includes("点徽章增删"), "常显引导在徽章行");
 });
 
 

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
 import { AppError, now } from "../store";
-import { PLATFORM_KEYS, normalizePlatform, normalizeCategory, aggregateOutlineDecision } from "../platforms";
+import { PLATFORM_KEYS, normalizePlatform, normalizeCategory } from "../platforms";
 
 // 决策拍板入参：rejected 必须给否决原因；published 建议给发布链接（回填）。
 const decisionInput = z.object({
@@ -78,8 +78,8 @@ export const routes: RouteDef[] = [
     pattern: "decisions/:id/publish",
     handler: async ({ db, params, readBody }) => {
       // R10.48：publishedRef 可空——有链接存链接，无链接只切状态（decidedAt 照记）
-      const { publishedRef } = z.object({ publishedRef: z.string().max(500).optional() }).parse(await readBody());
-      return json(db.setDecision(params.id, { decision: "published", ...(publishedRef ? { publishedRef } : {}) }));
+      const { publishedRef, platform } = z.object({ publishedRef: z.string().max(500).optional(), platform: z.string().max(30).optional() }).parse(await readBody());
+      return json(db.setDecision(params.id, { decision: "published", ...(publishedRef ? { publishedRef } : {}), ...(platform ? { platform } : {}) }));
     },
   },
   {
@@ -107,36 +107,37 @@ export const routes: RouteDef[] = [
     },
   },
   {
-    // 按平台拍板（第六轮批 B §2①）：写主行 perPlatformDecision[platform]，
-    // 聚合 decision 同步，并把同题同平台的行级 decision 一并同步（同题×N 不再连拍——
-    // 每次点拍只影响所选平台）。UI api() 二参即 POST，PUT/POST 双开。
+    // R10.50：平台编辑口（选题状态与平台解耦）——platforms 只是适配标注，点徽章增删
+    // 不触发状态。传 { platform } 切换增删；传 { platforms } 整组覆写。
     methods: ["PUT", "POST"],
-    pattern: "outlines/:id/platform-decision",
+    pattern: "outlines/:id/platforms",
     handler: async ({ db, params, readBody }) => {
       const parsed = z.object({
-        platform: z.string().min(1).max(30),
-        decision: z.enum(["approved", "rejected", "deferred", "drafting", "published", "pending"]),
+        platform: z.string().min(1).max(30).optional(),
+        platforms: z.array(z.string().min(1).max(30)).max(9).optional(),
       }).strict().parse(await readBody());
       const outline = db.get<any>("outlines", params.id);
       if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");
-      // R10.7 P0-4：未知平台 400（原裸 string 回退让拍板静默失效）
-      const key = normalizePlatform(parsed.platform);
-      if (!key) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}。`, 400, "UNKNOWN_PLATFORM");
-      const per = { ...(outline.perPlatformDecision || {}), [key]: parsed.decision };
-      const aggregate = aggregateOutlineDecision({ ...outline, perPlatformDecision: per });
-      db.put("outlines", params.id, { ...outline, perPlatformDecision: per, decision: aggregate, decidedBy: "human", decidedAt: now() });
-      let synced = 0;
-      // R10.37 C④：行级同步收紧为「同簇同平台」——旧按 title 全表匹配会把 48h 外同标题跨簇行
-      // 静默连拍（title 去重只拦 48h 内）；簇才是选题身份。
-      // R10.38 下推：clusterId 生成列索引点查（原全表 parse）。
-      for (const r of db.kv.selectWhere<any>("outlines", `"clusterId" = ?`, outline.clusterId)) {
-        const row = r.body;
-        if (row.id === params.id) continue;
-        if ((normalizePlatform(row.platform) ?? row.platform) !== key) continue;
-        db.put("outlines", row.id, { ...row, decision: parsed.decision, decidedBy: "human", decidedAt: now() });
-        synced++;
+      // 归一+校验：toggle 单平台或整组覆写（与 R10.35 create 口同一 normalizePlatform 链）
+      let platforms = (outline.platforms?.length ? outline.platforms : [outline.platform].filter(Boolean)) as string[];
+      if (parsed.platforms?.length) {
+        platforms = [];
+        for (const raw of parsed.platforms) {
+          const k = normalizePlatform(raw);
+          if (!k) throw new AppError(`未知平台「${raw}」；允许值：${PLATFORM_KEYS.join(", ")}（或其显示标签）。`, 400, "UNKNOWN_PLATFORM");
+          if (!platforms.includes(k)) platforms.push(k);
+        }
+      } else if (parsed.platform) {
+        const key = normalizePlatform(parsed.platform);
+        if (!key) throw new AppError(`未知平台「${parsed.platform}」；允许值：${PLATFORM_KEYS.join(", ")}。`, 400, "UNKNOWN_PLATFORM");
+        platforms = platforms.includes(key) ? platforms.filter((p) => p !== key) : [...platforms, key];
+      } else {
+        throw new AppError("platform 或 platforms 至少给一个。", 400, "MISSING_PLATFORM");
       }
-      return json({ ok: true, platform: key, perPlatformDecision: per, decision: aggregate, synced });
+      if (!platforms.length) throw new AppError("platforms 不能为空——选题至少标注一个平台；如需退出流程请走否决/暂缓。", 400, "EMPTY_PLATFORMS");
+      // R10.50：decision 全局唯一，平台增删零状态联动
+      db.put("outlines", params.id, { ...outline, platforms, platform: platforms[0], updatedAt: now() });
+      return json({ ok: true, platforms, platform: platforms[0] });
     },
   },
   {

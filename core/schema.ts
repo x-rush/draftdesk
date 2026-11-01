@@ -222,7 +222,9 @@ export type ContentOutline = {
   keyPoints: string[];
   evidenceRefs: string[];
   decision: DecisionState;
-  perPlatformDecision?: Record<string, DecisionState>; // 按平台拍板（第六轮批 B）：{gzh: approved, xhs-note: pending…}，decision 字段保留为聚合视图
+  // R10.50：perPlatformDecision 退役（选题状态与平台解耦）——decision 是唯一状态机，
+  // platforms 只是适配标注。publishedRefs 按平台存发布链接（多平台互不覆盖）。
+  publishedRefs?: Record<string, string>;
   decidedBy?: "human" | "agent" | "builtin" | "janitor";
   decidedAt?: string;
   publishedRef?: string;

@@ -117,23 +117,32 @@ test("R10.37 B-2③：归档 90 天清理（含 merge-archive 与 opportunities-
   assert.ok(db.get("outlines-archive", "arc-new"), "窗内归档保留");
 });
 
-test("R10.37 C④：platform-decision 行级同步收紧为同簇——跨簇同标题不再被连拍", async () => {
+test("R10.50：platforms 编辑口——toggle 增删标注，状态零联动；未知平台 400", async () => {
   const db = store();
   const stamp = d(1);
   db.put("clusters", "clu-sync-a", { id: "clu-sync-a", topic: "同步簇A", memberIds: [], kind: "news", createdAt: stamp });
-  db.put("clusters", "clu-sync-b", { id: "clu-sync-b", topic: "同步簇B", memberIds: [], kind: "news", createdAt: stamp });
-  // 两簇同标题同平台（48h 外，标题去重不拦；旧实现会跨簇误同步）
-  db.put("outlines", "out-sync-a", { id: "out-sync-a", clusterId: "clu-sync-a", platform: "gzh", title: "同名选题", decision: "pending", createdAt: d(9) });
-  db.put("outlines", "out-sync-b", { id: "out-sync-b", clusterId: "clu-sync-b", platform: "gzh", title: "同名选题", decision: "pending", createdAt: d(8) });
-  const r = await jsonReq("outlines/out-sync-a/platform-decision", { platform: "gzh", decision: "approved" });
-  assert.equal(r.status, 200);
-  assert.equal(db.get<any>("outlines", "out-sync-a").decision, "approved");
-  assert.equal(db.get<any>("outlines", "out-sync-b").decision, "pending", "跨簇同标题不再被连拍（R10.37 C④）");
-  // 同簇旧克隆行仍同步
-  db.put("outlines", "out-sync-a-tbh", { id: "out-sync-a-tbh", clusterId: "clu-sync-a", platform: "tiebuhao", title: "同名选题", decision: "pending", createdAt: d(9) });
-  const r2 = await jsonReq("outlines/out-sync-a-tbh/platform-decision", { platform: "tiebuhao", decision: "approved" });
-  assert.equal((r2.body as any).synced, 0, "主行 gzh 平台不同不算同步对象");
-  assert.equal(db.get<any>("outlines", "out-sync-a-tbh").decision, "approved");
+  db.put("outlines", "out-sync-a", { id: "out-sync-a", clusterId: "clu-sync-a", platform: "gzh", platforms: ["gzh"], title: "同名选题", decision: "pending", createdAt: d(9) });
+  db.put("outlines", "out-sync-b", { id: "out-sync-b", clusterId: "clu-sync-b", platform: "gzh", title: "另一簇", decision: "pending", createdAt: d(9) });
+  // toggle 加 tiebuhao
+  const add = await jsonReq("outlines/out-sync-a/platforms", { platform: "tiebuhao" });
+  assert.equal(add.status, 200);
+  const row = db.get<any>("outlines", "out-sync-a");
+  assert.deepEqual(row.platforms, ["gzh", "tiebuhao"], "标注增");
+  assert.equal(row.decision, "pending", "状态零联动（R10.50）");
+  // toggle 再点 → 移除
+  const rm = await jsonReq("outlines/out-sync-a/platforms", { platform: "tiebuhao" });
+  assert.equal(rm.status, 200);
+  assert.deepEqual(db.get<any>("outlines", "out-sync-a").platforms, ["gzh"], "标注删");
+  // 未知平台 400
+  const bad = await jsonReq("outlines/out-sync-a/platforms", { platform: "不是平台" });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.code, "UNKNOWN_PLATFORM");
+  // 清空 400：移除唯一平台 → EMPTY_PLATFORMS 拒绝（选题至少保留一个平台标注）
+  const empty = await jsonReq("outlines/out-sync-a/platforms", { platform: "gzh" });
+  assert.equal(empty.status, 400, "唯一平台移除被拒（不能清空）");
+  assert.equal(empty.body.code, "EMPTY_PLATFORMS");
+  // 跨簇零联动
+  assert.equal(db.get<any>("outlines", "out-sync-b").platforms, undefined, "另一簇不受影响");
 });
 
 test("R10.37 C⑧（实断言）：draft 状态门三态", async () => {
@@ -154,27 +163,23 @@ test("R10.37 C⑧（实断言）：draft 状态门三态", async () => {
   assert.equal(body.code, "NOT_DRAFTABLE", "机器码");
 });
 
-test("R10.37 C①：deferred→pending 行级翻回（不触发消费撤销）+ A-1：setDecision 写 per 全集", async () => {
+test("R10.50 更新：deferred→pending 行级翻回（不触发消费撤销）——决策全局唯一无 per 写", async () => {
   const db = store();
   db.put("outlines", "out-fl-deferred", {
     id: "out-fl-deferred", clusterId: "c", platform: "gzh", platforms: ["gzh", "xhs-note", "tiebuhao"],
-    title: "暂缓翻转", decision: "deferred", perPlatformDecision: { gzh: "deferred", "xhs-note": "deferred", tiebuhao: "deferred" },
+    title: "暂缓翻转", decision: "deferred",
     decidedAt: d(2), createdAt: d(3),
   });
   const flip = await jsonReq("outlines/out-fl-deferred/decision", { decision: "pending" });
   assert.equal(flip.status, 200, "deferred 可翻回 pending（R10.37 C①）");
   assert.equal(flip.body.decision, "pending");
-  assert.equal(flip.body.perPlatformDecision, undefined, "翻回清 per（沿用 R10.35 裁决语义）");
-  // A-1：行级拍板写 per 全集——徽章与行级永远一致
+  // 行级拍板：decision 全局唯一，无 perPlatformDecision 写（字段已退役）
   const approve = await jsonReq("outlines/out-fl-deferred/decision", { decision: "approved" });
   assert.equal(approve.status, 200);
   const row = db.get<any>("outlines", "out-fl-deferred");
-  assert.deepEqual(row.perPlatformDecision, { gzh: "approved", "xhs-note": "approved", tiebuhao: "approved" }, "行级 approved 同步写 per 全集");
-  // 非 outline 集合不写 per
-  db.put("decisions", "dec-manual-2", { id: "dec-manual-2", title: "手动卡", decision: "pending", createdAt: d(1) });
-  const dm = await jsonReq("decisions/dec-manual-2/decision", { decision: "approved" });
-  assert.equal(dm.status, 200);
-  assert.equal(db.get<any>("decisions", "dec-manual-2").perPlatformDecision, undefined, "manual 卡无 per 概念");
+  assert.equal(row.decision, "approved");
+  assert.equal(row.perPlatformDecision, undefined, "per 字段不回潮");
+  assert.equal(row.platforms?.length, 3, "platforms 标注不受拍板影响");
 });
 
 test("R10.37 B-1：GET /outlines 窗口分页——默认近 7 天+在途豁免，?all=1 全量，limit/offset 生效", async () => {

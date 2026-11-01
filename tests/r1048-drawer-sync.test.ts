@@ -48,10 +48,14 @@ const ws: any = {
     try { await fn(); opts?.apply(); } catch { opts?.undo(); throw new Error("网络失败"); }
     // 模拟真 ws.act 的成功后对账：按本次新增调用把服务端效果映射回内存 outlines
     for (const c of calls.slice(before)) {
-      const pm = c.path.match(/^outlines\/(.+?)\/platform-decision$/);
-      if (pm) outlinesState = outlinesState.map((o) => o.id === pm[1]
-        ? { ...o, perPlatformDecision: { ...(o.perPlatformDecision || {}), [c.body.platform]: c.body.decision }, decision: c.body.decision }
-        : o);
+      const pm = c.path.match(/^outlines\/(.+?)\/platforms$/);
+      if (pm) outlinesState = outlinesState.map((o) => {
+        if (o.id !== pm[1]) return o;
+        const platforms = (o.platforms || []).includes(c.body.platform)
+          ? (o.platforms || []).filter((p2: string) => p2 !== c.body.platform)
+          : [...(o.platforms || []), c.body.platform];
+        return { ...o, platforms, platform: platforms[0] };
+      });
       const dm = c.path.match(/^outlines\/(.+?)\/decision$/);
       if (dm) outlinesState = outlinesState.map((o) => o.id === dm[1] ? { ...o, decision: c.body.decision } : o);
       const cm = c.path.match(/^outlines\/(.+?)\/category$/);
@@ -83,7 +87,7 @@ const mk = (id: string, platforms: string[], per: Record<string, string> = {}) =
 });
 const drawerOpen = () => (document.body.textContent || "").includes("适合平台");
 const drawerBadge = (label: string) => {
-  const btns = Array.from(document.querySelectorAll('button[title*="点击拍板"]'));
+  const btns = Array.from(document.querySelectorAll('[aria-label="适合平台编辑器"] button'));
   return btns.find((b) => (b.textContent || "").includes(label)) as HTMLElement | undefined;
 };
 async function clickDrawerBtn(label: string) {
@@ -98,18 +102,19 @@ after(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("R10.43⑥ ①：抽屉内平台徽章拍板 → 聚合出队 → 抽屉自动关", async () => {
+test("R10.50 更新：抽屉内平台徽章=编辑器 toggle——标注增删零状态联动，抽屉保持开启", async () => {
   outlinesState = [mk("d1", ["gzh", "xhs-note"], { gzh: "pending", "xhs-note": "pending" })];
   await render();
   await act(async () => { (document.querySelector(".article-title") as HTMLElement).click(); });
   assert.ok(drawerOpen(), "抽屉打开");
-  const badge = drawerBadge("公众号");
-  assert.ok(badge, "公众号徽章在抽屉内");
+  const badge = drawerBadge("贴图号");
+  assert.ok(badge, "贴图号徽章在抽屉内（非成员，点击标注）");
   await act(async () => { badge!.click(); });
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-  assert.equal(drawerOpen(), false, "聚合 approved → 出队 → 抽屉自动关");
-  assert.equal(outlinesState[0].decision, "approved", "乐观聚合落库");
-  assert.ok(calls.some((c) => c.path === "outlines/d1/platform-decision" && c.body.decision === "approved"));
+  assert.ok(drawerOpen(), "标注 toggle 不改状态 → 行留在队列、抽屉保持开启");
+  assert.equal(outlinesState[0].decision, "pending", "状态零联动（R10.50）");
+  assert.deepEqual(outlinesState[0].platforms, ["gzh", "xhs-note", "tiebuhao"], "标注增（toggle 加 tiebuhao）");
+  assert.ok(calls.some((c) => c.path === "outlines/d1/platforms" && c.body.platform === "tiebuhao"), "platforms 编辑口调用");
 });
 
 test("R10.43⑥ ①b：仍 pending 的同步分支——抽屉内改题材 → 行不出队、抽屉保持开启", async () => {
