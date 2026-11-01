@@ -280,13 +280,13 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
       setNotice("复制失败（浏览器剪贴板权限），请手动选择内容复制。");
     }
   }
-  async function publish(row: Row) {
-    const publishedRef = publishRef[row.id]?.trim();
-    if (!publishedRef) return setNotice("先填写发布链接再回填。");
+  // R10.48：publish 不强制链接——「已发布」直切状态；「回填链接后发布」带 ref 落库
+  async function publish(row: Row, ref?: string) {
+    const publishedRef = ref ?? publishRef[row.id]?.trim();
     await act(async () => {
-      await api(`decisions/${row.id}/publish`, { publishedRef });
+      await api(`decisions/${row.id}/publish`, publishedRef ? { publishedRef } : {});
       await reload();
-      setNotice("已回填发布链接，条目转为已发布并自动消费。");
+      setNotice(publishedRef ? "已回填发布链接，条目转为已发布并自动消费。" : "已标记发布（无链接）——后续可在已发布档补回填链接。");
     });
   }
   async function addManual() {
@@ -581,14 +581,15 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
               {["approved", "drafting"].includes(row.decision) && (
                 <>
                   {row.sourceType === "outline" && <button disabled={busy} onClick={() => void copyBrief(row)}>复制创作简报</button>}
+                  <button className="primary" disabled={busy} onClick={() => void publish(row)}>已发布</button>
                   <input
                     aria-label={`发布链接 ${row.title}`}
-                    placeholder="发布后回填链接"
+                    placeholder="发布后回填链接（可选）"
                     value={publishRef[row.id] || ""}
                     onChange={(e) => setPublishRef({ ...publishRef, [row.id]: e.target.value })}
                     style={{ maxWidth: 200 }}
                   />
-                  <button disabled={busy} onClick={() => void publish(row)}>回填发布</button>
+                  <button disabled={busy || !publishRef[row.id]?.trim()} onClick={() => void publish(row)}>回填链接后发布</button>
                 </>
               )}
             </div>

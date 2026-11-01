@@ -77,8 +77,9 @@ export const routes: RouteDef[] = [
     methods: ["POST"],
     pattern: "decisions/:id/publish",
     handler: async ({ db, params, readBody }) => {
-      const { publishedRef } = z.object({ publishedRef: z.string().min(1).max(500) }).parse(await readBody());
-      return json(db.setDecision(params.id, { decision: "published", publishedRef }));
+      // R10.48：publishedRef 可空——有链接存链接，无链接只切状态（decidedAt 照记）
+      const { publishedRef } = z.object({ publishedRef: z.string().max(500).optional() }).parse(await readBody());
+      return json(db.setDecision(params.id, { decision: "published", ...(publishedRef ? { publishedRef } : {}) }));
     },
   },
   {

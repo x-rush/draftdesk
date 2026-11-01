@@ -135,3 +135,31 @@ test("R10.43⑥ ②：行级拍板出队 → 抽屉自动关闭（列表即真�
   assert.equal(outlinesState[0].decision, "approved", "乐观落库");
   assert.ok(noticeStack.some((t) => t.includes("已拍板出队")), "出队通知");
 });
+
+// R10.48：回填发布不强制链接——「已发布」无链接直切 published；「回填链接后发布」存 ref。
+// （publish 端点级验证，直接走 handle；UI 双按钮由 Review 组件覆盖）
+import { handle as handle48 } from "../core/http";
+const handle48Ref = handle48;
+test("R10.48 ①：publish 端点无链接——publishedRef 缺省、状态切 published", async () => {
+  const db = store();
+  db.put("outlines", "out-p48", { id: "out-p48", clusterId: "c", platform: "gzh", title: "无链接发布", outline: [], keyPoints: [], evidenceRefs: [], decision: "approved", createdAt: new Date().toISOString() });
+  const r = await handle48Ref(new Request("http://127.0.0.1:5173/api/v1/decisions/out-p48/publish", {
+    method: "POST", headers: { host: "127.0.0.1:5173", "content-type": "application/json" }, body: JSON.stringify({}),
+  }), ["decisions", "out-p48", "publish"]);
+  assert.equal(r.status, 200);
+  const row = db.get<any>("outlines", "out-p48");
+  assert.equal(row.decision, "published", "状态已切");
+  assert.equal(row.publishedRef, undefined, "无链接不落 ref");
+  assert.ok(row.decidedAt, "decidedAt 照记");
+});
+
+test("R10.48 ②：publish 端点带链接——publishedRef 落库（回填路径不回归）", async () => {
+  const db = store();
+  db.put("outlines", "out-p48b", { id: "out-p48b", clusterId: "c", platform: "gzh", title: "带链接发布", outline: [], keyPoints: [], evidenceRefs: [], decision: "approved", createdAt: new Date().toISOString() });
+  const r = await handle48Ref(new Request("http://127.0.0.1:5173/api/v1/decisions/out-p48b/publish", {
+    method: "POST", headers: { host: "127.0.0.1:5173", "content-type": "application/json" }, body: JSON.stringify({ publishedRef: "https://mp.weixin.qq.com/s/xyz" }),
+  }), ["decisions", "out-p48b", "publish"]);
+  assert.equal(r.status, 200);
+  const row = db.get<any>("outlines", "out-p48b");
+  assert.equal(row.publishedRef, "https://mp.weixin.qq.com/s/xyz", "ref 落库");
+});
