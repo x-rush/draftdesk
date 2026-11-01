@@ -64,16 +64,16 @@ export function createDecisions(kv: KV, consumeIdentities: Consumption["consumeI
         ...(input.publishedRef !== undefined ? { publishedRef: input.publishedRef } : {}),
       };
       if (collection === "artifacts") { next.revision = (row.revision ?? 0) + 1; next.updatedAt = now(); }
-      kv.put(collection, id, next);
-      // 联动消费：rejected/published 时消费对应条目（P0-2 返工：按形态分支）。
-      // artifacts 的 evidenceIds 是 ev-xxx 证据 ID（去 evidence 集合拿 url）；
-      // outlines 的 evidenceRefs 直接就是热点 url（urlKey 归一化后即消费身份）。
       // R10.50：publishedRefs 按平台存发布链接（多平台互不覆盖）；publishedRef 保留为首写镜像（老读口兼容）
       if (collection === "outlines" && input.decision === "published") {
         const pkey = input.platform || row.platform || "main";
         next.publishedRefs = { ...(row.publishedRefs || {}), [pkey]: input.publishedRef ?? "" };
         if (!next.publishedRef && input.publishedRef) next.publishedRef = input.publishedRef;
       }
+      kv.put(collection, id, next);
+      // 联动消费：rejected/published 时消费对应条目（P0-2 返工：按形态分支）。
+      // artifacts 的 evidenceIds 是 ev-xxx 证据 ID（去 evidence 集合拿 url）；
+      // outlines 的 evidenceRefs 直接就是热点 url（urlKey 归一化后即消费身份）。
       if (input.decision === "rejected" || input.decision === "published") {
         const ids = linkedHotspotIds(row);
         let consumedCount = 0;
