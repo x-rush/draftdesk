@@ -466,11 +466,13 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                   )}
                 </>
               )}
-              {(row.decision === "rejected" || row.decision === "deferred") && (
+              {["rejected", "deferred", "drafting"].includes(row.decision) && (
                 <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>
               )}
               {["approved", "drafting"].includes(row.decision) && (
                 <>
+                  {/* R10.49 尾巴（老大 11-01 实锤）：approved 行加「标记写作中」——已通过切写作中此前无 UI 入口 */}
+                  {row.decision === "approved" && <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "drafting")}>标记写作中</button>}
                   {row.sourceType === "outline" && <button disabled={busy} onClick={() => void copyBrief(row)}>复制创作简报</button>}
                   <button className="primary" disabled={busy} onClick={() => void publish(row)}>已发布</button>
                   <input
