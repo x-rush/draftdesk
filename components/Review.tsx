@@ -197,6 +197,8 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
       await api(`outlines/${row.id}/platform-decision`, { platform, decision });
       await reload();
     });
+    // R10.43⑥：抽屉开着时换新快照（reload 后 rows 已新，按 id 找回；消失=已归档出窗→关抽屉）
+    setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
 
   async function batch(decision: string) {
@@ -235,6 +237,7 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
       await api(path, { decision, ...(decision === "rejected" ? { rejectReason: reason || "其他" } : {}) });
       await reload();
     });
+    setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
   // R10.43⑤：已拍行快速改判——rejected/deferred 行内「翻回待定」（outlines 走行级翻转端点）
   async function flipRow(row: Row) {
@@ -244,6 +247,7 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
       await reload();
       setNotice("已翻回待决策。");
     });
+    setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
   // R10.43③：approved 行内「开始写作」——直接进详情草稿区
   function startWriting(row: Row) {

@@ -55,6 +55,13 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
     );
   }
   const clusterOf = (o: any) => clusters.find((c) => c.id === o.clusterId);
+  // R10.43⑥：抽屉拍板后 detail 同步——用刷新后的行换掉旧引用（徽章即时更新）；
+  // 行已不在 pending 集（拍板出队）→ 自动关抽屉（列表即真相，抽屉旧快照=「点了没效果」错觉根源）。
+  function syncDetailAfterDecision(id: string) {
+    const fresh = ws.outlines.find((o) => o.id === id);
+    if (fresh && fresh.decision === "pending") setDetail(fresh);
+    else { setDetail(null); ws.setNotice("已拍板出队——行已在审查台对应档位可见。"); }
+  }
   useListKeyboardShortcuts(".discovery-row", { approve: () => groups[0] && decideGroup(groups[0], "approved"), archive: () => groups[0] && decideGroup(groups[0], "rejected", "其他"), discuss: () => groups[0] && setDetail(groups[0].primary) }, groups.length > 0);
 
   // P2③ 乐观拍板：本地先移出待拍队列（<50ms），失败回滚并提示，成功后台 refresh 对账。
@@ -147,9 +154,9 @@ export function OutlineQueueView({ ws, data }: { ws: Workspace; data: Snapshot }
           })}
         </div>
       )}
-      {detail && <OutlineDrawer outline={detail} cluster={clusterOf(detail)} onClose={() => setDetail(null)} onDecide={(d, rr) => decide(detail, d, rr)}
-        onPlatformDecide={async (platform, decision) => { await ws.act(async () => { await api(`outlines/${detail.id}/platform-decision`, { platform, decision }); }); }}
-        onCategory={async (category) => { await ws.act(async () => { await api(`outlines/${detail.id}/category`, { category }); }); }} />}
+      {detail && <OutlineDrawer outline={detail} cluster={clusterOf(detail)} onClose={() => setDetail(null)} onDecide={async (d, rr) => { const id = detail.id; await decide(detail, d, rr); syncDetailAfterDecision(id); }}
+        onPlatformDecide={async (platform, decision) => { const id = detail.id; await ws.act(async () => { await api(`outlines/${id}/platform-decision`, { platform, decision }); }); syncDetailAfterDecision(id); }}
+        onCategory={async (category) => { const id = detail.id; await ws.act(async () => { await api(`outlines/${id}/category`, { category }); }); syncDetailAfterDecision(id); }} />}
     </>
   );
 }
