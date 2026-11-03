@@ -121,6 +121,25 @@ export const routes: RouteDef[] = [
       return json({ enabled: src.enabled, provider: src.provider, pools, hasToken: !!src.token, autoMetrics: src.autoMetrics, autoCollect: src.autoCollect });
     },
   },
+  {
+    // R10.51：机会卡只读口——写口 PUT /agent/opportunities 早已闭环，读侧此前 404，
+    // 小拾每日机会评估的简报无法核验池子状态（写没写进去/池里有什么）。read scope。
+    methods: ["GET"],
+    pattern: "agent/opportunities",
+    scope: "read",
+    methodGuardFirst: true,
+    handler: ({ db, query }) => {
+      const limit = Math.min(Math.max(Number(query.get("limit")) || 100, 1), 200);
+      const offset = Math.max(Number(query.get("offset")) || 0, 0);
+      const all = db.list<any>("opportunities").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      const items = all.slice(offset, offset + limit).map((o) => ({
+        id: o.id, title: o.title, oneLiner: o.oneLiner, form: o.form, kind: o.kind,
+        verdict: o.verdict, verdictReason: o.verdictReason, source: o.source,
+        monetization: o.monetization, signals: o.signals, createdAt: o.createdAt, updatedAt: o.updatedAt,
+      }));
+      return json({ items, total: all.length, limit, offset, generatedAt: now() });
+    },
+  },
   { methods: ["GET"], pattern: "agent/consumerMode", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "consumerMode") || null) },
   // siteGate 站群门槛（第七轮 W7-4）：外部 Agent 标注逻辑读同一份规则（规则同源，v1 硬编码白名单废弃）
   { methods: ["GET"], pattern: "agent/siteGate", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(siteGateOf(db)) },

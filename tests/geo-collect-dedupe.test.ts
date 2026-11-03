@@ -12,6 +12,7 @@ import { judgeUnjudgedTerms } from "../core/seen-extract";
 import { isSerpStale, seenJudgeTick, SERP_STALE_DAYS } from "../core/seen-judge";
 import { seoMetricsTick } from "../core/seo-gate";
 import { trendsRisingTick, benchmarkSitesTick, linkProspectsTick, rootSlowdownReview, rootSlowdownOf, filterTrendWord } from "../core/gephei-collect";
+import { allInflightTicks } from "../core/tick-guard";
 import { nextRootBatch } from "../core/seen-dig";
 import { tokenize, coverageOf, markCoveredVariants, coveredVariantDoc } from "../core/topic-dedupe";
 import { querySeenTerms } from "../core/seen-terms";
@@ -158,18 +159,14 @@ test("哥飞指标日更（W7-8）：批量补查落库+全门槛出标+域名�
     // 开关关：零调用
     const { fakeFetch, calls } = mockGepheiFull();
     seoMetricsTick(db, fakeFetch);
-    await new Promise((r) => setTimeout(r, 60));
+    // 开关关=同步早退（门在异步体之前），无 in-flight——直接断言
     assert.equal(calls.length, 0, "开关关零调用");
     // 清闸键后开启
     db.del("meta", "seo-metrics-done:" + now.slice(0, 10));
     enableSeo(db, { metrics: 20 });
     seoMetricsTick(db, fakeFetch);
-    // 轮询等待 fire-and-forget 批完成（tsx 动态 import 首次编译耗时不定）
-    let seen: any;
-    for (let i = 0; i < 40 && !db.get<any>("meta", "seo-metrics-done:" + now.slice(0, 10)); i++) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    seen = db.get<any>("seen-terms", "zzmocktool");
+    await allInflightTicks(); // R10.51：确定性收敛（原 40×50ms 轮询等 fire-and-forget 批）
+    const seen = db.get<any>("seen-terms", "zzmocktool");
     assert.ok(seen, "日更批次完成键落盘");
     assert.equal(seen.monthlySearch, 880, "三指标落词库");
     assert.equal(seen.kd, 12);
@@ -184,7 +181,7 @@ test("哥飞指标日更（W7-8）：批量补查落库+全门槛出标+域名�
     // 日闸：同日第二次不重跑
     const usedBefore = seoBudgetUsed(db, "metrics");
     seoMetricsTick(db, fakeFetch);
-    await new Promise((r) => setTimeout(r, 40));
+    // 日闸命中=同步早退，无 in-flight——直接断言
     assert.equal(seoBudgetUsed(db, "metrics"), usedBefore, "日闸幂等");
   } finally {
     db?.close();
@@ -202,17 +199,15 @@ test("趋势周更（第十一步，周日）：trends_rising 注入 gephei-tren
     const sunday = new Date("2026-10-18T02:00:00Z"); // 周日
     const monday = new Date("2026-10-19T02:00:00Z");
     const { fakeFetch, calls } = mockGepheiFull();
-    // 非周日零动作
+    // 非周日零动作（同步早退，无 in-flight——直接断言）
     trendsRisingTick(db, fakeFetch, monday);
-    await new Promise((r) => setTimeout(r, 40));
     assert.equal(calls.length, 0, "非周日不采集");
-    // 周日：开关关也零调用
+    // 周日：开关关也零调用（同步早退）
     trendsRisingTick(db, fakeFetch, sunday);
-    await new Promise((r) => setTimeout(r, 40));
     assert.equal(calls.length, 0, "开关关零调用");
     enableSeo(db, { collect: 50 });
     trendsRisingTick(db, fakeFetch, sunday);
-    await new Promise((r) => setTimeout(r, 150));
+    await allInflightTicks(); // R10.51：确定性收敛
     const injected = db.list<any>("seen-terms").filter((t) => (t.sources || []).includes("gephei-trends"));
     assert.deepEqual(injected.map((t) => t.term).sort(), ["zz trend tool maker"], "英文/长度过滤+品牌过滤（OpenAI 词被滤、ab 过短）");
     assert.ok(injected.every((t) => t.status === "new"), "status=new");
@@ -240,7 +235,7 @@ test("标杆站月更（第十二步）+ 外链反推（第十三步）：落库
     const mid = new Date("2026-10-15T02:00:00Z");
     const { fakeFetch, calls } = mockGepheiFull();
     benchmarkSitesTick(db, fakeFetch, first);
-    await new Promise((r) => setTimeout(r, 200));
+    await allInflightTicks(); // R10.51：确定性收敛
     const sites = db.list<any>("benchmark-sites");
     assert.ok(sites.length >= 5, "种子标杆站就位");
     const pages = db.list<any>("benchmark-pages");
@@ -251,11 +246,11 @@ test("标杆站月更（第十二步）+ 外链反推（第十三步）：落库
     // 月闸：同月重跑不再采集
     const before = calls.length;
     benchmarkSitesTick(db, fakeFetch, new Date("2026-10-20T02:00:00Z"));
-    await new Promise((r) => setTimeout(r, 60));
+    // 月闸命中=同步早退，无 in-flight——直接断言
     assert.equal(calls.length, before, "月闸幂等");
     // 外链反推（15 日）：市场快照（官方合同=卖链站挂牌榜单，按筛选器拉取）
     linkProspectsTick(db, fakeFetch, mid);
-    await new Promise((r) => setTimeout(r, 150));
+    await allInflightTicks(); // R10.51：确定性收敛
     const links = db.list<any>("link-prospects");
     assert.deepEqual(links.map((l) => l.host).sort(), ["indiehackers.com", "somesite.net"], "来源站落库");
     assert.equal(links.find((l) => l.host === "indiehackers.com")?.dr, 80, "DR 字段");

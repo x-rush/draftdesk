@@ -5,7 +5,7 @@
 //   全门槛达标自动出标+域名清单+出卡触发；autoMetrics 授权门控+metrics 月池（批4）
 // 依赖方向：seo-gate → seo-source / seen-terms / store（opportunity 出卡为动态 import，避免循环）
 import type { Store } from "./store";
-import { shanghaiDayOf } from "./tick-guard";
+import { shanghaiDayOf, trackInflight } from "./tick-guard";
 import { termId, bumpSeenTermsVersion } from "./seen-terms";
 import { GEPHEI_TTL_MS, seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, fetchKeywordMetrics, seoApi } from "./seo-source";
 
@@ -198,7 +198,7 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
   const running = db.get<any>("meta", "seo-metrics-running");
   if (running && Date.now() - Date.parse(running.at) < 15 * 60000) return;
   db.put("meta", "seo-metrics-running", { at: new Date().toISOString() });
-  void (async () => {
+  trackInflight((async () => {
     try {
       const terms = candidates.map((t) => String(t.term || t.id));
       const metrics = await fetchKeywordMetrics(db, terms, doFetch);
@@ -254,6 +254,6 @@ export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate
     } finally {
       db.del("meta", "seo-metrics-running");
     }
-  })();
+  })());
 }
 

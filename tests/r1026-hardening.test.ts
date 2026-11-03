@@ -152,10 +152,13 @@ test("4④：purgeTerminalJobs 级联清四个伴生集合；4⑤ budget-audit 7
   assert.equal(purgeTerminalJobs(db), 1);
   for (const c of ["jobs", "job-context", "job-draft", "job-validation", "job-verification"])
     assert.equal(db.get(c, "j-old"), undefined, c + " 伴生已级联清");
-  // budget-audit：8 天前键清、当天键留
-  db.put("meta", "budget-audit:2026-10-18, 10", { at: old });
-  db.put("meta", "budget-audit:2026-10-26, 10", { at: new Date().toISOString() });
+  // budget-audit：8 天前键清、当天键留——R10.51 动态锚定（原硬编码 2026-10-26，
+  // 11-03 起满 8 天被 7 天 retention 真清，日期炸弹实爆一轮）
+  const shanghaiDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(d);
+  db.put("meta", `budget-audit:${shanghaiDay(new Date(Date.now() - 8 * 86400000))}, 10`, { at: old });
+  const todayKey = `budget-audit:${shanghaiDay(new Date())}, 10`;
+  db.put("meta", todayKey, { at: new Date().toISOString() });
   const purged = purgeBudgetAuditKeys(db);
   assert.ok(purged >= 1, "8 天前键被清");
-  assert.ok(db.get("meta", "budget-audit:2026-10-26, 10"), "当天键保留");
+  assert.ok(db.get("meta", todayKey), "当天键保留");
 });

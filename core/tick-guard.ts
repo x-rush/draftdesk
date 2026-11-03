@@ -47,3 +47,22 @@ export function tickGuard(db: Store, opts: TickGuardOptions): TickGuard {
     release: () => db.del("meta", runningKey),
   };
 }
+
+// —— in-flight 登记（R10.51 flaky 容差根治）——
+// void (async …)() 即发即忘的 tick 让测试只能靠固定 setTimeout 等收敛，满载时
+// 偶发「计数抖动」（W7-11 双重门控实测 101.9ms 线边缘）。tick 调用时把异步体
+// 登记进来（promise 创建于同步段，无注册竞态），测试 await allInflightTicks()
+// 确定性收敛——零容差、零固定等待。
+const g = globalThis as unknown as { __draftdeskTickInflight?: Set<Promise<unknown>> };
+
+export function trackInflight(p: Promise<unknown>): void {
+  const set = (g.__draftdeskTickInflight ||= new Set());
+  set.add(p);
+  p.then(() => set.delete(p), () => set.delete(p));
+}
+
+export async function allInflightTicks(): Promise<void> {
+  for (let i = 0; i < 50 && g.__draftdeskTickInflight?.size; i++) {
+    await Promise.allSettled([...g.__draftdeskTickInflight]);
+  }
+}

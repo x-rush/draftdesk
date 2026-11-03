@@ -15,7 +15,7 @@ import { seoSourceEnabled, seoSourceOf, seoBudgetLeft, seoSpend, seoApi, SeoQuot
 import { TOOL_ROOTS, AI_ROOTS, rootYieldStats } from "./seen-dig";
 import { now, hash } from "./store";
 import { indexTermCluster } from "./vector-store";
-import { tickGuard, shanghaiDayOf } from "./tick-guard";
+import { tickGuard, shanghaiDayOf, trackInflight } from "./tick-guard";
 
 const DAY_MS = 86400000;
 
@@ -103,7 +103,7 @@ export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDa
   const guard = tickGuard(db, { key: "geo-trends", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
-  void (async () => {
+  trackInflight((async () => {
     try {
       // 轮转：geo-trends-cursor 与 root-probe-cursor 同款语义；慢根名单同享（第十四步降频）
       const slowdown = rootSlowdownOf(db);
@@ -144,7 +144,7 @@ export function trendsRisingTick(db: Store, doFetch: typeof fetch = fetch, nowDa
     } finally {
       guard.release();
     }
-  })();
+  })());
 }
 
 // ---- 第十二步（每月 1 日）标杆站页面分析 ----
@@ -159,7 +159,7 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
   const guard = tickGuard(db, { key: "geo-benchmark", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
-  void (async () => {
+  trackInflight((async () => {
     try {
       ensureBenchmarkSeeds(db);
       let analyzed = 0, pages = 0, failed = 0;
@@ -205,7 +205,7 @@ export function benchmarkSitesTick(db: Store, doFetch: typeof fetch = fetch, now
     } finally {
       guard.release();
     }
-  })();
+  })());
 }
 
 // ---- 第十三步（每月 15 日）外链反推 ----
@@ -220,7 +220,7 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
   const guard = tickGuard(db, { key: "geo-links", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
-  void (async () => {
+  trackInflight((async () => {
     try {
       // 官方合同：find_link_prospects=卖链站市场快照（8万+ Guest Post 挂牌），按筛选器拉榜单——
       // 外部 Agent 结合词库分析（注册时间+流量）识别隐秘赚钱产品；市场快照无词面归属，fromTerm 记批次
@@ -257,7 +257,7 @@ export function linkProspectsTick(db: Store, doFetch: typeof fetch = fetch, nowD
     } finally {
       guard.release();
     }
-  })();
+  })());
 }
 
 // —— 新词发现批次（批4 W7-11③，GET keywords/batches 0 积分，免费保留自动）——
@@ -285,7 +285,7 @@ export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: 
   const guard = tickGuard(db, { key: "geo-newwords", lockTtlMs: 30 * 60000, day: "shanghai", now: nowDate });
   if (guard.locked) return;
   guard.acquire();
-  void (async () => {
+  trackInflight((async () => {
     try {
       // 最新一批（哥飞新词发现管线每日多批，当日批优先；已消费批次幂等跳过）
       const batchesRes = await doFetch(`${seoSourceOf(db).baseUrl.replace(/\/+$/, "")}/keywords/batches?page=1`, {
@@ -326,7 +326,7 @@ export function newWordsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: 
     } finally {
       guard.release();
     }
-  })();
+  })());
 }
 
 // —— 手动回传（批4 W7-11④）：哥飞站内查询结果粘贴 → 落词库指标字段 → 站群卡价值面板即时点亮 ——

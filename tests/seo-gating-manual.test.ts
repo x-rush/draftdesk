@@ -10,6 +10,7 @@ import { Store } from "../core/store";
 import { seoBudgetLeft, seoBudgetUsed, seoSpend, parseManualGephei, gepheiToolLinks } from "../core/seo-source";
 import { seoMetricsTick } from "../core/seo-gate";
 import { benchmarkSitesTick, linkProspectsTick, newWordsTick, applyManualGephei } from "../core/gephei-collect";
+import { allInflightTicks } from "../core/tick-guard";
 import { nextRootBatch } from "../core/seen-dig";
 import { buildRelevanceRubric } from "../core/seen-extract";
 import { termId } from "../core/seen-terms";
@@ -68,13 +69,13 @@ test("双重门控（W7-11①）：autoMetrics 关=tick 零调用；开=恢复�
     mkStrong(db!, "zzb4 en target", 9);
     mkStrong(db!, "zzb4 weak obs", 2);
     seoMetricsTick(db, fakeFetch);
-    await new Promise((r) => setTimeout(r, 80));
+    // autoMetrics 关=同步早退（门在异步体之前），无 in-flight 可等——直接断言
     assert.equal(calls.length, 0, "autoMetrics 关=零调用");
     // 勾选授权 → 自动查恢复，obs≥5 过滤（观测不足词不查）
     enableSeo(db, { autoMetrics: true });
     db.del("meta", "seo-metrics-done:" + new Date().toISOString().slice(0, 10));
     seoMetricsTick(db, fakeFetch);
-    await new Promise((r) => setTimeout(r, 200));
+    await allInflightTicks(); // R10.51：确定性收敛，替代固定 setTimeout（满载计数抖动根因）
     const seen = db.get<any>("seen-terms", termId("zzb4 en target"));
     assert.equal(seen?.monthlySearch, 880, "授权后自动查落库");
     assert.equal(db.get<any>("seen-terms", termId("zzb4 weak obs"))?.monthlySearch, undefined, "obs<5 不查");
@@ -115,11 +116,11 @@ test("autoCollect 门控（W7-11⑤）：标杆站/外链反推需勾选授权",
     enableSeo(db, { collect: 10 });
     benchmarkSitesTick(db, fakeFetch, first);
     linkProspectsTick(db, fakeFetch, first);
-    await new Promise((r) => setTimeout(r, 80));
+    // autoCollect 关=同步早退，无 in-flight——直接断言
     assert.equal(calls.length, 0, "autoCollect 关=零调用");
     enableSeo(db, { autoCollect: true });
     benchmarkSitesTick(db, fakeFetch, first);
-    await new Promise((r) => setTimeout(r, 200));
+    await allInflightTicks(); // R10.51：确定性收敛
     assert.ok(calls.some((u) => u.includes("site_keywords")), "授权后标杆站采集");
   } finally {
     db?.close();
@@ -138,9 +139,7 @@ test("新词发现批次（W7-11③）：latest 批注入 gephei-newwords；免�
     const { fakeFetch, calls } = mockGepheiFull();
     const now = new Date("2026-10-14T10:00:00Z");
     newWordsTick(db, fakeFetch, now);
-    for (let i = 0; i < 30 && !db.get<any>("meta", "geo-newwords-done:" + now.toISOString().slice(0, 10)); i++) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await allInflightTicks(); // R10.51：确定性收敛（done 键在 promise 体内同步写，await 后必在）
     const injected = db.list<any>("seen-terms").filter((t) => (t.sources || []).includes("gephei-newwords"));
     assert.deepEqual(injected.map((t) => t.term).sort(), ["zz trend tool maker"], "过滤品牌（OpenAI）/过短（ab）");
     assert.ok(injected.every((t) => (t.seed || "").startsWith("gephei-newwords:")), "seed=批次血缘");
@@ -149,7 +148,7 @@ test("新词发现批次（W7-11③）：latest 批注入 gephei-newwords；免�
     // 批次幂等：同批再跑不重复注入（done 键已带批次标记）
     const before = db.list<any>("seen-terms").length;
     newWordsTick(db, fakeFetch, now);
-    await new Promise((r) => setTimeout(r, 120));
+    await allInflightTicks(); // R10.51：确定性收敛
     assert.equal(db.list<any>("seen-terms").length, before, "同批幂等");
   } finally {
     db?.close();
