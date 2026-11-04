@@ -40,7 +40,9 @@ export async function api<T = any>(path: string, value?: unknown): Promise<T> {
   const r = await fetch(
     "/api/v1/" + path,
     value === undefined
-      ? { cache: "no-store" }
+      ? // R10.53：no-cache（存储+每次重验证）——workspace 带 ETag，数据无变化时浏览器
+        // 条件请求命中 304 并透明回放缓存体（JS 零感知）；无 ETag 端点行为等同 no-store。
+        { cache: "no-cache" }
       : {
           method: "POST",
           headers: { "content-type": "application/json" },

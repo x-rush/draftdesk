@@ -94,13 +94,18 @@ export class KV {
         "INSERT INTO documents(collection,id,body) VALUES(?,?,?) ON CONFLICT(collection,id) DO UPDATE SET body=excluded.body",
       )
       .run(collection, id, JSON.stringify(value));
+    this.writeVersion++;
     return value;
   }
   del(collection: string, id: string) {
     this.db
       .prepare("DELETE FROM documents WHERE collection=? AND id=?")
       .run(collection, id);
+    this.writeVersion++;
   }
+  // R10.53：进程内写版本计数——任一 put/del 自增，作 workspace ETag 的数据版本
+  // （重启归零：浏览器缓存 ETag 失配 → 自然回退整响应，语义正确）。
+  writeVersion = 0;
   // ---- SQL 助手（PHASE 4）：排序/聚合/截取在 SQLite C 层完成，只把目标行交给 JS，
   // 避免整表 JSON.parse。field/direction 只接受内部常量，不拼外部输入。 ----
   listPaged<T>(collection: string, opts: { limit: number; offset: number; orderBy?: string; direction?: "ASC" | "DESC" }): { items: T[]; total: number } {

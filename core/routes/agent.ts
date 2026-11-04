@@ -1,5 +1,7 @@
 // 外部 Agent 读取域（read scope）：热榜/证据/产物/决策队列/统计/人设开关 + MCP。
 // 文件末尾的 agent/:rest... 兜底必须保持最后注册——未知 agent 路径先鉴权再 404（保序矩阵）。
+import { readFileSync, statfsSync } from "node:fs";
+import os from "node:os";
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
@@ -107,6 +109,46 @@ export const routes: RouteDef[] = [
   },
   { methods: ["GET"], pattern: "agent/persona", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "persona") || null) },
   { methods: ["GET"], pattern: "agent/aiPolicy", scope: "read", methodGuardFirst: true, handler: ({ db }) => json(db.get("config", "aiPolicy") || null) },
+  {
+    // R10.53：运维水位只读口——小拾每日简报的磁盘/内存/备份检查数据源。
+    // 容器与宿主机共享内核：/proc/meminfo 即宿主真值；statfs 看数据盘（bind mount）。
+    // BWH 月流量不在容器视野内——小拾侧经 KiwiVM API 拉取（VEID+API key 由老大面板生成）。
+    methods: ["GET"],
+    pattern: "agent/opsVitals",
+    scope: "read",
+    methodGuardFirst: true,
+    handler: ({ db }) => {
+      // /proc/meminfo 仅 Linux 存在（容器共享内核=宿主真值）；Windows 本地/测试降级 null
+      let mem: { totalMb: number; availMb: number; swapUsedMb: number } | null = null;
+      try {
+        const raw = {} as Record<string, number>;
+        for (const line of readFileSync("/proc/meminfo", "utf8").split("\n")) {
+          const m = line.match(/^(MemTotal|MemAvailable|SwapTotal|SwapFree):\s+(\d+)\s+kB/);
+          if (m) raw[m[1]] = Number(m[2]) * 1024;
+        }
+        mem = {
+          totalMb: Math.round((raw.MemTotal || 0) / 1048576),
+          availMb: Math.round((raw.MemAvailable || 0) / 1048576),
+          swapUsedMb: Math.round(((raw.SwapTotal || 0) - (raw.SwapFree || 0)) / 1048576),
+        };
+      } catch { /* 非 Linux 平台 */ }
+      const st = statfsSync(db.directory);
+      const jan = db.get<any>("meta", "janitor");
+      return json({
+        disk: {
+          mount: db.directory,
+          totalGb: Math.round((Number(st.blocks) * Number(st.bsize)) / 1e9 * 10) / 10,
+          freeGb: Math.round((Number(st.bavail) * Number(st.bsize)) / 1e9 * 10) / 10,
+          usedPct: Math.round((1 - Number(st.bavail) / Number(st.blocks)) * 1000) / 10,
+        },
+        mem,
+        // janitor 日批单键：day=最近跑批日，backup 子对象含当日备份结果/跳过原因
+        backup: jan ? { day: jan.day, at: jan.at, result: jan.backup ?? null } : null,
+        serverUptimeDays: Math.round(os.uptime() / 86400 * 10) / 10,
+        generatedAt: now(),
+      });
+    },
+  },
   {
     // R10.47：哥飞 pools 只读校验口（生产迁移后外部 Agent 无容器内 DB 通道，
     // 每日主分析第 8 步「验证 tier.budget=0」凭此闭环）——与 UI 口同款脱敏（token 只回 hasToken）。
