@@ -3,6 +3,19 @@ import { AppError } from "../errors";
 export const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
+// R10.53：数据版本 ETag 响应——条件请求命中 304 空体（浏览器透明回放缓存体，JS 零感知）。
+// version=KV 写版本（任一 put/del 自增），query 参与哈希（分页/筛选变化必失配）。
+// Cache-Control: no-cache=允许存储但强制重验证，新鲜度由 ETag 保证。
+export function etagJson(req: Request, query: URLSearchParams, value: unknown, version: number) {
+  const qs = Array.from(query.entries()).sort().map(([k, v]) => k + "=" + v).join("&");
+  let h = 5381;
+  for (let i = 0; i < qs.length; i++) h = ((h << 5) + h + qs.charCodeAt(i)) >>> 0;
+  const etag = `W/"dd-${version}-${h.toString(36)}"`;
+  if (req.headers.get("if-none-match") === etag)
+    return new Response(null, { status: 304, headers: { etag, "cache-control": "no-cache" } });
+  return Response.json(value, { headers: { etag, "cache-control": "no-cache" } });
+}
+
 export function checkRequest(req: Request) {
   const host = (req.headers.get("host") || new URL(req.url).host).toLowerCase();
   const name = host.split(":")[0];

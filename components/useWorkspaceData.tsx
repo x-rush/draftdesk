@@ -164,8 +164,15 @@ export function useWorkspaceData() {
     let alive = true;
     setLoading(true);
     void refresh().catch(e => { if (alive) setError(e.message); }).finally(() => { if (alive) setLoading(false) });
-    const timer = setInterval(() => { void refresh().catch(() => { }); }, 4000);
-    return () => { alive = false; clearInterval(timer); requestVersion.current++; };
+    // R10.53：后台标签页停轮询（PWA 挂后台一整天是常态）——隐藏时跳过 4s 轮询，
+    // 回前台 visibilitychange 立即刷一次（秒见最新）。
+    const timer = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void refresh().catch(() => { });
+    }, 4000);
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh().catch(() => { }); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { alive = false; clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); requestVersion.current++; };
   }, [requestKey, locationReady]);
   useEffect(() => {
     if (!locationReady) return;

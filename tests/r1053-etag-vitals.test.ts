@@ -31,7 +31,7 @@ test("R10.53①：workspace ETag——首发 200 带 ETag；同 ETag 条件请�
   const r1 = await req("workspace?view=decisions");
   assert.equal(r1.status, 200);
   const etag = r1.headers.get("etag");
-  assert.ok(etag && etag.startsWith(`W/"ws-`), "弱校验器形态 W/\"ws-<写版本>-<查询哈希>\"");
+  assert.ok(etag && etag.startsWith(`W/"dd-`), "弱校验器形态 W/\"dd-<写版本>-<查询哈希>\"");
   assert.equal(r1.headers.get("cache-control"), "no-cache", "存储+强制重验证");
   const body1 = await r1.json();
   assert.ok(body1.config !== undefined, "快照体完整");
@@ -50,6 +50,21 @@ test("R10.53①：workspace ETag——首发 200 带 ETag；同 ETag 条件请�
   // 查询串不同 → 哈希不同 → 失配 200（分页/筛选变化不能误命中 304）
   const r4 = await req("workspace?view=decisions&page=2", { "if-none-match": etag3 });
   assert.equal(r4.status, 200, "不同查询串失配");
+});
+
+test("R10.53②补：outlines/clusters ETag——同版本条件请求 304，写入失配 200", async () => {
+  const r1 = await req("outlines?limit=50");
+  assert.equal(r1.status, 200);
+  const etag = r1.headers.get("etag");
+  assert.ok(etag && etag.startsWith(`W/"dd-`), "outlines 带版本 ETag");
+  assert.equal((await req("outlines?limit=50", { "if-none-match": etag })).status, 304, "写版本未动 → 304");
+  const c1 = await req("clusters");
+  assert.equal(c1.status, 200);
+  const cetag = c1.headers.get("etag");
+  assert.ok(cetag && cetag.startsWith(`W/"dd-`), "clusters 带版本 ETag");
+  assert.equal((await req("clusters", { "if-none-match": cetag })).status, 304, "clusters 304");
+  store().put("outlines", "o-et2", { id: "o-et2", clusterId: "c", platform: "gzh", title: "翻新二", decision: "pending", createdAt: new Date().toISOString() });
+  assert.equal((await req("outlines?limit=50", { "if-none-match": etag })).status, 200, "写入后失配回全量");
 });
 
 test("R10.53②：GET /agent/opsVitals——read 令牌 200 形状齐；无令牌 401", async () => {

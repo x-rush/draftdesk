@@ -1,6 +1,6 @@
 // 长尾：健康检查、工作台快照、全量导出、研究策略保存。
 import type { RouteDef } from "../http/router";
-import { json } from "../http/middleware";
+import { json, etagJson } from "../http/middleware";
 import { AppError, now } from "../store";
 import { planSchema, type Plan } from "../schema";
 import { termId } from "../seen-terms";
@@ -11,21 +11,13 @@ import { shanghaiDay } from "../model-metrics";
 export const routes: RouteDef[] = [
   { methods: ["GET"], pattern: "health", handler: () => json({ ok: true, version: "2.0.0" }) },
   {
-    // R10.53：workspace 快照加 ETag/304——数据版本（KV 写计数）+ 查询串哈希联合生成校验器，
-    // 数据无变化时浏览器条件请求命中 304（~200B），替代 416KB 全量重传（4s 轮询下
-    // 浏览一小时 ≈90MB → ≈3MB）。Cache-Control: no-cache（存储+强制重验证，新鲜度由
-    // ETag 保证）；时间派生字段（心跳/预算）由其背后的周期性写自然翻新版本。
+    // R10.53：workspace 快照 ETag/304（公用件 etagJson）——数据无变化时条件请求命中
+    // 304（~200B）替代 416KB 全量重传（4s 轮询下浏览一小时 ≈90MB → ≈3MB）。
+    // 时间派生字段（心跳/预算）由其背后的周期性写自然翻新版本。
     methods: ["GET"],
     pattern: "workspace",
-    handler: ({ db, query, req }) => {
-      const qs = Array.from(query.entries()).sort().map(([k, v]) => k + "=" + v).join("&");
-      let h = 5381;
-      for (let i = 0; i < qs.length; i++) h = ((h << 5) + h + qs.charCodeAt(i)) >>> 0;
-      const etag = `W/"ws-${db.kv.writeVersion}-${h.toString(36)}"`;
-      if (req.headers.get("if-none-match") === etag)
-        return new Response(null, { status: 304, headers: { etag, "cache-control": "no-cache" } });
-      return Response.json(db.snapshot(query.has("page") ? query : undefined), { headers: { etag, "cache-control": "no-cache" } });
-    },
+    handler: ({ db, query, req }) =>
+      etagJson(req, query, db.snapshot(query.has("page") ? query : undefined), db.kv.writeVersion),
   },
   {
     methods: ["GET"],
