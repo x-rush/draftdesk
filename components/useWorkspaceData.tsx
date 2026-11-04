@@ -11,6 +11,7 @@ import type { HotspotFeed } from "../core/hotspots";
 import { type PageInfo, Pagination } from "./Pagination";
 
 export type Snapshot = {
+  pendingOutlines: number;
   jobActivity: JobActivity[];
   pagination: { artifacts: PageInfo; jobs: PageInfo; submissions: PageInfo };
   stats: { artifacts: number; review: number; counts: Record<string, number>; qualityCounts: { ready: number; review: number; rejected: number }; hotspotTotal: number; hotspotRemaining: number; hotspotConsumed: number; sourceFailures: number; failedRuns: number; running: number; activePlanIds: string[] };
@@ -28,6 +29,17 @@ export type Snapshot = {
   discovery: DiscoveryRecord | null;
   hotspots: HotspotFeed | null;
 };
+
+// R10.52②③：按视图拉取 + 轮询合流。此前 refresh() 每 4s 全量拉 8 端点（含 2.4MB
+// seo-terms），不管当前视图是否消费——审查台首屏因此拖着 SEO 工作台的全部数据。
+// 每个数据集只被真正消费它的视图拉取；未拉取时保留上次已知状态（视图切回立即可用）。
+// · outlines：discover（队列抽屉）+ chat（收集箱建议）；导航徽章改走快照 pendingOutlines
+// · clusters：hotspots（onPromote 选簇）+ chat（Discussion）+ activities（批次面板）
+// · SEO 五件套（seo-terms/site-projects/site-discoveries/opportunities/site-launches）：
+//   仅 ideas（站群评估器）——全工作台唯一消费方
+const OUTLINE_VIEWS = new Set(["discover", "chat"]);
+const CLUSTER_VIEWS = new Set(["hotspots", "chat", "activities"]);
+const SEO_VIEWS = new Set(["ideas"]);
 
 export function useWorkspaceData() {
   const [data, setData] = useState<Snapshot | null>(null),
@@ -92,35 +104,51 @@ export function useWorkspaceData() {
   const [seenLoading, setSeenLoading] = useState(false);
   const [previewPlan, setPreviewPlan] = useState("daily-editorial");
   const knownJobs = useRef(new Map<string, string>()), activityReady = useRef(false), activitySince = useRef(Date.now()), restoreScroll = useRef(true);
+  const refreshInflight = useRef(false);
   const requestKey = new URLSearchParams({ activityPlatform, activityTime, creation, jobId, runId, page: String(page), mode: discoveryMode, jobsPage: String(jobsPage), receiptsPage: String(receiptsPage), hotspotPage: String(hotspotPage), hotspotConsumed, hotspotQ, hotspotStatus, hotspotSource, hotspotPlan, hotspotSort, view, kind, quality, q: query, pageSize: "20" }).toString();
   const currentKey = useRef(requestKey), requestVersion = useRef(0);
   currentKey.current = requestKey;
   async function refresh() {
-    const key = currentKey.current, version = ++requestVersion.current;
-    const [next, outlineList, clusterList, seoTermList, siteProjectList, siteDiscoveryList, opportunityList, siteLaunchList] = await Promise.all([
-      api<Snapshot>("workspace?" + key),
-      api<{ items: any[] }>("outlines"),
-      api<{ items: any[] }>("clusters"),
-      api<{ items: any[] }>("seo-terms"),
-      api<{ items: any[] }>("site-projects"),
-      api<{ items: any[] }>("site-discoveries?limit=200"),
-      api<{ items: any[] }>("opportunities?limit=300"),
-      api<{ items: any[] }>("site-launches?limit=300"),
-    ]);
-    if (currentKey.current === key && requestVersion.current === version) {
-      setData(next);
-      // UI GET /outlines、/clusters 返回 {items:[...]} 包裹形状
-      setOutlines(outlineList?.items ?? []);
-      setClusters(clusterList?.items ?? []);
-      setSeoTerms(seoTermList?.items ?? []);
-      setSiteProjects(siteProjectList?.items ?? []);
-      setSiteDiscoveries(siteDiscoveryList?.items ?? []);
-      setOpportunities(opportunityList?.items ?? []);
-      setSiteLaunches(siteLaunchList?.items ?? []);
-      const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
-      if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
-      next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
-      if (restoreScroll.current) { restoreScroll.current = false; let y = 0; try { y = Number(sessionStorage.getItem("draftdesk.scroll." + key)) || 0; } catch { } requestAnimationFrame(() => window.scrollTo(0, y)); }
+    // R10.52②：in-flight 合流——慢网下 4s 轮询与操作触发的刷新并发时，上一轮未完成
+    // 就直接跳过（此前会叠加出 8 端点 ×N 连发，nginx 实测单视图 site-launches ×3）。
+    if (refreshInflight.current) return;
+    refreshInflight.current = true;
+    try {
+      const key = currentKey.current, version = ++requestVersion.current;
+      const wantOutlines = OUTLINE_VIEWS.has(view), wantClusters = CLUSTER_VIEWS.has(view), wantSeo = SEO_VIEWS.has(view);
+      const [next, outlineList, clusterList, seoPack] = await Promise.all([
+        api<Snapshot>("workspace?" + key),
+        wantOutlines ? api<{ items: any[] }>("outlines") : null,
+        wantClusters ? api<{ items: any[] }>("clusters") : null,
+        wantSeo ? Promise.all([
+          api<{ items: any[] }>("seo-terms"),
+          api<{ items: any[] }>("site-projects"),
+          api<{ items: any[] }>("site-discoveries?limit=200"),
+          api<{ items: any[] }>("opportunities?limit=300"),
+          api<{ items: any[] }>("site-launches?limit=300"),
+        ]) : null,
+      ]);
+      if (currentKey.current === key && requestVersion.current === version) {
+        setData(next);
+        // UI GET /outlines、/clusters 返回 {items:[...]} 包裹形状；未拉取的集合保留
+        // 上次已知状态（不清空——视图切回立即可用，导航徽章走快照 pendingOutlines）
+        if (outlineList) setOutlines(outlineList.items ?? []);
+        if (clusterList) setClusters(clusterList.items ?? []);
+        if (seoPack) {
+          const [seoTermList, siteProjectList, siteDiscoveryList, opportunityList, siteLaunchList] = seoPack;
+          setSeoTerms(seoTermList?.items ?? []);
+          setSiteProjects(siteProjectList?.items ?? []);
+          setSiteDiscoveries(siteDiscoveryList?.items ?? []);
+          setOpportunities(opportunityList?.items ?? []);
+          setSiteLaunches(siteLaunchList?.items ?? []);
+        }
+        const completed = activityReady.current ? newlyFinished(next.jobActivity, knownJobs.current, activitySince.current) : [];
+        if (completed.length) setFinished(old => [...completed, ...old.filter(j => !completed.some(n => n.id === j.id))].slice(0, 8));
+        next.jobActivity.forEach(j => knownJobs.current.set(j.id, j.state)); activityReady.current = true;
+        if (restoreScroll.current) { restoreScroll.current = false; let y = 0; try { y = Number(sessionStorage.getItem("draftdesk.scroll." + key)) || 0; } catch { } requestAnimationFrame(() => window.scrollTo(0, y)); }
+      }
+    } finally {
+      refreshInflight.current = false;
     }
   }
   useEffect(() => {

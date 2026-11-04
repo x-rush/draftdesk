@@ -161,7 +161,11 @@ export class Store {
   snapshot(params?: URLSearchParams) {
     const metrics = this.list<MetricSnapshot>("metrics");
     const allJobs = this.list<Job>("jobs");
+    // R10.52③：待拍大纲计数随快照走（SQL 生成列计数，索引命中亚毫秒）——导航徽章
+    // 的数据源。此前徽章=前端全量 outlines 列表过滤，迫使每个视图每 4s 拉 118KB 大纲。
+    const pendingOutlines = (this.kv.sqlRows("SELECT COUNT(*) AS n FROM documents WHERE collection='outlines' AND \"decision\"='pending'")[0] as any)?.n ?? 0;
     const snapshot = {
+      pendingOutlines,
       config: this.publicConfig(),
       plans: this.list<Plan>("plans").sort((a, b) =>
         a.dailyTime.localeCompare(b.dailyTime),

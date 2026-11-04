@@ -126,7 +126,9 @@ export function Workbench() {
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  const pendingOutlines = ws.outlines.filter((o) => o.decision === "pending").length;
+  // R10.52③：徽章改走快照 pendingOutlines（服务端 SQL 计数）——此前=前端全量 outlines
+  // 过滤，迫使 outlines 集合随每 4s 轮询在所有视图拉取；现在 outlines 只在 discover/chat 拉。
+  const pendingOutlines = ws.data?.pendingOutlines ?? 0;
   const navGroupsInUse = external ? externalNavGroups : navGroups;
   return (
     <div className="app-shell">

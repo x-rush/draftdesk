@@ -31,10 +31,23 @@ const upsertSchema = z.object({ items: z.array(termSchema).min(1).max(200) }).st
 
 export const routes: RouteDef[] = [
   {
-    // UI 只读口（无令牌）：每日发现/SEO 工作台的 refresh 并行拉取
+    // UI 只读口（无令牌）。R10.52①：默认 scope=cards——UI 唯一消费方（站群评估器）
+    // 只筛 siteCandidate:true，此前全量 2.4MB/响应曾随 4s 轮询整页下发。
+    // ?scope=all 保留全量口（limit/offset 分页）；total 恒为全量计数。
+    // 修复项：原实现 items/total 各 list() 一遍=每次请求双倍物化。
     methods: ["GET"],
     pattern: "seo-terms",
-    handler: ({ db }) => json({ items: db.list("seo-terms"), total: db.list("seo-terms").length }),
+    handler: ({ db, query }) => {
+      const all = db.list<any>("seo-terms");
+      const scope = query.get("scope") || "cards";
+      if (scope !== "all") {
+        const cards = all.filter((t) => t.siteCandidate === true);
+        return json({ items: cards, total: all.length, cards: cards.length, scope: "cards" });
+      }
+      const limit = Math.min(Math.max(Number(query.get("limit")) || 500, 1), 2000);
+      const offset = Math.max(Number(query.get("offset")) || 0, 0);
+      return json({ items: all.slice(offset, offset + limit), total: all.length, limit, offset, scope: "all" });
+    },
   },
   {
     methods: ["PUT"],
@@ -59,6 +72,9 @@ export const routes: RouteDef[] = [
     pattern: "agent/seo-terms",
     scope: "read",
     methodGuardFirst: true,
-    handler: ({ db }) => json({ items: db.list("seo-terms"), total: db.list("seo-terms").length }),
+    handler: ({ db }) => {
+      const items = db.list<any>("seo-terms"); // R10.52：单次物化（原 items/total 各一遍）
+      return json({ items, total: items.length });
+    },
   },
 ];
