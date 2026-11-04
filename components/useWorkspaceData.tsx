@@ -87,7 +87,9 @@ export function useWorkspaceData() {
   const [outlines, setOutlines] = useState<any[]>([]);
   const [clusters, setClusters] = useState<any[]>([]);
   const [discussionContext, setDiscussionContext] = useState<import("./ActionButtons").DiscussContext | null>(null);
-  const [seoTerms, setSeoTerms] = useState<any[]>([]);
+  // R10.52①：seoTerms/siteProjects 自 UI 撤除——站群候选卡 tab 在 R10.25「单入口」时
+  // 撤销，两者自此只剩无消费的残留状态（seo-terms 全量 2.4MB 曾随 4s 轮询整页下发，
+  // 生产实测 8354 卡；11-03 弱链路事件头号放大器）。读口 GET /seo-terms 保留（API/巡检用）。
   const [siteProjects, setSiteProjects] = useState<any[]>([]);
   // 站点发现（海外定位批 6）：DDG 竞争度查询产出的独立站集合
   const [siteDiscoveries, setSiteDiscoveries] = useState<any[]>([]);
@@ -121,8 +123,6 @@ export function useWorkspaceData() {
         wantOutlines ? api<{ items: any[] }>("outlines") : null,
         wantClusters ? api<{ items: any[] }>("clusters") : null,
         wantSeo ? Promise.all([
-          api<{ items: any[] }>("seo-terms"),
-          api<{ items: any[] }>("site-projects"),
           api<{ items: any[] }>("site-discoveries?limit=200"),
           api<{ items: any[] }>("opportunities?limit=300"),
           api<{ items: any[] }>("site-launches?limit=300"),
@@ -135,9 +135,7 @@ export function useWorkspaceData() {
         if (outlineList) setOutlines(outlineList.items ?? []);
         if (clusterList) setClusters(clusterList.items ?? []);
         if (seoPack) {
-          const [seoTermList, siteProjectList, siteDiscoveryList, opportunityList, siteLaunchList] = seoPack;
-          setSeoTerms(seoTermList?.items ?? []);
-          setSiteProjects(siteProjectList?.items ?? []);
+          const [siteDiscoveryList, opportunityList, siteLaunchList] = seoPack;
           setSiteDiscoveries(siteDiscoveryList?.items ?? []);
           setOpportunities(opportunityList?.items ?? []);
           setSiteLaunches(siteLaunchList?.items ?? []);
@@ -255,7 +253,7 @@ export function useWorkspaceData() {
   const pager = (info: PageInfo, change: (page: number) => void) => <Pagination info={info} onChange={change} disabled={loading || busy} />;
   return {
     data, view, error, setNotice, notice, busy, mobile, setMobile,
-    outlines, clusters, seoTerms, siteProjects, siteDiscoveries, opportunities, siteLaunches, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenOrigin, setSeenOrigin, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
+    outlines, clusters, siteDiscoveries, opportunities, siteLaunches, seenList, seenQ, setSeenQ, seenStatus, setSeenStatus, seenIntent, setSeenIntent, seenPage, setSeenPage, seenRegion, setSeenRegion, seenOrigin, setSeenOrigin, seenLoading, discussionContext, setDiscussionContext, mutateOutlines,
     selected, setSelected, plan, setPlan, source, setSource,
     discussionArtifact, setDiscussionArtifact,
     query, setQuery, kind, setKind, quality, setQuality,

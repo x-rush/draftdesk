@@ -280,8 +280,9 @@ function SiteLaunchesTab({ siteLaunches, onJumpSites }: { siteLaunches: any[]; o
 }
 
 export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot }) {
-  const { seoTerms, siteProjects, siteDiscoveries, opportunities, siteLaunches, busy, act, setNotice, navigate, setDiscussionContext } = ws;
-  const [siteType, setSiteType] = useState("all");
+  // R10.52①：seoTerms/siteProjects 解构撤除——站群候选卡 tab 在 R10.25 单入口时撤销后
+  // 两者只剩无消费的残留状态（seo-terms 全量 2.4MB 曾随 4s 轮询整页下发）。
+  const { siteDiscoveries, opportunities, siteLaunches, busy, act, setNotice, navigate, setDiscussionContext } = ws;
   const [ignored, setIgnored] = useState<string[]>([]);
   // 单入口（第六轮批 B §2.5①）：站群候选独立 tab 撤销——应用形态机会统一在「机会引擎」（kind 筛选），站群卡不再孤岛
   const [tab, setTab] = useState<"sites" | "launches" | "opportunities" | "links">("opportunities");
@@ -290,12 +291,6 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const [linkLoading, setLinkLoading] = useState(false);
   const [launchRefreshing, setLaunchRefreshing] = useState(false);
   const [siteSort, setSiteSort] = useState("ref");
-  const candidates = useMemo(
-    () => (seoTerms || []).filter((t) => t.siteCandidate === true && !ignored.includes(t.term)),
-    [seoTerms, ignored],
-  );
-  const filtered = siteType === "all" ? candidates : candidates.filter((t) => t.siteType === siteType);
-  const projects = siteProjects || [];
   const discoveries = siteDiscoveries || [];
   // 客户端排序兜底：useWorkspaceData 拉的是默认（可参考度）序；切「首见」时本地按首见重排。
   // portfolio 站折叠到列表尾部（展开按钮查看）。

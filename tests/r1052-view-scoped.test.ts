@@ -77,12 +77,13 @@ test("R10.52③①：decisions 视图只拉 workspace——SEO 五件套/outline
   assert.equal((globalThis as any).__ws.data?.pendingOutlines, 3, "快照徽章计数在");
 });
 
-test("R10.52③②：ideas 视图拉 workspace+SEO 五件套，不拉 outlines/clusters", async () => {
+test("R10.52③②：ideas 视图拉 workspace+SEO 三件套，不拉 outlines/clusters/seo-terms/site-projects", async () => {
   await mountAt("http://127.0.0.1:5173/?view=ideas");
   const u = uniq().sort();
-  assert.deepEqual(u, ["opportunities", "seo-terms", "site-discoveries", "site-launches", "site-projects", "workspace"], "ideas=workspace+5 SEO");
+  assert.deepEqual(u, ["opportunities", "site-discoveries", "site-launches", "workspace"], "ideas=workspace+3（R10.52①：seo-terms/site-projects 为死数据自 UI 撤除）");
   assert.ok(!u.includes("outlines"), "outlines 不在 ideas 拉");
   assert.ok(!u.includes("clusters"), "clusters 不在 ideas 拉");
+  assert.ok(!u.includes("seo-terms"), "2.4MB 的 seo-terms 不再随 UI 拉取");
 });
 
 test("R10.52③③：discover 视图拉 workspace+outlines，不拉 SEO 五件套", async () => {

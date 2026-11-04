@@ -31,9 +31,10 @@ const upsertSchema = z.object({ items: z.array(termSchema).min(1).max(200) }).st
 
 export const routes: RouteDef[] = [
   {
-    // UI 只读口（无令牌）。R10.52①：默认 scope=cards——UI 唯一消费方（站群评估器）
-    // 只筛 siteCandidate:true，此前全量 2.4MB/响应曾随 4s 轮询整页下发。
-    // ?scope=all 保留全量口（limit/offset 分页）；total 恒为全量计数。
+    // UI 只读口（无令牌）。R10.52①：默认 cards 口只回站群候选卡且服务端截断+筛选——
+    // 生产实测 8354 条全部 siteCandidate:true（该集合本就只存出标卡），全量 2.4MB/响应
+    // 曾随 4s 轮询整页下发（11-03 弱链路事件头号放大器）。默认回前 500 张 + ?siteType
+    // 服务端过滤 + bySiteType 计数；?scope=all 保留全量分页口；total 恒为全量计数。
     // 修复项：原实现 items/total 各 list() 一遍=每次请求双倍物化。
     methods: ["GET"],
     pattern: "seo-terms",
@@ -41,8 +42,13 @@ export const routes: RouteDef[] = [
       const all = db.list<any>("seo-terms");
       const scope = query.get("scope") || "cards";
       if (scope !== "all") {
-        const cards = all.filter((t) => t.siteCandidate === true);
-        return json({ items: cards, total: all.length, cards: cards.length, scope: "cards" });
+        const siteType = query.get("siteType");
+        const cards = all.filter((t) => t.siteCandidate === true && (!siteType || t.siteType === siteType));
+        const bySiteType: Record<string, number> = {};
+        for (const t of all) if (t.siteCandidate === true) bySiteType[String(t.siteType || "未分型")] = (bySiteType[String(t.siteType || "未分型")] || 0) + 1;
+        const limit = Math.min(Math.max(Number(query.get("limit")) || 500, 1), 2000);
+        const offset = Math.max(Number(query.get("offset")) || 0, 0);
+        return json({ items: cards.slice(offset, offset + limit), cards: cards.length, total: all.length, bySiteType, siteType: siteType || "all", limit, offset, scope: "cards" });
       }
       const limit = Math.min(Math.max(Number(query.get("limit")) || 500, 1), 2000);
       const offset = Math.max(Number(query.get("offset")) || 0, 0);
