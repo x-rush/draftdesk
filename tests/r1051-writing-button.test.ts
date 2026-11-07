@@ -1,6 +1,6 @@
 // R10.49 尾巴验收（老大 11-01 深夜实锤）：①approved 行「标记写作中」按钮——已通过切写作中
-// 此前 UI 无入口（agent 口按设计无拍板权，拍板只能人做）；②drafting 行「翻回待定」闭环
-// （工单描述写作中行已有翻回待定，实查 R10.43 起只挂 rejected/deferred——本次补齐闭环）；
+// 此前 UI 无入口（agent 口按设计无拍板权，拍板只能人做）；②drafting 行「返回」闭环
+// （工单描述写作中行已有返回，实查 R10.43 起只挂 rejected/deferred——本次补齐闭环）；
 // ③pending 行不出现该按钮。
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
@@ -91,14 +91,14 @@ test("R10.49 尾巴①：approved 行有「标记写作中」，点击走行级 
   assert.ok(!calls.some((x) => x.path.endsWith("/publish")), "不误触发布");
 });
 
-test("R10.49 尾巴②：drafting 行有「已发布」+「翻回待定」，翻回走 decision→pending（闭环）", async () => {
+test("R10.49 尾巴②：drafting 行有「已发布」+「返回」，翻回走 decision→pending（闭环）", async () => {
   calls.length = 0;
   await render([mkRow("dr-1", "drafting")]);
   await clickNav("写作中");
   assert.ok(Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "已发布"), "写作中行保留「已发布」");
-  const flip = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "翻回待定");
-  assert.ok(flip, "写作中行有「翻回待定」（闭环补齐）");
-  await clickBtn((t) => t === "翻回待定");
+  const flip = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "返回");
+  assert.ok(flip, "写作中行有「返回」（闭环补齐）");
+  await clickBtn((t) => t === "返回");
   await new Promise((r) => setTimeout(r, 30));
   const c = decisionCalls()[0];
   assert.ok(c, "翻回调用在");

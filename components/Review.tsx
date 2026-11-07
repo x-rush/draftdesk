@@ -199,13 +199,14 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
     });
     setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
-  // R10.43⑤：已拍行快速改判——rejected/deferred 行内「翻回待定」（outlines 走行级翻转端点）
+  // R10.43⑤：已拍行快速改判——rejected/deferred 行内「返回」（R10.54-② 改名，原「翻回待定」）。
+  // 行会从当前档位消失（回待决策）——notice 说清去向，否则像「点了没反应」（老大 11-07 实锤）。
   async function flipRow(row: Row) {
     await act(async () => {
       const path = row.sourceType === "outline" ? `outlines/${row.id}/decision` : row.sourceType === "artifact" ? `artifacts/${row.id}/decision` : `decisions/${row.id}/decision`;
       await api(path, { decision: "pending" });
       await reload();
-      setNotice("已翻回待决策。");
+      setNotice("已返回待决策——该行已移入「待决策」档位，切到待决策或全部即可看到。");
     });
     setDetail((prev: Row | null) => (prev ? rows.find((r) => r.id === prev.id) ?? null : null));
   }
@@ -502,7 +503,7 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                 <>
                   {/* R10.54-②（老大 11-07）：否决/暂缓行加「恢复通过」——反悔直拍 approved，不再绕「翻回待定→通过」两步 */}
                   {["rejected", "deferred"].includes(row.decision) && <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "approved")}>恢复通过</button>}
-                  <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>
+                  <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>返回</button>
                 </>
               )}
               {["approved", "drafting"].includes(row.decision) && (

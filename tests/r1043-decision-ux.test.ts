@@ -90,7 +90,7 @@ test("R10.50 更新：通过（A）→ 行级直拍（无并集逐平台）", as
   assert.ok(calls.some((c) => c.path === "outlines/c2/decision"), "行级 decision");
 });
 
-test("R10.43 ⑤：rejected 行内「翻回待定」调用行级翻转端点", async () => {
+test("R10.43 ⑤（R10.54-② 改名「返回」）：rejected 行内「返回」调用行级翻转端点", async () => {
   calls.length = 0;
   await render([
     { sourceType: "outline", id: "f1", kind: "长文", title: "行-f1", clusterId: "c", decision: "rejected", platform: "gzh", platforms: ["gzh"], createdAt: new Date().toISOString() },
@@ -100,7 +100,7 @@ test("R10.43 ⑤：rejected 行内「翻回待定」调用行级翻转端点", a
     all.click();
   });
   await act(async () => {
-    const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "翻回待定") as HTMLElement;
+    const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "返回") as HTMLElement;
     assert.ok(b, "翻回按钮在行内");
     b.click();
   });
