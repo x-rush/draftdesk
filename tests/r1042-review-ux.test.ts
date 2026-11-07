@@ -66,6 +66,31 @@ after(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("R10.54-②：行内改判闭环——approved 行有否决入口、rejected/deferred 行有恢复通过", async () => {
+  await render([
+    mkRow("ap", "approved", ["gzh"]),
+    mkRow("rj", "rejected", ["xhs-note"]),
+    mkRow("df", "deferred", ["threads"]),
+  ]);
+  await act(async () => { navBtn("全部").click(); }); // Review 初始 status=pending，先切「全部」才能看到已拍行
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  const rowBtns = (title: string) => {
+    const t = Array.from(document.querySelectorAll(".decision-title")).find((e) => (e.textContent || "").includes(title)) as HTMLElement | undefined;
+    if (!t) return [];
+    let el: HTMLElement | null = t;
+    while (el && !el.querySelector(".decision-actions")) el = el.parentElement; // 向上收窄到该行自己的组容器
+    return el ? Array.from(el.querySelectorAll(".decision-actions button")).map((b) => (b.textContent || "").trim()) : [];
+  };
+  const ap = rowBtns("行-ap");
+  assert.ok(ap.includes("否决"), "approved 行有「否决」入口（反悔拒绝直拍）");
+  assert.ok(ap.includes("标记写作中") && ap.includes("已发布"), "approved 行原有闭环不回退");
+  const rj = rowBtns("行-rj");
+  assert.ok(rj.includes("恢复通过"), "rejected 行有「恢复通过」（直拍 approved 不绕两步）");
+  assert.ok(rj.includes("翻回待定"), "rejected 行保留翻回待定");
+  const df = rowBtns("行-df");
+  assert.ok(df.includes("恢复通过") && df.includes("翻回待定"), "deferred 行同款闭环");
+});
+
 test("R10.54-②：总览信息条——可点项带跳转（pushState+popstate）、纯信息项无 affordance", async () => {
   await render([mkRow("ov1", "pending", ["gzh"])]);
   const strip = document.querySelector(".review-overview");

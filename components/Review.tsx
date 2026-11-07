@@ -499,10 +499,26 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                 </>
               )}
               {["rejected", "deferred", "drafting"].includes(row.decision) && (
-                <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>
+                <>
+                  {/* R10.54-②（老大 11-07）：否决/暂缓行加「恢复通过」——反悔直拍 approved，不再绕「翻回待定→通过」两步 */}
+                  {["rejected", "deferred"].includes(row.decision) && <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "approved")}>恢复通过</button>}
+                  <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>翻回待定</button>
+                </>
               )}
               {["approved", "drafting"].includes(row.decision) && (
                 <>
+                  {/* R10.54-②（老大 11-07）：approved 行加「否决」——反悔拒绝直拍 rejected（带原因选择，与 pending 行同流程但走行级 decide） */}
+                  {row.decision === "approved" && (reasonOpen.has(row.id) ? (
+                    <>
+                      <Select aria-label={`否决原因 ${row.title}`} placeholder="否决原因…" value={rowReason[row.id] || undefined} onChange={(e) => setRowReason({ ...rowReason, [row.id]: e.target.value })}>
+                        {rejectReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </Select>
+                      <button disabled={busy || !rowReason[row.id]} onClick={() => { void decide(row, "rejected", rowReason[row.id]); setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id))); }}>确认否决</button>
+                      <button className="button-secondary" onClick={() => setReasonOpen(new Set([...reasonOpen].filter((x) => x !== row.id)))}>取消</button>
+                    </>
+                  ) : (
+                    <button className="button-secondary" disabled={busy} onClick={() => { setRowReason({ ...rowReason, [row.id]: "" }); setReasonOpen(new Set([...reasonOpen, row.id])); }}>否决</button>
+                  ))}
                   {/* R10.49 尾巴（老大 11-01 实锤）：approved 行加「标记写作中」——已通过切写作中此前无 UI 入口 */}
                   {row.decision === "approved" && <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "drafting")}>标记写作中</button>}
                   {row.sourceType === "outline" && <button disabled={busy} onClick={() => void copyBrief(row)}>复制创作简报</button>}
