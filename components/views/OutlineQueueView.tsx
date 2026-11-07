@@ -200,11 +200,13 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
         )}
       </div>
 
-      {/* 推荐建议（R10.35）：为什么这么写、投哪些平台、各平台怎么适配 */}
+      {/* 推荐建议（R10.35）：为什么这么写、投哪些平台、各平台怎么适配。R10.54-②：md 渲染（复用 MessageContent，skipHtml 防注入），小拾写回的加粗/行内代码/列表不再裸奔 */}
       {o.recommendation && (
         <section className="drawer-section">
           <h3>推荐建议</h3>
-          <p style={{ margin: 0, lineHeight: 1.7 }}>{o.recommendation}</p>
+          <div style={{ lineHeight: 1.7 }}>
+            <MessageContent text={o.recommendation} />
+          </div>
         </section>
       )}
 
