@@ -210,8 +210,8 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
         </section>
       )}
 
-      {/* 适合平台（R10.35）：一条选题标注适合投哪些平台，不再每平台各写一份大纲 */}
-      {fitPlatforms.length > 0 && (
+      {/* 适合平台（R10.35）：只读展示仅作无编辑权限场景的 fallback——有编辑器时信息完全重复且不可点（老大 11-07 判删） */}
+      {!onPlatformToggle && fitPlatforms.length > 0 && (
         <section className="drawer-section">
           <h3>适合平台（{fitPlatforms.length}）</h3>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -222,7 +222,9 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
 
       {/* 平台编辑器（R10.50）：platforms 只是适配标注——十四平台全列，成员实心✓/非成员虚线+，点徽章增删不触发状态 */}
       {onPlatformToggle && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} aria-label="适合平台编辑器">
+        <section className="drawer-section">
+          <h3>适合平台（{fitPlatforms.length}）</h3>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} aria-label="适合平台编辑器">
           {PLATFORM_KEYS.map((k) => {
             const member = fitPlatforms.includes(k);
             return (
@@ -235,7 +237,8 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
               </button>
             );
           })}
-        </div>
+          </div>
+        </section>
       )}
 
       {/* 内容结构（outline 数组）：每日发现与审查台共用渲染（第六轮批 B 补渲染位） */}
