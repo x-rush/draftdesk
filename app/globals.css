@@ -1681,9 +1681,9 @@ button.review-info:hover span { color: #476537; text-decoration: underline; text
    数字与标签同行，说明小字独立行不截断；active 绿底+左条 */
 .stat-strip.decision-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .stat-strip.decision-strip .stat-card { padding: 12px 16px 10px; }
-.stat-strip.decision-strip .stat-card strong { display: inline; font-size: 21px; margin-right: 8px; font-variant-numeric: tabular-nums; }
-.stat-strip.decision-strip .stat-card span { display: inline; font-size: 13px; font-weight: 600; white-space: nowrap; }
-.stat-strip.decision-strip .stat-card small { display: block; white-space: normal; line-height: 1.4; margin-top: 3px; }
+.stat-strip.decision-strip .stat-card strong { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+.stat-strip.decision-strip .stat-card span { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 1px; }
+.stat-strip.decision-strip .stat-card small { display: block; white-space: normal; line-height: 1.4; margin-top: 4px; }
 .stat-strip.decision-strip button.stat-card.clickable { transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease; }
 .stat-strip.decision-strip button.stat-card.clickable:hover { transform: translateY(-1px); box-shadow: 0 2px 10px rgba(60, 90, 50, .08); border-color: #c9d8bd; }
 .stat-strip.decision-strip button.stat-card.active { background: #eef4e8; border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
