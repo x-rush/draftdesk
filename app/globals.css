@@ -1680,7 +1680,7 @@ button.review-info:hover span { color: #476537; text-decoration: underline; text
 /* 决策状态卡（v2）：grid 五列强制等宽一行（孤卡/宽度不一消灭）；
    数字与标签同行，说明小字独立行不截断；active 绿底+左条 */
 .stat-strip.decision-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
-.stat-strip.decision-strip .stat-card { padding: 12px 16px 10px; }
+.stat-strip.decision-strip .stat-card { display: block; padding: 12px 16px 10px; } /* 显式压过全局 button 的 inline-flex，否则数字/标签/说明被横排截断 */
 .stat-strip.decision-strip .stat-card strong { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
 .stat-strip.decision-strip .stat-card span { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 1px; }
 .stat-strip.decision-strip .stat-card small { display: block; white-space: normal; line-height: 1.4; margin-top: 4px; }
