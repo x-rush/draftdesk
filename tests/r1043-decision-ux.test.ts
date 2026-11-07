@@ -100,7 +100,7 @@ test("R10.43 ⑤（R10.54-② 改名「返回」）：rejected 行内「返回�
     all.click();
   });
   await act(async () => {
-    const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "返回") as HTMLElement;
+    const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "返回待定") as HTMLElement;
     assert.ok(b, "翻回按钮在行内");
     b.click();
   });

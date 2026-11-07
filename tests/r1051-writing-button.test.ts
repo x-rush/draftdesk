@@ -96,9 +96,9 @@ test("R10.49 尾巴②：drafting 行有「已发布」+「返回」，翻回走
   await render([mkRow("dr-1", "drafting")]);
   await clickNav("写作中");
   assert.ok(Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "已发布"), "写作中行保留「已发布」");
-  const flip = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "返回");
+  const flip = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === "返回待定");
   assert.ok(flip, "写作中行有「返回」（闭环补齐）");
-  await clickBtn((t) => t === "返回");
+  await clickBtn((t) => t === "返回待定");
   await new Promise((r) => setTimeout(r, 30));
   const c = decisionCalls()[0];
   assert.ok(c, "翻回调用在");

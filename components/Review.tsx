@@ -503,7 +503,7 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
                 <>
                   {/* R10.54-②（老大 11-07）：否决/暂缓行加「恢复通过」——反悔直拍 approved，不再绕「翻回待定→通过」两步 */}
                   {["rejected", "deferred"].includes(row.decision) && <button className="button-secondary" disabled={busy} onClick={() => void decide(row, "approved")}>恢复通过</button>}
-                  <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>返回</button>
+                  <button className="button-secondary" disabled={busy} onClick={() => void flipRow(row)}>返回待定</button>
                 </>
               )}
               {["approved", "drafting"].includes(row.decision) && (
