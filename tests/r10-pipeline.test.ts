@@ -1,4 +1,4 @@
-// R10 流水线守护：第1段 collectAllTick（当日闸/精简闸/归档恢复）、第2段默认全开与平台 9 值、
+// R10 流水线守护：第1段 collectAllTick（当日闸/精简闸/归档恢复）、第2段默认全开与平台 14 值、
 // 第3段 form 六值/新站复刻卡/消费回执。
 import test, { after } from "node:test";
 import assert from "node:assert/strict";

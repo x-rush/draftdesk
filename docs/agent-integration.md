@@ -181,7 +181,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 **① 全量采集（01:00 上海，collectAllTick）**：全部 enabled 内容源一次采集落盘（discovery 批次 jobId=`collectall-{日}`，planName=「全量采集」）。当日双闸（非当日 filtered；RSS 24h fallback）+ 超 300 按「当日新>热度」精简 + 跨源 URL 去重。计划的 sourceIds 退化为分析期过滤条件（定时采集已迁移关停）。web 搜索源不在全量采集范围（它是查询执行器，仍由计划/补证路径驱动）。
 
-**② 语义初筛（采集完自动）**：默认全开（config.aiPolicy.triage=cheap；计划可 aiPolicy.enabled=false 退出）。判 none 的组进**归档队列**（`GET /triage/archive` 可查；`POST /triage/restore {jobId,groupId?}` 可恢复）——成员置 filtered（reason 注明归档），不再静默留池。平台角度扩 8 值：+x/facebook/instagram/linkedin（schema/platformAffinity 9 值，xhs-video 视频后置）。
+**② 语义初筛（采集完自动）**：默认全开（config.aiPolicy.triage=cheap；计划可 aiPolicy.enabled=false 退出）。判 none 的组进**归档队列**（`GET /triage/archive` 可查；`POST /triage/restore {jobId,groupId?}` 可恢复）——成员置 filtered（reason 注明归档），不再静默留池。平台角度扩 8 值：+x/facebook/instagram/linkedin（schema/platformAffinity 随平台目录走，R10.54-① 后 14 值；xhs-video 不进角度草案）。
 
 **③ 最后分析与消费（互斥，二选一）**：consumerMode 语义不变——external=外部 Agent（小拾）完成分析与消费，builtin=内置 AI。**每次跑完 ping `POST /agent/consume-report`（consume scope，body `{consumed:N, note?}`）**；审查台今日总览显示回执，超 24h 未跑标黄提醒（运维信号，不触发内置补稿）。机会引擎新增：新站复刻卡（site-launches motive=business/pain 且 HN≥50 或撞词 →「复刻已验证」）、form 扩六值（web-app/site-group/mobile-app/mini-program/tool/open-source，带 monetization 变现口径）。
 
@@ -211,7 +211,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 ### 双标注口径（平台 × 题材）
 
-- `platform` 五值枚举：`gzh`（公众号）/ `tiebuhao`（贴图号）/ `xhs-note`（小红书笔记）/ `xhs-video`（小红书视频笔记）/ `threads`。旧值（公众号/小红书/Threads）与中文标签提交时自动归一。
+- `platform` 十四值枚举：`gzh`（公众号）/ `tiebuhao`（贴图号）/ `xhs-note`（小红书图文笔记）/ `xhs-video`（小红书视频笔记）/ `threads` / `x` / `facebook` / `instagram` / `linkedin` / `shipinhao`（微信视频号）/ `douyin`（抖音）/ `kuaishou`（快手）/ `bilibili`（哔哩哔哩）/ `youtube`。中文标签（当前显示标签）提交时自动归一；旧值不映射（总纲）。`bilibili` / `youtube` 仅枚举存在，长视频线启用前不得分配选题、不得标长视频形态。
 - `category` 六值枚举：`newtech`（AI 新技术）/ `news`（新资讯）/ `oss`（开源工具）/ `selfproduct`（自研产品）/ `thinking`（个人思考）/ `hot`（社会热点）。
 - **资讯类选题覆盖贴图号（R8-2① → R10.35 语义变更）**：category=news/newtech 的选题，`platforms` 里必须含 `tiebuhao`（图卡形态：3-6 张、首图即观点、每张 ≤54 字、视觉关键词 3-5 个）。**R10.35 起不再克隆出一条独立的 tiebuhao 大纲**，内置侧 ensureTiebuhaoClones 直接把 `tiebuhao` 补进该选题的 `platforms`；外部 Agent 编排时同规则执行（在 platforms 里带上即可，不要为贴图号单开一条）。
 - **机会引擎整理职责（R9-3，人不整理只拍板）**：opportunities 池的整理/去重/合并/遗弃建议由 AI/外部 Agent 巡检完成——platform 适配产出的多平台卡（同 url 不同 platform 的 site:ev:* 卡）按簇聚合、可标遗弃建议（老大批板后执行）。watch 候选命中多平台时每平台一张卡（dedupeKey 带 platform 后缀）；适配平台随策略 platformAffinity（当前 trend-radar 口径 gzh/xhs-note）。

@@ -212,7 +212,7 @@ export type ContentCluster = {
 export type ContentOutline = {
   id: string;
   clusterId: string;
-  platform: string; // 主平台（九平台枚举键，=platforms[0]；兼容存量）
+  platform: string; // 主平台（十四平台枚举键，=platforms[0]；兼容存量）
   platforms?: string[]; // 这条选题适合的平台集合（R10.35 起为写入口主字段）
   recommendation?: string; // 推荐建议：为什么这么写、投哪些平台、各平台怎么适配（R10.35）
   category?: string; // 题材六值键（newtech/news/oss/selfproduct/thinking/hot，第六轮批 A LLM 标注）

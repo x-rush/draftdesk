@@ -115,7 +115,7 @@ python skills/draftdesk-submit/scripts/submit.py research.json
 
 搜罗产出的每条选题都有两层状态：`quality`（证据可信度，AI 判）与 `decision`（要不要写，人在「审查台」拍板：待决策 → 通过/否决/暂缓 → 写作中 → 已发布，否决记原因）。建议可以多源——内置 AI 与外部 Agent 各写各的 `suggestions`，互不覆盖；拍板只能一个。否决与发布自动消费对应热榜条目。
 
-选题按「平台 × 题材」双标注：九平台（`gzh` / `tiebuhao` / `xhs-note` / `xhs-video`（后置）/ `threads` / `x` / `facebook` / `instagram` / `linkedin`）与六题材（AI 新技术/新资讯/开源工具/自研产品/个人思考/社会热点）；题材可点改（LLM 初标的人工纠偏口）。**拍板按平台分开**：每条选题按平台徽章各带独立状态，点徽章循环拍板（同一条选题可以「公众号通过、小红书暂缓」），`perPlatformDecision` 记录各平台决策、聚合 `decision` 取最前进正向状态；同题多条聚合不再一键连拍全组，各平台互不影响。
+选题按「平台 × 题材」双标注：十四平台（`gzh` / `tiebuhao` / `xhs-note`（小红书图文笔记）/ `xhs-video`（小红书视频笔记）/ `threads` / `x` / `facebook` / `instagram` / `linkedin` / `shipinhao`（微信视频号）/ `douyin`（抖音）/ `kuaishou`（快手）/ `bilibili`（哔哩哔哩）/ `youtube`）与六题材（AI 新技术/新资讯/开源工具/自研产品/个人思考/社会热点）；题材可点改（LLM 初标的人工纠偏口）。⚠️ bilibili / youtube 仅枚举存在，长视频线启用前不分配选题。**拍板状态全局唯一**（R10.50）：`platforms` 是纯适配标注（点徽章增删，不触发状态），`decision` 六态唯一（待决策→通过/否决/暂缓→写作中→已发布，否决记原因），`publishedRefs` 按平台存发布链接。
 
 草稿全程可见：pending 的选题只要有草稿就显示「有草稿」徽章与只读预览（Markdown 渲染），通过后开放编辑；大纲抽屉同时展示内容结构、写作要点与数据源。
 

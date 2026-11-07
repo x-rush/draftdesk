@@ -179,7 +179,7 @@ test("源绑定矩阵迁移：三策略补源 + platformAffinity 落库（存量
   }
 });
 
-test("R10.2① 平台九值目录 + 题材六值（总纲：旧值映射与迁移已删，标签反查保留）", async () => {
+test("R10.2① 平台十四值目录 + 题材六值（总纲：旧值映射与迁移已删，标签反查保留）", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-outlineplat-"));
   let db: Store | undefined;
   try {

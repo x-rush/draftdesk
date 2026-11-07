@@ -32,7 +32,7 @@ export type TriageRecord = {
   merges: number;
 };
 
-// 内容角度平台（xhs-video 视频后置，不进角度草案；唯一数组定义处）
+// 内容角度平台（xhs-video 与视频五键不进角度草案；唯一数组定义处）
 export const ANGLE_PLATFORMS = ["gzh", "tiebuhao", "xhs-note", "threads", "x", "facebook", "instagram", "linkedin"] as const;
 
 // 组内 angles 的 zod 形状——triage 分片输出与 PUT /agent/triage/groups 请求体共用（单一来源）

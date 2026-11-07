@@ -62,7 +62,7 @@ PUT $BASE/agent/triage/groups
 ```
 
 - 分批写也安全（同 id 覆盖、未出现的旧组保留——增量合并语义）
-- `angles`：内容角度草案，platform ∈ 九平台（gzh/tiebuhao/xhs-note/xhs-video/threads/x/facebook/instagram/linkedin），每平台一条角度句（有注意力的组给 1–3 个平台角度）
+- `angles`：内容角度草案，platform ∈ 角度八平台（gzh/tiebuhao/xhs-note/threads/x/facebook/instagram/linkedin），每平台一条角度句（有注意力的组给 1–3 个平台角度）。xhs-video 与视频五键（shipinhao/douyin/kuaishou/bilibili/youtube）不进 angles，视频形态分工走 recommendation
 - `appGap`：如果这个事件指向一个可做的应用/工具缺口，用一句话写出来（没有就不填）
 
 ### ⑥ 归档 none 组
