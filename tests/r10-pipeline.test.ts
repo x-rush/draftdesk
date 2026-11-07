@@ -170,7 +170,7 @@ test("defaultSources 含三个实测源（qbitai/ifanr/solidot），enabled 进 
   }
 });
 
-// ---- R10.2① 守护：平台目录与 schema 不再漂移（旧测试只断言 ANGLE_PLATFORMS，五值平台漏网教训）----
+// ---- R10.2① 守护：平台目录与 schema 不再漂移（旧测试只断言 ANGLE_PLATFORMS，早期平台目录漏网教训）----
 test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集；ANGLE_PLATFORMS ⊆ PLATFORM_KEYS；14 值识别", async () => {
   const { PLATFORM_KEYS, normalizePlatform } = await import("../core/platforms");
   const { planSchema } = await import("../core/schema");
