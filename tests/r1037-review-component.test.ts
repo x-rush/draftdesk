@@ -78,7 +78,7 @@ after(async () => {
 test("R10.37 UI①：多平台选题渲染——适合平台徽章=platforms 全集（3 枚），推荐建议在行内", async () => {
   await render([multiRow()]);
   const badges = Array.from(document.querySelectorAll('[aria-label="适合平台编辑器"] button')).map((b) => (b.textContent || "").trim());
-  assert.equal(badges.length, 9, "R10.50：九平台全列编辑器（成员✓/非成员+）");
+  assert.equal(badges.length, 14, "R10.54-①：十四平台全列编辑器（成员✓/非成员+）");
   assert.ok(badges.filter((t) => t.startsWith("✓")).length === 3, "platforms 三枚成员=✓（gzh/xhs-note/threads）");
   assert.ok((document.body.textContent || "").includes("推荐 · 主投公众号"), "推荐建议行渲染");
 });

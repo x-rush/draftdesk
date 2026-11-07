@@ -63,7 +63,7 @@ test("P0-4：POST /outlines 平台归一（公众号→gzh；未知值 400 带�
   const created = okBody.id;
   const pd = await request(`outlines/${created}/platforms`, { platform: "不是平台" });
   assert.equal(pd.status, 400, "platforms 编辑口未知平台拒绝（原静默失效）");
-  const pdOk = await request(`outlines/${created}/platforms`, { platform: "小红书笔记" });
+  const pdOk = await request(`outlines/${created}/platforms`, { platform: "小红书图文笔记" });
   assert.equal(pdOk.status, 200);
   assert.ok(store().get<any>("outlines", created)?.platforms?.includes("xhs-note"), "标签归一后 xhs-note 入 platforms（从库读）");
 });
@@ -99,7 +99,7 @@ test("R10.11-1 P0：agent 口 PUT /agent/outlines 平台归一——未知值 40
   db.put("clusters", "clu-inbox-norm", { id: "clu-inbox-norm", topic: "收集箱", memberIds: [], memberCount: 0, kind: "inbox", window: "", suggestedPlatforms: [], createdAt: "" });
   const agent = db.createConnection("r11agent", ["suggest"]);
   const auth = { authorization: "Bearer " + agent.token, "content-type": "application/json" };
-  const bad = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox-norm", platform: "哔哩哔哩", contentType: "活动解读", title: "x", keyPoints: ["t"] }) }), ["agent", "outlines"]);
+  const bad = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox-norm", platform: "tiktok", contentType: "活动解读", title: "x", keyPoints: ["t"] }) }), ["agent", "outlines"]);
   assert.equal(bad.status, 400, "agent 口未知平台拒绝（与 UI 口同口径）");
   assert.match(await bad.text(), /gzh/);
   const ok = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/outlines", { method: "PUT", headers: { host: "127.0.0.1:5173", ...auth }, body: JSON.stringify({ clusterId: "clu-inbox-norm", platform: "gzh", contentType: "长文", title: "r11 测试", keyPoints: ["t"] }) }), ["agent", "outlines"]);

@@ -185,10 +185,10 @@ test("R10.2① 平台九值目录 + 题材六值（总纲：旧值映射与迁�
   try {
     db = new Store(dir);
     const { normalizePlatform, normalizeCategory, platformLabel, PLATFORM_KEYS } = await import("../core/platforms");
-    assert.equal(PLATFORM_KEYS.length, 9);
-    for (const k of ["x", "facebook", "instagram", "linkedin"]) assert.equal(normalizePlatform(k), k, "新平台键识别");
+    assert.equal(PLATFORM_KEYS.length, 14);
+    for (const k of ["x", "facebook", "instagram", "linkedin", "shipinhao", "douyin", "kuaishou", "bilibili", "youtube"]) assert.equal(normalizePlatform(k), k, "新平台键识别");
     assert.equal(normalizePlatform("公众号"), "gzh", "当前显示标签反查（gzh 的 label 即公众号）");
-    assert.equal(normalizePlatform("小红书笔记"), "xhs-note", "标签反查用当前全称");
+    assert.equal(normalizePlatform("小红书图文笔记"), "xhs-note", "标签反查用当前全称");
     assert.equal(normalizePlatform("小红书"), undefined, "总纲：旧简称不再映射");
     assert.equal(normalizePlatform("xhs-video"), "xhs-video");
     assert.equal(normalizePlatform("微信公众号"), undefined, "未知值不猜测");

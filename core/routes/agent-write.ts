@@ -298,7 +298,7 @@ async function upsertOutline(ctx: RouteContext, input: unknown) {
     // R10.35：platforms 为主字段（这条选题适合投哪些平台）；platform 退为主平台，
     // 二者至少给一个。只给 platform 的旧调用照常工作（platforms 收敛成 [platform]）。
     platform: z.string().min(1).max(30).optional(),
-    platforms: z.array(z.string().min(1).max(30)).max(9).optional(),
+    platforms: z.array(z.string().min(1).max(30)).max(14).optional(),
     recommendation: z.string().max(2000).optional(),
     category: z.string().max(30).optional(),
     contentType: z.string().min(1).max(30),

@@ -64,7 +64,7 @@ export const routes: RouteDef[] = [
       const parsed = z.object({
         clusterId: z.string().min(1),
         platform: z.string().min(1).max(30).optional(),
-        platforms: z.array(z.string().min(1).max(30)).max(9).optional(),
+        platforms: z.array(z.string().min(1).max(30)).max(14).optional(),
         recommendation: z.string().max(2000).optional(),
         contentType: z.string().min(1).max(30),
         title: z.string().min(1).max(300),

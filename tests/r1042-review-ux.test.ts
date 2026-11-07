@@ -111,7 +111,7 @@ test("R10.42 ④：平台多选筛选可用，且与状态筛选正交叠加", a
   // 初始档=pending（Review 默认），先回「全部」再验平台筛选
   await act(async () => { navBtn("全部").click(); });
   // 勾选 小红书笔记 → platforms 含 xhs-note 的行（x1/x3）
-  const xhs = Array.from(document.querySelectorAll('[aria-label="平台多选筛选"] button')).find((b) => (b.textContent || "").includes("小红书笔记")) as HTMLElement;
+  const xhs = Array.from(document.querySelectorAll('[aria-label="平台多选筛选"] button')).find((b) => (b.textContent || "").includes("小红书图文笔记")) as HTMLElement;
   await act(async () => { xhs.click(); });
   assert.deepEqual(rowsOf().sort(), ["行-x1", "行-x3"], "平台筛选生效");
   // 正交叠加：再切状态「待决策」→ x1（x3 approved 被状态滤掉）

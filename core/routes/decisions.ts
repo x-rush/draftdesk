@@ -114,7 +114,7 @@ export const routes: RouteDef[] = [
     handler: async ({ db, params, readBody }) => {
       const parsed = z.object({
         platform: z.string().min(1).max(30).optional(),
-        platforms: z.array(z.string().min(1).max(30)).max(9).optional(),
+        platforms: z.array(z.string().min(1).max(30)).max(14).optional(),
       }).strict().parse(await readBody());
       const outline = db.get<any>("outlines", params.id);
       if (!outline) throw new AppError("大纲不存在", 404, "NOT_FOUND");

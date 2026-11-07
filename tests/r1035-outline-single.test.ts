@@ -67,7 +67,7 @@ test("R10.35 ②：平台值归一与去重（中文标签可传、重复平台�
   seedCluster(db, "clu-norm");
   const res = await jsonReq("agent/outlines", {
     clusterId: "clu-norm",
-    platforms: ["公众号", "gzh", "小红书笔记"],
+    platforms: ["公众号", "gzh", "小红书图文笔记"],
     contentType: "长文",
     title: "中文标签与重复值归一",
     keyPoints: ["归一测试"],

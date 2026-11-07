@@ -171,7 +171,7 @@ test("defaultSources 含三个实测源（qbitai/ifanr/solidot），enabled 进 
 });
 
 // ---- R10.2① 守护：平台目录与 schema 不再漂移（旧测试只断言 ANGLE_PLATFORMS，五值平台漏网教训）----
-test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集；ANGLE_PLATFORMS ⊆ PLATFORM_KEYS；9 值识别", async () => {
+test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集；ANGLE_PLATFORMS ⊆ PLATFORM_KEYS；14 值识别", async () => {
   const { PLATFORM_KEYS, normalizePlatform } = await import("../core/platforms");
   const { planSchema } = await import("../core/schema");
   const { ANGLE_PLATFORMS } = await import("../core/triage");
@@ -185,8 +185,12 @@ test("平台一致性守护：PLATFORM_KEYS=schema platformAffinity 枚举全集
     assert.equal(planSchema.parse({ ...base, platformAffinity: [key] }).platformAffinity?.[0], key, `${key} 须在 schema 枚举内`);
   }
   assert.throws(() => planSchema.parse({ ...base, platformAffinity: ["not-a-platform"] }), /platformAffinity/, "schema 拒绝未知平台");
-  assert.equal(PLATFORM_KEYS.length, 9, "九值平台目录");
+  assert.equal(PLATFORM_KEYS.length, 14, "十四值平台目录（R10.54-① 扩 5 键）");
   for (const key of ["x", "facebook", "instagram", "linkedin"]) assert.equal(normalizePlatform(key), key, "新平台键原样识别");
+  for (const key of ["shipinhao", "douyin", "kuaishou", "bilibili", "youtube"]) assert.equal(normalizePlatform(key), key, "R10.54-① 新五键识别");
+  const { platformLabel } = await import("../core/platforms");
+  assert.equal(platformLabel("xhs-video"), "小红书视频笔记", "xhs-video 转正 label");
+  assert.equal(platformLabel("xhs-note"), "小红书图文笔记", "xhs-note label 明确");
   assert.equal(normalizePlatform("公众号"), "gzh", "当前显示标签反查仍可用");
   assert.ok((ANGLE_PLATFORMS as readonly string[]).every((k) => (PLATFORM_KEYS as string[]).includes(k)), "角度平台 ⊆ 平台目录");
 });

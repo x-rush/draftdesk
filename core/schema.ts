@@ -357,7 +357,7 @@ export const planSchema = z
     sourceIds: z.array(id).min(1).max(32),
     // 平台适配（第五轮 §1⑥b；R9-3① tiehao→tiebuhao 枚举修复，扩四平台）：机会引擎二次精筛 watch 池的平台权重标签
     // R10.9 P2-2：平台枚举唯一定义在 platforms.ts（schema 引用防双份漂移）
-    platformAffinity: z.array(z.enum(PLATFORM_KEYS as [PlatformKey, ...PlatformKey[]])).max(9).optional(),
+    platformAffinity: z.array(z.enum(PLATFORM_KEYS as [PlatformKey, ...PlatformKey[]])).max(14).optional(),
     // 语义初筛策略（R9-6②）：enabled 缺省=trends 类计划开、其余关；档位总开关在 config.aiPolicy.triage。
     aiPolicy: z.object({
       enabled: z.boolean().optional(),

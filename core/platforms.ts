@@ -1,21 +1,29 @@
-// 平台与题材目录（第六轮批 A 起；R10.2 扩 9 值）：选题体系的双标注轴 + 机会产品形态目录。
-// 平台九值：gzh / tiebuhao / xhs-note / xhs-video（视频后置）/ threads / x / facebook / instagram / linkedin。
+// 平台与题材目录（第六轮批 A 起；R10.2 扩 9 值；R10.54-① 扩 14 值）：选题体系的双标注轴 + 机会产品形态目录。
+// 平台十四值：gzh / tiebuhao / xhs-note / xhs-video / threads / x / facebook / instagram / linkedin /
+//   shipinhao / douyin / kuaishou / bilibili / youtube。
+// ⚠️ 后五键仅「枚举存在」（R10.54-①）：bilibili / youtube 属长视频线，线启用（AIGC 稳定 + 老大发话）前
+// 标注层不得分配选题、不得标长视频形态；枚举存在 ≠ 线启用。
 // 本模块是客户端共享目录（零 node 依赖）——平台、题材、机会形态的枚举与标签唯一定义处。
 // 总纲：不做旧值映射（旧中文值已随数据归档，提交侧只认当前枚举键或当前显示标签）。
 
-export type PlatformKey = "gzh" | "tiebuhao" | "xhs-note" | "xhs-video" | "threads" | "x" | "facebook" | "instagram" | "linkedin";
-export const PLATFORM_KEYS: PlatformKey[] = ["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin"];
+export type PlatformKey = "gzh" | "tiebuhao" | "xhs-note" | "xhs-video" | "threads" | "x" | "facebook" | "instagram" | "linkedin" | "shipinhao" | "douyin" | "kuaishou" | "bilibili" | "youtube";
+export const PLATFORM_KEYS: PlatformKey[] = ["gzh", "tiebuhao", "xhs-note", "xhs-video", "threads", "x", "facebook", "instagram", "linkedin", "shipinhao", "douyin", "kuaishou", "bilibili", "youtube"];
 
 export const PLATFORM_LABELS: Record<string, string> = {
   gzh: "公众号",
   tiebuhao: "贴图号",
-  "xhs-note": "小红书笔记",
-  "xhs-video": "小红书视频（后置）",
+  "xhs-note": "小红书图文笔记",
+  "xhs-video": "小红书视频笔记",
   threads: "Threads",
   x: "X",
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  shipinhao: "微信视频号",
+  douyin: "抖音",
+  kuaishou: "快手",
+  bilibili: "哔哩哔哩",
+  youtube: "YouTube",
 };
 
 export function platformLabel(v: string | undefined): string {

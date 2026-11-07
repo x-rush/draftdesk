@@ -138,7 +138,7 @@ test("R10.47 ②c：筛选+勾选组合——平台筛选筛出后再勾选，�
     mkRow("c3", ["gzh", "xhs-note"]),
   ]);
   // 平台筛选勾选 小红书笔记 → 只渲染 c1/c3
-  const pill = Array.from(document.querySelectorAll('[aria-label="平台多选筛选"] button')).find((b) => (b.textContent || "").includes("小红书笔记")) as HTMLElement;
+  const pill = Array.from(document.querySelectorAll('[aria-label="平台多选筛选"] button')).find((b) => (b.textContent || "").includes("小红书图文笔记")) as HTMLElement;
   await act(async () => { pill.click(); });
   await selectAll();
   await clickBtn((t) => t === "批量通过");
