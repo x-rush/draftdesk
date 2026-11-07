@@ -101,7 +101,7 @@ test("collectAll：超 300 按当日新>热度精简；none 组归档可恢复",
 });
 
 // ---- 第2段 ----
-test("triage 默认全开（全 kind）；角度平台 8 值（xhs-video 后置不进角度）", () => {
+test("triage 默认全开（全 kind）；角度平台 8 值（xhs-video 不进角度平台）", () => {
   assert.equal(triageEnabledOf({ kind: "editorial" }, { triage: "cheap" }), true, "R10：非 trends 计划默认也开");
   assert.equal(triageEnabledOf({ kind: "editorial", aiPolicy: { enabled: false } }, { triage: "cheap" }), false, "计划可显式退出");
   assert.equal(triageEnabledOf({ kind: "trends" }, { triage: "off" }), false, "总闸 off 一票否决");

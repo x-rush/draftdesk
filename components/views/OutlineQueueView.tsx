@@ -218,7 +218,7 @@ export function OutlineDrawer({ outline: o, cluster, onClose, onDecide, onPlatfo
         </section>
       )}
 
-      {/* 平台编辑器（R10.50）：platforms 只是适配标注——九平台全列，成员实心✓/非成员虚线+，点徽章增删不触发状态 */}
+      {/* 平台编辑器（R10.50）：platforms 只是适配标注——十四平台全列，成员实心✓/非成员虚线+，点徽章增删不触发状态 */}
       {onPlatformToggle && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} aria-label="适合平台编辑器">
           {PLATFORM_KEYS.map((k) => {

@@ -181,7 +181,7 @@ curl -X PUT "$DRAFTDESK_URL/api/v1/agent/seen-terms"   -H "Authorization: Bearer
 
 **① 全量采集（01:00 上海，collectAllTick）**：全部 enabled 内容源一次采集落盘（discovery 批次 jobId=`collectall-{日}`，planName=「全量采集」）。当日双闸（非当日 filtered；RSS 24h fallback）+ 超 300 按「当日新>热度」精简 + 跨源 URL 去重。计划的 sourceIds 退化为分析期过滤条件（定时采集已迁移关停）。web 搜索源不在全量采集范围（它是查询执行器，仍由计划/补证路径驱动）。
 
-**② 语义初筛（采集完自动）**：默认全开（config.aiPolicy.triage=cheap；计划可 aiPolicy.enabled=false 退出）。判 none 的组进**归档队列**（`GET /triage/archive` 可查；`POST /triage/restore {jobId,groupId?}` 可恢复）——成员置 filtered（reason 注明归档），不再静默留池。平台角度扩 8 值：+x/facebook/instagram/linkedin（schema/platformAffinity 随平台目录走，R10.54-① 后 14 值；xhs-video 不进角度草案）。
+**② 语义初筛（采集完自动）**：默认全开（config.aiPolicy.triage=cheap；计划可 aiPolicy.enabled=false 退出）。判 none 的组进**归档队列**（`GET /triage/archive` 可查；`POST /triage/restore {jobId,groupId?}` 可恢复）——成员置 filtered（reason 注明归档），不再静默留池。平台角度扩 8 值：+x/facebook/instagram/linkedin（schema 允许 14 键，即 z.enum(PLATFORM_KEYS).max(14)；实际策略值以 core/defaults.ts 为准（当前 gzh/xhs-note），triage 侧过滤到 ANGLE_PLATFORMS 8 值；xhs-video 不进角度草案）。
 
 **③ 最后分析与消费（互斥，二选一）**：consumerMode 语义不变——external=外部 Agent（小拾）完成分析与消费，builtin=内置 AI。**每次跑完 ping `POST /agent/consume-report`（consume scope，body `{consumed:N, note?}`）**；审查台今日总览显示回执，超 24h 未跑标黄提醒（运维信号，不触发内置补稿）。机会引擎新增：新站复刻卡（site-launches motive=business/pain 且 HN≥50 或撞词 →「复刻已验证」）、form 扩六值（web-app/site-group/mobile-app/mini-program/tool/open-source，带 monetization 变现口径）。
 
