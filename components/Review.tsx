@@ -67,6 +67,8 @@ export function Review() {
   // 行的适合平台（platforms ∪ platform）命中任一即显示。空集=不限。
   const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
   const [timeRange, setTimeRange] = useState("all");
+  // 软导航（R10.54-②）：SPA 只认 ?view=（restore 监听 popstate），hash 跳转是死代码——统一走 pushState+popstate
+  const jumpTo = (view: string) => { window.history.pushState(null, "", "?view=" + view); window.dispatchEvent(new PopStateEvent("popstate")); };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchReason, setBatchReason] = useState("no-ai-signal");
   const [busy, setBusy] = useState(false);
@@ -291,29 +293,36 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
     <div>
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
-      {/* ⓪ 今日总览（R10.8 P1-2 六段）：采集→精简→组→待拍→已拍→机会卡→外部回执 */}
+      {/* ⓪ 今日总览（R10.8 P1-2 八段，R10.54-② 重排）：上游数字压缩为一条信息横排，
+          可点项（↗）直接跳对应页面——采集→数据源、组→素材仓库、机会卡→应用机会、
+          待查词→SEO 工作台（旧 window.location.hash="ideas" 是死跳转：SPA 只认 ?view= 与 popstate）。
+          纯信息项无 affordance，不与可点项混淆。 */}
       {today && (
-        <div className="stat-strip" style={{ marginBottom: 8 }} aria-label="今日总览">
-          <div className="stat-card"><strong>{today.collectAll?.raw ?? "—"}</strong><span>采集（{today.collectAll?.sources ?? "—"} 源）</span></div>
-          <div className="stat-card"><strong>{today.inPool ?? "—"}</strong><span>入池</span></div>
-          <div className="stat-card accent"><strong>{today.groups ? today.groups.strong + today.groups.potential : "—"}</strong><span>组（强 {today.groups?.strong ?? 0} / 潜 {today.groups?.potential ?? 0} / 无 {today.groups?.none ?? 0}）</span></div>
-          <div className="stat-card"><strong>{(today.pendingOutlines ?? 0) + (today.pendingDecisions ?? 0)}</strong><span>待拍（大纲 {today.pendingOutlines ?? 0} · 决策 {today.pendingDecisions ?? 0}）</span></div>
-          <div className="stat-card"><strong>{today.decidedToday ?? 0}</strong><span>今日已拍</span></div>
-          <div className="stat-card"><strong>{today.opportunities ?? 0}</strong><span>机会卡</span></div>
-          <button className="stat-card clickable" onClick={() => window.location.hash = "ideas"}>
-            <strong>{today.todayChecks?.total ?? 0}</strong><span>今日待查词（哥飞手动）↗</span>
+        <div className="review-overview" aria-label="今日总览">
+          <button className="review-info jump" onClick={() => jumpTo("sources")} title="打开数据源页（采集源健康与开关）">
+            <strong>{today.collectAll?.raw ?? "—"}</strong><span>采集 · {today.collectAll?.sources ?? "—"} 源 ↗</span>
           </button>
-          <div className={"stat-card" + (today.externalConsumption?.stale ? " accent" : "")}>
+          <div className="review-info"><strong>{today.inPool ?? "—"}</strong><span>入池</span></div>
+          <button className="review-info jump" onClick={() => jumpTo("panorama")} title="打开素材仓库（组视角与归档）">
+            <strong>{today.groups ? today.groups.strong + today.groups.potential : "—"}</strong><span>组 · 强 {today.groups?.strong ?? 0} / 潜 {today.groups?.potential ?? 0} / 无 {today.groups?.none ?? 0} ↗</span>
+          </button>
+          <div className="review-info"><strong>{(today.pendingOutlines ?? 0) + (today.pendingDecisions ?? 0)}</strong><span>待拍 · 大纲 {today.pendingOutlines ?? 0} 决策 {today.pendingDecisions ?? 0}</span></div>
+          <div className="review-info"><strong>{today.decidedToday ?? 0}</strong><span>今日已拍</span></div>
+          <button className="review-info jump" onClick={() => jumpTo("ideas")} title="打开应用机会页">
+            <strong>{today.opportunities ?? 0}</strong><span>机会卡 ↗</span>
+          </button>
+          <button className="review-info jump" onClick={() => jumpTo("trends")} title="哥飞手动待查清单（SEO 工作台）">
+            <strong>{today.todayChecks?.total ?? 0}</strong><span>今日待查词 ↗</span>
+          </button>
+          <div className={"review-info" + (today.externalConsumption?.stale ? " warn" : "")} title={today.externalConsumption ? "" : "外部 Agent 跑完 ping POST /api/v1/agent/consume-report（consume 令牌），见外部接入页"}>
             <strong>{today.externalConsumption ? today.externalConsumption.consumed : "—"}</strong>
-            <span>外部消费{today.externalConsumption ? `（${String(today.externalConsumption.by || "").replace("agent:", "")}）` : "（无回执）"}</span>
-            {today.externalConsumption?.stale && <small>⚠️ 超 24h 未跑——检查外部 Agent 调度</small>}
-            {!today.externalConsumption && <small>接上：外部 Agent 跑完 ping POST /api/v1/agent/consume-report（consume 令牌，body {"{"}consumed:N{"}"}），见外部接入页</small>}
+            <span>外部消费{today.externalConsumption ? ` · ${String(today.externalConsumption.by || "").replace("agent:", "")}` : " · 无回执"}{today.externalConsumption?.stale ? " ⚠️ 超 24h" : ""}</span>
           </div>
         </div>
       )}
 
-      {/* ① 统计条（点击切状态档） */}
-      <div className="stat-strip">
+      {/* ① 统计条（点击切状态档；R10.54-② decision-strip：active 主题化+hover 抬升，small 允许换行） */}
+      <div className="stat-strip decision-strip">
         {statusCards.map((c) => (
           <button type="button" key={c.key} className={"stat-card clickable" + (c.accent ? " accent" : "") + (status === c.key ? " active" : "")}
             aria-pressed={status === c.key}

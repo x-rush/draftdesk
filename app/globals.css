@@ -1665,6 +1665,23 @@ details.activity-import-fold > summary { font-size: 14px; }
 button.stat-card.clickable { cursor: pointer; text-align: left; transition: border-color 120ms ease, background 120ms ease; }
 button.stat-card.clickable:hover { border-color: #c9d8bd; }
 button.stat-card.active { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
+
+/* 审查台总览信息条（R10.54-②）：上游数字一行横排，可点项（↗）hover 反馈；决策状态卡独占交互层 */
+.review-overview { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 12px; background: #fff; margin-bottom: 10px; overflow: hidden; }
+.review-info { display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; border-right: 1px solid var(--line); min-width: 0; }
+.review-info:last-child { border-right: 0; }
+.review-info strong { font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.review-info span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+button.review-info { cursor: pointer; background: none; border: 0; border-right: 1px solid var(--line); text-align: left; font: inherit; transition: background 120ms ease; }
+button.review-info:hover { background: #f4f8ef; }
+button.review-info:hover span { color: #476537; }
+.review-info.warn strong { color: #b45309; }
+.review-info.warn span { color: #b45309; }
+.stat-strip.decision-strip { margin-bottom: 12px; }
+.stat-strip.decision-strip .stat-card strong { font-variant-numeric: tabular-nums; }
+.stat-strip.decision-strip button.stat-card.clickable:hover { transform: translateY(-1px); box-shadow: 0 2px 10px rgba(60, 90, 50, .08); border-color: #c9d8bd; }
+.stat-strip.decision-strip button.stat-card.active { background: #f4f8ef; }
+.stat-strip.decision-strip .stat-card small { white-space: normal; line-height: 1.35; }
 .decision-list {
   border: 1px solid var(--line);
   border-radius: 12px;

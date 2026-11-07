@@ -66,6 +66,23 @@ after(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("R10.54-②：总览信息条——可点项带跳转（pushState+popstate）、纯信息项无 affordance", async () => {
+  await render([mkRow("ov1", "pending", ["gzh"])]);
+  const strip = document.querySelector(".review-overview");
+  assert.ok(strip, "总览信息条渲染（替代旧两行大卡）");
+  const jumps = Array.from(strip!.querySelectorAll("button.review-info")) as HTMLElement[];
+  assert.equal(jumps.length, 4, "四个可跳项：采集→sources / 组→panorama / 机会卡→ideas / 待查词→trends");
+  const texts = jumps.map((b) => b.textContent || "");
+  assert.ok(texts[0].includes("采集") && texts[1].includes("组") && texts[2].includes("机会卡") && texts[3].includes("待查词"), "跳转项顺序与文案");
+  jumps[1].click(); // 组 → 素材仓库
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  assert.ok(window.location.search.includes("view=panorama"), "组卡软导航到素材仓库（pushState+popstate）");
+  const plain = Array.from(strip!.querySelectorAll(".review-info:not(button)"));
+  assert.ok(plain.length >= 4, "纯信息项（入池/待拍/今日已拍/外部消费）无按钮 affordance");
+  const decisionStrip = document.querySelector(".stat-strip.decision-strip");
+  assert.ok(decisionStrip, "决策状态卡行挂 decision-strip（active 主题化/hover 抬升样式钩子）");
+});
+
 test("R10.54-②：时间筛选——matchTimeRange 三档边界 + 弹层控件存在", async () => {
   const { matchTimeRange } = await import("../components/Review");
   const now = new Date().toISOString();
