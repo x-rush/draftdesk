@@ -66,6 +66,26 @@ after(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("R10.54-②：时间筛选——matchTimeRange 三档边界 + 弹层控件存在", async () => {
+  const { matchTimeRange } = await import("../components/Review");
+  const now = new Date().toISOString();
+  const d2 = new Date(Date.now() - 2 * 86400000).toISOString();
+  const d10 = new Date(Date.now() - 10 * 86400000).toISOString();
+  assert.equal(matchTimeRange(now, "7d"), true, "2 小时前在近 7 天内");
+  assert.equal(matchTimeRange(d2, "7d"), true, "2 天前在近 7 天内");
+  assert.equal(matchTimeRange(d10, "7d"), false, "10 天前不在近 7 天内");
+  assert.equal(matchTimeRange(d10, "30d"), true, "10 天前在近 30 天内");
+  assert.equal(matchTimeRange(d10, "all"), true, "全部时间恒真");
+  assert.equal(matchTimeRange(undefined, "7d"), true, "无时间戳行不因筛选消失");
+  assert.equal(matchTimeRange("not-a-date", "7d"), true, "畸形时间戳不因筛选消失");
+  await render([mkRow("tf", "pending", ["gzh"])]);
+  (document.querySelector('summary[aria-label="筛选与批量操作"]') as HTMLElement).click();
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  const trigger = document.querySelector('.select-trigger[aria-label="时间范围筛选"]');
+  assert.ok(trigger, "时间范围 Select 渲染于筛选弹层（正交于来源/平台筛选）");
+  assert.ok((document.body.textContent || "").includes("时间范围（按选题创建时间）"), "Field 标签在弹层可见");
+});
+
 test("R10.42 ①②：nav 与卡同键空间——点卡 nav 亮、点 nav 卡亮、pending 有 nav 入口", async () => {
   await render([
     mkRow("a", "pending", ["gzh"]),

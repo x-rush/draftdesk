@@ -9,6 +9,22 @@ import { creationLabels } from "../core/workspace-ui";
 import { useListKeyboardShortcuts } from "./useListKeyboardShortcuts";
 
 // 审查台（决策层 UI）：队列视图 + 多选批量拍板 + 手动添加选题 + 成稿回填 + 簇/大纲 + 人设配置。
+// 时间筛选（R10.54-②）：按选题 createdAt 离散档位客户端过滤，与状态/来源/平台筛选正交。
+export const TIME_RANGES: Record<string, { label: string; days: number }> = {
+  all: { label: "全部时间", days: 0 },
+  "24h": { label: "近 24 小时", days: 1 },
+  "3d": { label: "近 3 天", days: 3 },
+  "7d": { label: "近 7 天", days: 7 },
+  "30d": { label: "近 30 天", days: 30 },
+};
+export function matchTimeRange(createdAt: string | undefined, range: string): boolean {
+  const cfg = TIME_RANGES[range];
+  if (!cfg || cfg.days <= 0) return true;
+  const t = Date.parse(createdAt || "");
+  if (!Number.isFinite(t)) return true; // 无时间戳的行不因筛选消失
+  return Date.now() - t <= cfg.days * 86400000;
+}
+
 // 语义红线：quality 是证据可信度（AI 判），decision 是要不要写（人拍板）——两层不互相推导。
 type Row = {
   sourceType: string; id: string; kind: string; title: string; summary?: string; quality?: string;
@@ -50,6 +66,7 @@ export function Review() {
   // R10.42④：平台多选筛选（与状态/来源正交叠加）——勾选的 platform 键集合，
   // 行的适合平台（platforms ∪ platform）命中任一即显示。空集=不限。
   const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
+  const [timeRange, setTimeRange] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchReason, setBatchReason] = useState("no-ai-signal");
   const [busy, setBusy] = useState(false);
@@ -108,7 +125,8 @@ export function Review() {
   .map((p) => PLATFORM_KEYS.find((k) => k === p || PLATFORM_LABELS[k] === p) ?? p); // 未归一值原样返回（匹配不上筛选集，无害）
 const visible = rows.filter((r) => { if (status === "all") return true; const f = STATUS_CARD_FILTERS[status]; return f ? f.includes(r.decision) : r.decision === status; })
   .filter((r) => sourceFilter === "all" || r.sourceType === sourceFilter)
-  .filter((r) => !platformFilter.size || platformOfRow(r).some((p) => platformFilter.has(p)));
+  .filter((r) => !platformFilter.size || platformOfRow(r).some((p) => platformFilter.has(p)))
+  .filter((r) => matchTimeRange(r.createdAt, timeRange));
   // 数据治理（根因 B + R10.35）：同选题聚合。
   // R10.35 前大纲按平台拆行（一簇 4 行、标题各不同），按 title 聚合只能聚 2/48 簇；
   // 现改按「选题身份」聚合——outline 用 clusterId（一簇=一个事件/选题方向），
@@ -318,13 +336,18 @@ const visible = rows.filter((r) => { if (status === "all") return true; const f 
           ))}
         </nav>
         <details className="filters-popover" data-popover>
-          <summary className="button" aria-label="筛选与批量操作" style={{ marginLeft: "auto" }}>来源与批量（已选 {selected.size}{platformFilter.size ? ` · 平台 ${platformFilter.size}` : ""}）</summary>
+          <summary className="button" aria-label="筛选与批量操作" style={{ marginLeft: "auto" }}>来源与批量（已选 {selected.size}{platformFilter.size ? ` · 平台 ${platformFilter.size}` : ""}{timeRange !== "all" ? ` · ${TIME_RANGES[timeRange].label}` : ""}）</summary>
           <div className="popover-panel">
             <Field label="来源筛选">
               <Select aria-label="来源筛选" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
                 <option value="all">全部来源</option>
                 <option value="outline">大纲</option>
                 <option value="manual">手动</option>
+              </Select>
+            </Field>
+            <Field label="时间范围（按选题创建时间）">
+              <Select aria-label="时间范围筛选" value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
+                {Object.entries(TIME_RANGES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </Select>
             </Field>
             <Field label={platformFilter.size ? `平台筛选（已选 ${platformFilter.size}）` : "平台筛选（适合平台含任一勾选）"}>
