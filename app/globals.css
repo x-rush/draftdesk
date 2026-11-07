@@ -1666,22 +1666,28 @@ button.stat-card.clickable { cursor: pointer; text-align: left; transition: bord
 button.stat-card.clickable:hover { border-color: #c9d8bd; }
 button.stat-card.active { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
 
-/* 审查台总览信息条（R10.54-②）：上游数字一行横排，可点项（↗）hover 反馈；决策状态卡独占交互层 */
-.review-overview { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 12px; background: #fff; margin-bottom: 10px; overflow: hidden; }
-.review-info { display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; border-right: 1px solid var(--line); min-width: 0; }
-.review-info:last-child { border-right: 0; }
-.review-info strong { font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.1; }
+/* 审查台总览信息条（R10.54-② v2 老大判丑重设计）：去卡片框的轻量元信息条——
+   数字与标签同行 baseline，项间靠间距不用竖线；可点项 hover 下划线；warn 项琥珀色 */
+.review-overview { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 26px; row-gap: 6px; padding: 8px 14px; margin-bottom: 12px; background: transparent; }
+.review-info { display: inline-flex; align-items: baseline; gap: 6px; padding: 0; border: 0; min-width: 0; }
+.review-info strong { font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
 .review-info span { font-size: 12px; color: var(--muted); white-space: nowrap; }
-button.review-info { cursor: pointer; background: none; border: 0; border-right: 1px solid var(--line); text-align: left; font: inherit; transition: background 120ms ease; }
-button.review-info:hover { background: #f4f8ef; }
-button.review-info:hover span { color: #476537; }
-.review-info.warn strong { color: #b45309; }
-.review-info.warn span { color: #b45309; }
-.stat-strip.decision-strip { margin-bottom: 12px; }
-.stat-strip.decision-strip .stat-card strong { font-variant-numeric: tabular-nums; }
+button.review-info { cursor: pointer; background: none; border: 0; padding: 0; text-align: left; font: inherit; }
+button.review-info:hover strong { color: #476537; }
+button.review-info:hover span { color: #476537; text-decoration: underline; text-underline-offset: 3px; }
+.review-info.warn strong, .review-info.warn span { color: #b45309; }
+
+/* 决策状态卡（v2）：grid 五列强制等宽一行（孤卡/宽度不一消灭）；
+   数字与标签同行，说明小字独立行不截断；active 绿底+左条 */
+.stat-strip.decision-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.stat-strip.decision-strip .stat-card { padding: 12px 16px 10px; }
+.stat-strip.decision-strip .stat-card strong { display: inline; font-size: 21px; margin-right: 8px; font-variant-numeric: tabular-nums; }
+.stat-strip.decision-strip .stat-card span { display: inline; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.stat-strip.decision-strip .stat-card small { display: block; white-space: normal; line-height: 1.4; margin-top: 3px; }
+.stat-strip.decision-strip button.stat-card.clickable { transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease; }
 .stat-strip.decision-strip button.stat-card.clickable:hover { transform: translateY(-1px); box-shadow: 0 2px 10px rgba(60, 90, 50, .08); border-color: #c9d8bd; }
-.stat-strip.decision-strip button.stat-card.active { background: #f4f8ef; }
-.stat-strip.decision-strip .stat-card small { white-space: normal; line-height: 1.35; }
+.stat-strip.decision-strip button.stat-card.active { background: #eef4e8; border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
+.stat-strip.decision-strip button.stat-card.active strong { color: #476537; }
 .decision-list {
   border: 1px solid var(--line);
   border-radius: 12px;
