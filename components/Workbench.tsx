@@ -21,6 +21,7 @@ import { SourcesView } from "./views/SourcesView";
 import { RunsView } from "./views/RunsView";
 import { SkillsView } from "./views/SkillsView";
 import { OutlineQueueView } from "./views/OutlineQueueView";
+import { TriagePanorama } from "./TriagePanorama";
 import { SeoWorkspaceView } from "./views/SeoWorkspaceView";
 import { SiteEvaluatorView } from "./views/SiteEvaluatorView";
 import { Settings } from "./Settings";
@@ -43,6 +44,7 @@ import {
 } from "lucide-react";
 const nav = [
   ["discover", "每日发现", Compass],
+  ["panorama", "素材仓库", Layers],
   ["hotspots", "热点资讯", Flame],
   ["chat", "研究讨论", MessageSquare],
   ["trends", "热词趋势", TrendingUp],
@@ -60,7 +62,7 @@ const nav = [
 const navGroups = [
   { label: "审查", ids: ["discover", "decisions"] },
   // 素材池：全部采集面——热点/热词/机会来自内容源，创作活动来自四平台官方活动采集（同属采集数据）
-  { label: "素材池", ids: ["hotspots", "trends", "ideas", "activities"] },
+  { label: "素材池", ids: ["panorama", "hotspots", "trends", "ideas", "activities"] },
   { label: "研究讨论", ids: ["chat"] },
   { label: "设置", ids: ["plans", "sources", "connections", "settings"] },
   { label: "高级（方法论/运行）", ids: ["skills", "runs"], collapsed: true },
@@ -71,6 +73,7 @@ const headings: Record<string, [string, string]> = {
     "找到值得写，也值得做的事",
     "先看变化与个人影响，再决定投入哪一个想法。",
   ],
+  panorama: ["素材仓库：初筛组视角与归档", "每日采集归并成组后的原料层——看判级与理由，必要时手动生成大纲或转机会卡；日常拍板不在这里。"],
   hotspots: ["别让热点在筛选时消失", "先看原始榜单线索，再决定哪些值得补查和分析。"],
   library: [
     "把值得继续的想法留下",
@@ -269,6 +272,7 @@ export function Workbench() {
           {data && (
             <>
               {view === "decisions" && <Review />}
+              {view === "panorama" && <TriagePanorama />}
               {view === "hotspots" && <Hotspots loading={ws.loading} consumed={ws.hotspotConsumed !== "hide"} onConsumed={(value: boolean) => { ws.setHotspotConsumed(value ? "include" : "hide"); ws.setHotspotPage(1); }} feed={data.hotspots} sources={data.sources} query={ws.hotspotQ} status={ws.hotspotStatus} source={ws.hotspotSource} plan={ws.hotspotPlan} batch={data?.discovery} busy={busy}
                 onQuery={value => { ws.setHotspotQ(value); ws.setHotspotPage(1); }} onStatus={value => { ws.setHotspotStatus(value); ws.setHotspotPage(1); }} onSource={value => { ws.setHotspotSource(value); ws.setHotspotPage(1); }} onPlan={value => { ws.setHotspotPlan(value); ws.setHotspotPage(1); }} onPage={ws.setHotspotPage}
                 onRefresh={() => void act(async () => { const result = await api<{ count: number; source: string }>("hotspot-refresh", { sourceId: ws.hotspotSource }); setNotice(`${result.source} 已刷新 ${result.count} 条热点线索，未调用 AI。`); })}
