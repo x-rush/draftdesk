@@ -11,6 +11,7 @@ import { Drawer, Empty, api, Skeleton } from "../ui";
 import { Ban, CheckCircle2, Circle, ClipboardList, Crosshair, Flame, Gem, Globe, Sparkles, Star, TrendingUp, XCircle } from "lucide-react";
 import { Pagination } from "../Pagination";
 import { isLongTail } from "../../core/seen-terms";
+import { TodayCheckPanel, ManualReturnPanel } from "../SeoManualPanels";
 
 const DIG_INTENTS: [string, string][] = [["question", "问题类"], ["comparison", "比价类"], ["informational", "教程类"], ["commercial", "商业类"]];
 const RELEVANCE_LABELS: Record<string, string> = { strong: "强相关", weak: "弱相关", off: "圈外" };
@@ -49,6 +50,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
   const [radarTab, setRadarTab] = useState<"new" | "rising" | "sustained">("new");
   const [quality, setQuality] = useState<"all" | "strong">("all");
   const [fullMode, setFullMode] = useState(false);
+  const [manualView, setManualView] = useState(false);
   const [radarBusy, setRadarBusy] = useState(false);
   // 词详情抽屉（第七轮批3 W7-10②）：点击词名打开，SEO 指标区块承载哥飞数据
   const [drawerTerm, setDrawerTerm] = useState<any | null>(null);
@@ -163,9 +165,15 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
         <nav className="discovery-modes" aria-label="词表视图">
           <button className={!fullMode ? "active" : ""} aria-current={!fullMode ? "page" : undefined} onClick={() => setFullMode(false)}><ClipboardList size={13} /> 分区扫描</button>
           <button className={fullMode ? "active" : ""} aria-current={fullMode ? "page" : undefined} onClick={() => setFullMode(true)}><Globe size={13} /> 全量词表</button>
+          <button className={manualView ? "active" : ""} aria-current={manualView ? "page" : undefined} onClick={() => setManualView(!manualView)}>✋ 今日待查 / 回传</button>
         </nav>
       </div>
-      {!fullMode && <>
+      {manualView && <>
+        {/* R10.54-②（老大 11-08 一步到位）：哥飞人工线从应用机会站点发现子导航迁入——待查清单与回传框一屏相邻 */}
+        <TodayCheckPanel ws={ws} />
+        <ManualReturnPanel ws={ws} />
+      </>}
+      {!manualView && !fullMode && <>
       <section className="surface" style={{ padding: "16px 18px" }}>
         <div className="radar-toolbar" style={{ marginTop: 0 }}>
           <nav className="discovery-modes" aria-label="雷达分区">
@@ -231,7 +239,7 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
       </>}
 
       {/* ④ 全量词表 */}
-      {fullMode && (
+      {!manualView && fullMode && (
         <>
           <p className="dash-label" style={{ marginTop: 0 }}><ClipboardList size={14} /> 全量词表
             <span className="dash-label-sub">
