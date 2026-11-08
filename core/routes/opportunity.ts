@@ -4,7 +4,7 @@
 import { z } from "zod";
 import type { RouteDef } from "../http/router";
 import { json } from "../http/middleware";
-import { AppError } from "../store";
+import { AppError, now } from "../store";
 import { SIGNAL_LABELS, KIND_LABELS, groupOpportunityDrafts, upsertOpportunityDrafts } from "../opportunity";
 import { FORM_LABELS } from "../platforms";
 
@@ -24,6 +24,20 @@ export const routes: RouteDef[] = [
       if (!drafts.length) throw new AppError("该组无 appGap 应用缺口，无可出的卡；内容线选题请走大纲链路（生成大纲）。", 400);
       const r = upsertOpportunityDrafts(db, drafts, "agent");
       return json({ ok: true, ...r, note: `新增 ${r.created} 张${r.merged ? `、合并 ${r.merged} 张信号` : ""}（应用 ${drafts.length} 条草案；内容线走大纲链路）。` });
+    },
+  },
+  {
+    // R10.58 拍板状态机：POST /opportunities/:id/status（UI 会话口，拍板权只在老大；
+    // 任意态直设——老板权威覆盖线性时序）。agent PUT 写口不含 status 键，upsert ...prev 打底天然保留。
+    methods: ["POST"],
+    pattern: "opportunities/:id/status",
+    handler: async ({ db, params, readBody }) => {
+      const parsed = z.object({ status: z.enum(["pending", "approved", "developing", "launched"]) }).strict().parse(await readBody());
+      const prev = db.get<any>("opportunities", params.id);
+      if (!prev) throw new AppError("机会卡不存在", 404, "NOT_FOUND");
+      const next = { ...prev, status: parsed.status, statusAt: now(), statusBy: "human" };
+      db.put("opportunities", params.id, next);
+      return json(next);
     },
   },
   {

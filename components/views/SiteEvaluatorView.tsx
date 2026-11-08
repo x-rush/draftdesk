@@ -15,6 +15,7 @@ const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newte
 const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
 // R10.2④：形态目录唯一定义在 core/platforms（六值+变现），客户端经共享目录取用
 import { FORM_LABELS, FORM_MONETIZATION } from "../../core/platforms";
+import { OPPORTUNITY_STATUS_LABELS, OPPORTUNITY_STATUS_CYCLE, type OpportunityStatus } from "../../core/opportunity";
 const VERDICT_STYLE: Record<string, string> = { 推荐: "#1a7f4b", 可以试试: "#8a6d1a", 不值得做: "#8a3a3a", 待验证: "#5a6b7a" };
 const MOTIVE_LABELS: Record<string, string> = { keyword: "冲着关键词", pain: "解决自己痛点", others: "满足别人需求", hobby: "兴趣爱好", business: "商业机会", unclear: "没说清" };
 const MOTIVE_SOURCE_LABELS: Record<string, string> = { quote: "作者原话", guess: "推测" };
@@ -25,6 +26,18 @@ function OpportunityBadge({ children, color }: { children: ReactNode; color?: st
 
 function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities: any[] }) {
   const { busy, setNotice } = ws;
+  // R10.58 拍板状态机（老大 11-08）：待拍板→已通过→开发中→已上线，点徽章循环（对齐审查台交互语言）。
+  // 覆盖表让点击即时生效（父组件快照不刷新也能看到）；落库走 POST /opportunities/:id/status（UI 会话口）。
+  const [statusOverride, setStatusOverride] = useState<Record<string, OpportunityStatus>>({});
+  const statusOf = (o: any): OpportunityStatus => statusOverride[o.id] || o.status || "pending";
+  const cycleStatus = (o: any) => {
+    const cur = statusOf(o);
+    const next = OPPORTUNITY_STATUS_CYCLE[(OPPORTUNITY_STATUS_CYCLE.indexOf(cur) + 1) % OPPORTUNITY_STATUS_CYCLE.length];
+    setStatusOverride((prev) => ({ ...prev, [o.id]: next }));
+    void api("opportunities/" + o.id + "/status", { status: next })
+      .then(() => setNotice("机会卡状态 → " + (OPPORTUNITY_STATUS_LABELS[next] || next)))
+      .catch((e) => { setStatusOverride((prev) => { const n = { ...prev }; delete n[o.id]; return n; }); setNotice("状态更新失败：" + (e as Error).message); });
+  };
   // R10.14 P1-3：chips 用全库 counts（UI 列表 300 截断导致按信号筛选时 0 显示误导）
   const [counts, setCounts] = useState<any>(null);
   useEffect(() => { void api<any>("opportunities?limit=1").then((r) => setCounts(r.counts)).catch(() => {}); }, []);
@@ -114,6 +127,11 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
             <article className="discovery-row" key={o.id}>
               <div className="row-content">
                 <div className="row-meta">
+                  <button className="pill" style={{ cursor: "pointer", fontWeight: 600,
+                    background: statusOf(o) === "pending" ? "transparent" : "#eef4e8",
+                    borderStyle: statusOf(o) === "pending" ? "dashed" : "solid" }}
+                    title="点击循环拍板：待拍板 → 已通过 → 开发中 → 已上线"
+                    onClick={() => cycleStatus(o)}>📋 {OPPORTUNITY_STATUS_LABELS[statusOf(o)]}</button>
                   <OpportunityBadge color={VERDICT_STYLE[o.verdict]}>{o.verdict}</OpportunityBadge>
                   <span className="pill">{KIND_LABELS[o.kind] || o.kind}</span>
                   {o.form && <span className="pill">{FORM_LABELS[o.form as keyof typeof FORM_LABELS] || o.form}</span>}

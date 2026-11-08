@@ -18,6 +18,14 @@ import type { OpportunityForm } from "./platforms";
 
 export type OpportunitySignal = "complaint" | "newtech" | "news" | "trend";
 export type OpportunityKind = "site" | "app";
+// R10.58 拍板状态机（老大 11-08）：待拍板 → 已通过 → 开发中 → 已上线。
+// 写口唯一=POST /opportunities/:id/status（UI 会话口，拍板权只在老大）；agent 写口永不触碰 status。
+export type OpportunityStatus = "pending" | "approved" | "developing" | "launched";
+export const OPPORTUNITY_STATUS_LABELS: Record<string, string> = { pending: "待拍板", approved: "已通过", developing: "开发中", launched: "已上线" };
+export const OPPORTUNITY_STATUS_CYCLE: OpportunityStatus[] = ["pending", "approved", "developing", "launched"];
+export function normalizeOpportunityStatus(v: unknown): OpportunityStatus | undefined {
+  return (OPPORTUNITY_STATUS_CYCLE as string[]).includes(String(v)) ? (v as OpportunityStatus) : undefined;
+}
 export type OpportunityVerdict = "推荐" | "可以试试" | "不值得做" | "待验证";
 // 产品形态四值（第七轮批2 W7-5）：web=Web 应用 / app=App / miniprogram=小程序 / tool=工具站。
 // 内容线机会卡（平台适配）无产品形态，form 缺省。
@@ -54,6 +62,10 @@ export type Opportunity = {
   competitors?: { host: string; platform?: string; tier?: string; dr?: number }[];
   domainSuggestions?: string[];
   valuation?: string;
+  // R10.58 拍板状态（缺省=待拍板；存量 165 卡零迁移）
+  status?: OpportunityStatus;
+  statusAt?: string;
+  statusBy?: string;
   verdict: OpportunityVerdict;
   verdictReason: string;
   verifyPlan: string[];
