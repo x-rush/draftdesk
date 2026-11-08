@@ -178,6 +178,10 @@ export const routes: RouteDef[] = [
         id: o.id, title: o.title, oneLiner: o.oneLiner, form: o.form, kind: o.kind,
         verdict: o.verdict, verdictReason: o.verdictReason, source: o.source,
         monetization: o.monetization, signals: o.signals, createdAt: o.createdAt, updatedAt: o.updatedAt,
+        // R10.58 信息密度六字段 + term/url + 拍板状态（读回逐字一致验收依赖这些键）
+        sourceRef: o.sourceRef, demand: o.demand, features: o.features, mvpBoundary: o.mvpBoundary,
+        rationale: o.rationale, term: o.term, url: o.url,
+        status: o.status, statusAt: o.statusAt, statusBy: o.statusBy,
       }));
       return json({ items, total: all.length, limit, offset, generatedAt: now() });
     },
