@@ -55,6 +55,12 @@ export type Opportunity = {
   competitors?: { host: string; platform?: string; tier?: string; dr?: number }[];
   domainSuggestions?: string[];
   valuation?: string;
+  // R10.58 信息密度六字段（optional；agent 写口透传，补写口按 id 补）
+  sourceRef?: string;
+  demand?: string;
+  features?: string[];
+  mvpBoundary?: string;
+  rationale?: string;
   // R10.58 拍板状态（缺省=待拍板；存量 165 卡零迁移）
   status?: OpportunityStatus;
   statusAt?: string;
@@ -214,7 +220,7 @@ export function groupOpportunityDrafts(g: NonNullable<TriageRecord["groups"][num
 }
 
 // 外部 Agent 机会卡写口（R10.7 P0-5）：suggest 令牌直达 upsert（form 走严格六值归一）
-export function writeAgentOpportunity(db: Store, draft: { title: string; oneLiner: string; form?: unknown; monetization?: string; signals?: unknown[]; url?: string; term?: string; verifyPlan?: string[] }) {
+export function writeAgentOpportunity(db: Store, draft: { title: string; oneLiner: string; form?: unknown; monetization?: string; signals?: unknown[]; url?: string; term?: string; verifyPlan?: string[]; sourceRef?: string; demand?: string; features?: unknown[]; mvpBoundary?: string; rationale?: string }) {
   // R10.11-4⑥：form 必填（Agent 不传 form 就是没想好形态——不给 kind 兜底猜测）
   const form = normalizeForm(draft.form);
   if (!form) throw new AppError(`产品形态（form）必填；允许值：${FORM_KEYS.join(", ")}`, 400);
@@ -225,7 +231,17 @@ export function writeAgentOpportunity(db: Store, draft: { title: string; oneLine
     kind: form === "site-group" ? "site" : "app", // R10.15：form 已在路由层必填六值，此处仅按形态分 kind
     evidenceIds: [], signals: signals.length ? signals : ["news"], url: draft.url, term: draft.term, title: draft.title.slice(0, 120),
     oneLiner: draft.oneLiner.slice(0, 300), form, monetization: draft.monetization?.slice(0, 60),
-    verdict: "待验证", verdictReason: "外部 Agent 写入（未经工作台规则验证）",
+    // R10.58 信息密度六字段（可选透传）
+    ...(draft.sourceRef ? { sourceRef: String(draft.sourceRef).slice(0, 500) } : {}),
+    ...(draft.demand ? { demand: String(draft.demand).slice(0, 800) } : {}),
+    ...(Array.isArray(draft.features) && draft.features.length ? { features: draft.features.slice(0, 5).map((f) => String(f).slice(0, 120)) } : {}),
+    ...(draft.mvpBoundary ? { mvpBoundary: String(draft.mvpBoundary).slice(0, 300) } : {}),
+    ...(draft.rationale ? { rationale: String(draft.rationale).slice(0, 400) } : {}),
+    // R10.58：verdictReason 拼真实信息替纯模板句（sourceRef 为空保持原句）
+    verdict: "待验证",
+    verdictReason: draft.sourceRef
+      ? `外部 Agent 写入 · 信号 ${signals.length} 条 · 来源 ${String(draft.sourceRef).slice(0, 40)}`
+      : "外部 Agent 写入（未经工作台规则验证）",
     verifyPlan: draft.verifyPlan?.slice(0, 4) || [], source: "agent",
   }, counters);
   return { ok: true, created: counters.created, merged: counters.merged };

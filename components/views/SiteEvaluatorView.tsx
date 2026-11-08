@@ -150,6 +150,22 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                   <button className="text-button" title="本会话隐藏该卡（刷新恢复）" onClick={() => setIgnored((prev) => new Set(prev).add(o.id))}>忽略</button>
                 </div>
                 <button className="article-title" style={{ fontSize: 16, padding: "4px 0 0" }} onClick={() => { void navigator.clipboard.writeText(o.title); setNotice("已复制：" + o.title); }}>{o.title}</button>
+                {/* R10.58 信息密度五块：任一存在才渲染对应块，全空完全回退现状（不显示空块/占位符） */}
+                {(o.sourceRef || o.url) ? (
+                  <p style={{ margin: "4px 0 0", fontSize: 12 }}>
+                    <strong>机会来源：</strong>{o.sourceRef || "—"}{" "}
+                    {o.url && <a className="text-button" style={{ padding: "0 4px" }} href={o.url} target="_blank" rel="noopener noreferrer">原始链接 ↗</a>}
+                  </p>
+                ) : null}
+                {o.demand ? <p style={{ margin: "4px 0 0", fontSize: 12, whiteSpace: "pre-wrap" }}><strong>需求描述：</strong>{o.demand}</p> : null}
+                {o.features?.length ? (
+                  <div style={{ margin: "4px 0 0", fontSize: 12 }}>
+                    <strong>核心功能：</strong>
+                    <ol style={{ margin: "2px 0 0", paddingLeft: 18 }}>{o.features.map((f: string, i: number) => <li key={i}>{f}</li>)}</ol>
+                  </div>
+                ) : null}
+                {o.mvpBoundary ? <p style={{ margin: "4px 0 0", fontSize: 12 }}><strong>MVP 边界：</strong>{o.mvpBoundary}</p> : null}
+                {o.rationale ? <p style={{ margin: "4px 0 0", fontSize: 12 }}><strong>我的判断：</strong>{o.rationale}</p> : null}
                 <p style={{ margin: "4px 0 0" }}>{o.oneLiner}</p>
                 {(o.seoMetrics || o.competitors?.length || o.domainSuggestions?.length) ? (
                   <div style={{ margin: "6px 0 0", fontSize: 12 }}>
@@ -189,10 +205,11 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                     ))}
                   </p>
                 )}
-                <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
-                  初判理由：{o.verdictReason}
-                  {o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}
-                </p>
+                {/* R10.58：verdictReason 是系统痕迹不是判断内容——降级为折叠小字 */}
+                <details style={{ fontSize: 11, margin: "4px 0 0", color: "var(--muted)" }}>
+                  <summary style={{ cursor: "pointer" }}>初判理由{o.evidenceIds?.length ? ` · 证据 ${o.evidenceIds.length} 条` : ""}</summary>
+                  {o.verdictReason}
+                </details>
                 {o.relatedIds?.length ? (
                   <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }} title="关联卡（R9-6 双线互挂遗留的存量应用卡；新卡不再互挂，内容线走大纲链路）">
                     ⇄ 关联卡：
@@ -212,7 +229,6 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
                   <details className="fold-card">
                     <summary>一周验证计划（{o.verifyPlan.length} 步）</summary>
                     <ol>{o.verifyPlan.map((v: string, i: number) => <li key={i}>{v}</li>)}</ol>
-                    {o.url && <a href={o.url} target="_blank" rel="noopener noreferrer">原始线索 ↗</a>}
                   </details>
                 ) : null}
               </div>

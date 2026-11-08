@@ -70,8 +70,8 @@ test("判定 rationale（W7-1 增补）：回填判定判据落词库", async ()
         { term: "无判据词", relevance: "weak" },
       ]),
     })) as any;
-    const judged = await judgeUnjudgedTerms(db, model);
-    assert.equal(judged, 2);
+    const bf = await judgeUnjudgedTerms(db, model);
+    assert.equal(bf.judged, 2);
     assert.equal(db.get<any>("seen-terms", "工具词").rationale, "命中 strong 的模型发布正例");
     assert.equal(db.get<any>("seen-terms", "无判据词").rationale, undefined, "模型未给不硬造");
     // judgeSeenTerm 直接写（提取路径同字段）

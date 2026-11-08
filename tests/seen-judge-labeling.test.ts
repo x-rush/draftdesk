@@ -117,8 +117,8 @@ test("judgeUnjudgedTerms 产出 demandIntent（W7-1）：strong 落库 / weak �
         { term: "资讯词", relevance: "weak", demandIntent: "tool" }, // weak 的 intent 应被忽略
       ]),
     })) as any;
-    const judged = await judgeUnjudgedTerms(db, model);
-    assert.equal(judged, 2);
+    const bf = await judgeUnjudgedTerms(db, model);
+    assert.equal(bf.judged, 2);
     assert.equal(db.get<any>("seen-terms", "转换器词").demandIntent, "tool", "strong 落 demandIntent");
     assert.equal(db.get<any>("seen-terms", "资讯词").demandIntent, undefined, "weak 忽略 demandIntent");
     // 意图通道：strong+tool 直通候选池（无需 SERP 数据）；info 不直通

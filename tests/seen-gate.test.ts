@@ -215,8 +215,8 @@ test("判定标尺统一读 persona.termPolicy（第六轮 §2.6）：覆盖/回
     db.put("seen-terms", "私域拉群神器", { id: "私域拉群神器", term: "私域拉群神器", status: "new", observations: 9, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "" });
     db.put("seen-terms", "正常词", { id: "正常词", statusLabel: "", term: "正常词", status: "new", observations: 8, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "" });
     const model = (async () => ({ text: JSON.stringify([{ term: "私域拉群神器", relevance: "strong" }, { term: "正常词", relevance: "strong" }]) })) as any;
-    const judged = await judgeUnjudgedTerms(db, model);
-    assert.equal(judged, 2);
+    const bf = await judgeUnjudgedTerms(db, model);
+    assert.equal(bf.judged, 2);
     assert.equal(db.get<any>("seen-terms", "私域拉群神器").relevance, "off", "redLine 压掉 LLM 的 strong");
     assert.equal(db.get<any>("seen-terms", "私域拉群神器").offTopic, true);
     assert.equal(db.get<any>("seen-terms", "正常词").relevance, "strong", "非红线词照常落档");

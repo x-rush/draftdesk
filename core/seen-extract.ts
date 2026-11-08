@@ -86,18 +86,19 @@ async function runExtraction(db: Store, runModel: ModelRunner, dateKey: string, 
   } catch (e) {
     console.error(`[seen-terms] 标题流提取失败（判定不受影响）:`, e instanceof Error ? e.message : e);
   }
-  const judged = await judgeUnjudgedTerms(db, runModel).catch((e) => {
+  const bf = await judgeUnjudgedTerms(db, runModel).catch((e) => {
     console.error("[seen-terms] 回填判定失败:", e instanceof Error ? e.message : e);
-    return 0;
+    return { judged: 0, failedBatches: [`异常:${String(e instanceof Error ? e.message : e).slice(0, 60)}`] };
   });
   // 判定首批记账（第五轮 §5）：与 judgeBackfillTick 共享批次计数，提取批 = 当日第 1 批
   const bfPrev = db.get<any>("meta", judgeBackfillDoneKey(dateKey));
   db.put("meta", judgeBackfillDoneKey(dateKey), {
-    at: new Date().toISOString(), batches: (bfPrev?.batches ?? 0) + 1, judged,
+    at: new Date().toISOString(), batches: (bfPrev?.batches ?? 0) + 1, judged: bf.judged,
+    failedBatches: bf.failedBatches,
     ...(bfPrev?.busyDay ? { busyDay: true } : {}), ...(bfPrev?.heavyDay ? { heavyDay: true } : {}),
   });
-  console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条，回填判定 ${judged} 条`);
-  db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted, judged });
+  console.log(`[seen-terms] 提取完成（触发：${trigger}）：新观察 ${extracted} 条，回填判定 ${bf.judged} 条${bf.failedBatches.length ? `（失败批 ${bf.failedBatches.length}）` : ""}`);
+  db.put("meta", extractDoneKey(dateKey), { at: new Date().toISOString(), trigger, extracted, judged: bf.judged });
   db.del("meta", runningKey);
 }
 
@@ -302,7 +303,7 @@ const BACKFILL_LIMIT = 200;
 // 子批拆分（R9-7②）：单批 200 词的输出合同在 qwen 上连续三日撞 240s 超时（judged 0）——
 // 拆 50 词/子批串行调用，单子批输出短一个量级；超时/中止/预算类失败终止本批剩余子批
 //（模型整体慢时连打徒耗），解析类失败继续下一子批；失败归因进 done 键与日志，不再静默全废。
-const BACKFILL_SUBBATCH = 50;
+const BACKFILL_SUBBATCH = 25;
 const BACKFILL_MID_BATCHES = 3;
 const BACKFILL_HEAVY_BATCHES = 16;
 const BACKFILL_MID_GAP_MS = 4 * 60 * 60000;
@@ -310,15 +311,15 @@ const BACKFILL_HEAVY_GAP_MS = 90 * 60000;
 
 function judgeBackfillDoneKey(date: string) { return "judge-backfill-done:" + date; }
 
-export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Promise<number> {
-  if (!db.config().apiKey) return 0;
+export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Promise<{ judged: number; failedBatches: string[] }> {
+  if (!db.config().apiKey) return { judged: 0, failedBatches: [] };
   // R10.38 下推：未判=relevance 不在三档（NULL 计未判）——生成列索引取候选再 JS 精滤
   const pending = db.kv.selectWhere<any>("seen-terms", `("relevance" IS NULL OR "relevance" NOT IN ('strong','weak','off'))`)
     .map((r) => r.body)
     .filter((t) => t.status !== "archived")
     .sort((a, b) => (b.observations ?? 0) - (a.observations ?? 0))
     .slice(0, BACKFILL_LIMIT);
-  if (!pending.length) return 0;
+  if (!pending.length) return { judged: 0, failedBatches: [] };
   const rubric = buildRelevanceRubric(db) +
     "以下是词库中尚未判定相关性的词。请逐个按上方标准给 relevance 三档，不确定的判 weak，明确圈外的判 off；relevance 为 strong 的词再按上方 demandIntent 意图三分类给 intent，并用不超过 40 字说明判据（命中哪条标准）。" +
     '只输出 JSON 数组，格式：[{"term":"词","relevance":"strong","demandIntent":"tool","rationale":"命中 strong 的模型发布正例"}]。不要输出其他文字。';
@@ -326,6 +327,8 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
   for (let i = 0; i < pending.length; i += BACKFILL_SUBBATCH) subbatches.push(pending.slice(i, i + BACKFILL_SUBBATCH));
   let judged = 0;
   const failures: string[] = [];
+  let consecutiveAbort = 0;
+  const failedBatches: string[] = [];
   for (const [index, sub] of subbatches.entries()) {
     const prompt = rubric + "\n\n" + sub.map((t, i) => (i + 1) + ". " + t.term).join("\n");
     try {
@@ -349,15 +352,25 @@ export async function judgeUnjudgedTerms(db: Store, runModel: ModelRunner): Prom
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failures.push(`子批${index + 1}/${subbatches.length}: ${message.slice(0, 120)}`);
-      // 超时/中止/预算不足 = 模型或额度整体性异常，本批剩余子批不再连打（下批闸 90min/4h 后重试）
-      if (/timeout|aborted|中止|预算不足|百炼请求失败/i.test(message)) break;
+      // R10.59-C 熔断精化（老大 11-08「一次抖动毁掉一整天」）：超时/中止/预算不足只跳过该子批
+      // 继续下一批；连续 2 批同类失败才中止本 tick。中止批号写进 failedBatches 供 done 键归因。
+      if (/timeout|aborted|中止|预算不足|百炼请求失败/i.test(message)) {
+        consecutiveAbort++;
+        failedBatches.push(`子批${index + 1}`);
+        if (consecutiveAbort >= 2) {
+          failures.push(`连续 ${consecutiveAbort} 批同类失败，本 tick 中止`);
+          break;
+        }
+      } else {
+        consecutiveAbort = 0; // 解析类失败不影响熔断计数
+      }
     }
   }
   if (failures.length && judged === 0)
-    throw new Error(`${failures.length}/${subbatches.length} 子批失败：${failures.join("；")}`);
+    throw new Error(`${failedBatches.length || failures.length}/${subbatches.length} 子批失败${failedBatches.length ? `（中止批：${failedBatches.join("、")}）` : ""}：${failures.join("；").slice(0, 300)}`);
   if (failures.length)
     console.warn(`[judge-backfill] 部分子批失败（已判 ${judged}）：${failures.join("；").slice(0, 300)}`);
-  return judged;
+  return { judged, failedBatches };
 }
 
 // 待判池计数（批数闸原料）：与 judgeUnjudgedTerms 同一过滤口径
@@ -399,10 +412,10 @@ export function judgeBackfillTick(db: Store, runModel: ModelRunner, nowDate: Dat
   void (async () => {
     console.log(`[judge-backfill] 判定第 ${batchNo}/${maxBatches} 批开始（待判 ${pending}）`);
     try {
-      const judged = await judgeUnjudgedTerms(db, runModel);
+      const bf = await judgeUnjudgedTerms(db, runModel);
       const after = unjudgedPendingCount(db);
-      db.put("meta", doneKey, { at: nowDate.toISOString(), batches: batchNo, busyDay: busy, heavyDay: heavy, judged, pendingAfter: after, cursor: after });
-      console.log(`[judge-backfill] 第 ${batchNo} 批完成：判定 ${judged}，剩余待判 ${after}`);
+      db.put("meta", doneKey, { at: nowDate.toISOString(), batches: batchNo, busyDay: busy, heavyDay: heavy, judged: bf.judged, failedBatches: bf.failedBatches, pendingAfter: after, cursor: after });
+      console.log(`[judge-backfill] 第 ${batchNo} 批完成：判定 ${bf.judged}，剩余待判 ${after}${bf.failedBatches.length ? `（中止批 ${bf.failedBatches.length}）` : ""}`);
     } catch (e) {
       console.error(`[judge-backfill] 第 ${batchNo} 批失败（批次照计，90 分钟后下一批重试，防挂死模型被打爆）:`, e instanceof Error ? e.message : e);
       db.put("meta", doneKey, { at: nowDate.toISOString(), batches: batchNo, busyDay: busy, heavyDay: heavy, judged: 0, error: String((e as Error)?.message || e).slice(0, 200) });

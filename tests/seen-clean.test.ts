@@ -111,16 +111,16 @@ test("回填判定：只判未判定词（archived/已判跳过），空池零�
       calls++;
       return { text: JSON.stringify([{ term: "词甲", relevance: "strong" }, { term: "词乙", relevance: "off" }, { term: "归档词", relevance: "strong" }]) };
     };
-    const judged = await judgeUnjudgedTerms(db, mockRunner);
+    const bf = await judgeUnjudgedTerms(db, mockRunner);
     assert.equal(calls, 1);
-    assert.equal(judged, 2, "只有两个未判定词被写");
+    assert.equal(bf.judged, 2, "只有两个未判定词被写");
     assert.equal(db.get<any>("seen-terms", termId("词甲")).relevance, "strong");
     assert.equal(db.get<any>("seen-terms", termId("词乙")).relevance, "off");
     assert.equal(db.get<any>("seen-terms", termId("词乙")).offTopic, true);
     assert.equal(db.get<any>("seen-terms", "归档词").relevance, undefined, "archived 不被回填改写");
     // 空池：不再调用模型
-    const judged2 = await judgeUnjudgedTerms(db, mockRunner);
-    assert.equal(judged2, 0);
+    const bf2 = await judgeUnjudgedTerms(db, mockRunner);
+    assert.equal(bf2.judged, 0);
     assert.equal(calls, 1, "空池应零成本跳过");
   } finally {
     db?.close();

@@ -118,17 +118,18 @@ const judgeAllModel = (calls: string[]) => async (_db: any, messages: any[]) => 
   return { text: JSON.stringify(terms.map((term) => ({ term, relevance: "weak" }))) };
 };
 
-test("backfill 子批：200 词拆 4×50 全部成功 judged=200；prompt 每子批只含本子批词", async () => {
+test("backfill 子批：200 词拆 8×25 全部成功 judged=200；prompt 每子批只含本子批词", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-backfill-sub-"));
   let db: Store | undefined;
   try {
     db = setup(dir);
     seedPending(db!, 200);
     const calls: string[] = [];
-    const judged = await judgeUnjudgedTerms(db!, judgeAllModel(calls) as any);
-    assert.equal(calls.length, 4, "200 词 → 4 子批");
-    assert.ok(calls.every((c) => c.split(",").length === 50), "每子批 50 词");
-    assert.equal(judged, 200);
+    const bf = await judgeUnjudgedTerms(db!, judgeAllModel(calls) as any);
+    assert.equal(calls.length, 8, "200 词 → 8 子批");
+    assert.ok(calls.every((c) => c.split(",").length === 25), "每子批 25 词");
+    assert.equal(bf.judged, 200);
+    assert.deepEqual(bf.failedBatches, [], "全成功无中止批");
     const first = calls[0].split(",")[0];
     assert.ok(!calls[1].includes(first), "子批间不重叠");
   } finally {
@@ -137,30 +138,31 @@ test("backfill 子批：200 词拆 4×50 全部成功 judged=200；prompt 每子
   }
 });
 
-test("backfill 子批：超时类失败终止剩余子批并抛归因；部分成功时 judged 照常落账不抛", async () => {
+test("backfill 子批：连续 2 批超时才中止并抛归因；单批超时只跳过该批（R10.59-C）", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "draftdesk-backfill-fail-"));
   let db: Store | undefined;
   try {
     db = setup(dir);
     seedPending(db!, 200);
-    // 场景1：首子批超时 → 立即终止，抛错信息带子批归因
+    // 场景1：全子批超时 → 连续 2 批同类失败即中止，抛错带中止批归因
     let attempts = 0;
     const timeoutModel = async () => { attempts++; throw new Error("The operation was aborted due to timeout"); };
     await assert.rejects(
       () => judgeUnjudgedTerms(db!, timeoutModel as any),
-      (e: Error) => { assert.match(e.message, /1\/4 子批失败/); assert.match(e.message, /timeout/); return true; },
+      (e: Error) => { assert.match(e.message, /2\/8 子批失败/); assert.match(e.message, /中止批：子批1、子批2/); return true; },
     );
-    assert.equal(attempts, 1, "超时后不连打剩余子批");
-    // 场景2：第 1 子批成功、第 2 子批解析烂（继续）、第 3 子批成功、第 4 子批成功 → judged=150 不抛
+    assert.equal(attempts, 2, "连续 2 批超时才中止（单批抖动只损失 25 词）");
+    // 场景2：第 1 子批成功、第 2 子批解析烂（解析类继续、不进熔断计数）、其余成功 → judged=200-25=175 不抛
     const flakyModel = async (_db: any, messages: any[]) => {
       const list = (messages[0].content as string).split("\n\n").pop() as string;
       const first = list.split("\n")[0]?.replace(/^\d+\.\s*/, "");
-      if (first === "待判词050") return { text: "这不是JSON" };
+      if (first === "待判词025") return { text: "这不是JSON" };
       const terms = list.split("\n").map((l) => l.replace(/^\d+\.\s*/, ""));
       return { text: JSON.stringify(terms.map((term) => ({ term, relevance: "weak" }))) };
     };
-    const judged = await judgeUnjudgedTerms(db!, flakyModel as any);
-    assert.equal(judged, 150, "部分成功照常落账（200 - 解析烂的 50）");
+    const bf = await judgeUnjudgedTerms(db!, flakyModel as any);
+    assert.equal(bf.judged, 175, "部分成功照常落账（200 - 解析烂的 25）");
+    assert.deepEqual(bf.failedBatches, [], "解析类失败不进中止批归因");
   } finally {
     db?.close();
     cleanup(dir);

@@ -139,8 +139,45 @@ export const routes: RouteDef[] = [
         url: z.string().max(2048).optional(),
         term: z.string().max(120).optional(),
         verifyPlan: z.array(z.string().max(300)).max(4).optional(),
+        // R10.58 信息密度六字段（全部 optional——02:00 现传 5 字段，必填会立刻 400）：
+        sourceRef: z.string().max(500).optional(),
+        demand: z.string().max(800).optional(),
+        features: z.array(z.string().max(120)).min(3).max(5).optional(),
+        mvpBoundary: z.string().max(300).optional(),
+        rationale: z.string().max(400).optional(),
       }).strict().parse(await readBody());
       return json(writeAgentOpportunity(db, parsed));
+    },
+  },
+  {
+    // R10.58-C：按 id 补写口——存量 175 卡可补信息密度六字段+url/term/monetization。
+    // 禁改 verdict/kind/form/source（strict 拒收未知键=自动 400）；id 缺失 404；同值重写 changed:0。
+    methods: ["PUT"],
+    pattern: "agent/opportunities/:id",
+    scope: "suggest",
+    methodGuardFirst: true,
+    handler: async ({ db, params, readBody }) => {
+      const parsed = z.object({
+        sourceRef: z.string().max(500).optional(),
+        demand: z.string().max(800).optional(),
+        features: z.array(z.string().max(120)).min(3).max(5).optional(),
+        mvpBoundary: z.string().max(300).optional(),
+        rationale: z.string().max(400).optional(),
+        monetization: z.string().max(60).optional(),
+        url: z.string().max(2048).optional(),
+        term: z.string().max(120).optional(),
+      }).strict().parse(await readBody());
+      const prev = db.get<any>("opportunities", params.id);
+      if (!prev) throw new AppError("机会卡不存在", 404, "NOT_FOUND");
+      if (prev.archived) throw new AppError("已归档机会卡不可补写。", 400, "ARCHIVED");
+      let changed = 0;
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v === undefined) continue;
+        if (JSON.stringify(prev[k]) !== JSON.stringify(v)) { (next as any)[k] = v; changed++; }
+      }
+      if (changed) { next.updatedAt = now(); db.put("opportunities", params.id, next); }
+      return json({ ok: true, id: params.id, changed });
     },
   },
   {

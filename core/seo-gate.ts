@@ -176,6 +176,23 @@ export function dailyMetricsCandidates(db: Store, gate: SiteGate, markedIds: Set
     });
 }
 
+// R10.59-A（老大 11-08「今日待查为什么一直为 0」）：今日待查专用候选——语义=「已出标但指标过期/缺失」
+// （已决定做的词才真正需要三指标点亮价值面板）。与 dailyMetricsCandidates 唯一语义差=出标条件取反；
+// 供 GET seo-terms/today 使用。禁止拿它改 seoMetricsTick / siteGateAutoMark 的既有逻辑。
+export function manualCheckCandidates(db: Store, gate: SiteGate): any[] {
+  const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
+  return db.list<any>("seen-terms")
+    .filter((t) => t.status !== "archived" && t.relevance === "strong" && (t.region ?? "global") === "global"
+      && typeof t.serpDedicated === "number" && t.serpDedicated <= gate.serpDedicatedMax
+      && (t.observations ?? 0) >= 5
+      && !seoMetricsFresh(t) && markedIds.has(termId(String(t.term || t.id))))
+    .sort((a, b) => {
+      const ea = isEnglishTerm(String(a.term || a.id)) ? 0 : 1;
+      const eb = isEnglishTerm(String(b.term || b.id)) ? 0 : 1;
+      return ea - eb || (b.observations ?? 0) - (a.observations ?? 0);
+    });
+}
+
 export function seoMetricsTick(db: Store, doFetch: typeof fetch = fetch, nowDate: Date = new Date()): void {
   const day = shanghaiDayOf(nowDate); // R10.31：上海日
   if (db.get("meta", "seo-metrics-done:" + day)) return;

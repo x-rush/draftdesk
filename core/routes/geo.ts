@@ -8,7 +8,7 @@ import { paginatedSql } from "../http/pagination";
 import { now } from "../store";
 import { observeSuggestion, termId } from "../seen-terms";
 import { ensureBenchmarkSeeds, applyManualGephei } from "../gephei-collect";
-import { dailyMetricsCandidates, isEnglishTerm, siteGateOf } from "../seo-gate";
+import { manualCheckCandidates, isEnglishTerm, siteGateOf } from "../seo-gate";
 import { gepheiToolLinks } from "../seo-source";
 
 const BRAND_RE = /openai|anthropic|claude|gemini|midjourney|perplexity|google|microsoft|github|amazon|netlify|facebook|apple|nvidia|notion|slack|zoom|figma|spotify|youtube|tesla|chatgpt|bytedance|baidu|alibaba|tencent/i;
@@ -110,15 +110,14 @@ export const routes: RouteDef[] = [
     },
   },
   {
-    // UI 口：今日待查清单（R8-4②，批4 指导行的聚合升级）——共享质量闸
-    // （dailyMetricsCandidates：strong+global+低竞争+obs≥5+未出标+过期，英文优先）取前 10，
+    // UI 口：今日待查清单（R8-4② → R10.59-A 语义修正）：已出标但指标过期/缺失的词
+    // （manualCheckCandidates，与自动出标不打架——价值面板待点亮正是人工该查的那批）前 10，
     // 每词三张实测深链；回传成功（manualAt）自动移出清单。
     methods: ["GET"],
     pattern: "seo-terms/today",
     handler: ({ db }) => {
       const gate = siteGateOf(db);
-      const markedIds = new Set(db.list<any>("seo-terms").filter((t) => t.siteCandidate === true).map((t) => termId(String(t.term || t.id))));
-      const items = dailyMetricsCandidates(db, gate, markedIds)
+      const items = manualCheckCandidates(db, gate)
         .filter((t) => isEnglishTerm(String(t.term || t.id)))
         .slice(0, 10)
         .map((t) => ({
