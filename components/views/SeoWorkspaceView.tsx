@@ -178,9 +178,10 @@ export function SeoWorkspaceView({ ws }: { ws: Workspace; data: Snapshot }) {
             <button className={quality === "strong" ? "active" : ""} aria-current={quality === "strong" ? "page" : undefined} onClick={() => setQuality("strong")}>强相关</button>
           </nav>
           <nav className="discovery-modes" aria-label="分区区域筛选">
+            {/* R10.54-②（老大 11-08）：默认项「全部」打头，与相关度组同序 */}
+            <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部</button>
             <button className={(ws.seenRegion || "") === "global" ? "active" : ""} onClick={() => { ws.setSeenRegion("global"); ws.setSeenPage(1); }}>海外</button>
             <button className={ws.seenRegion === "cn" ? "active" : ""} onClick={() => { ws.setSeenRegion("cn"); ws.setSeenPage(1); }}>中文</button>
-            <button className={ws.seenRegion === "" ? "active" : ""} onClick={() => { ws.setSeenRegion(""); ws.setSeenPage(1); }}>全部</button>
           </nav>
         </div>
         {ws.seenLoading && !zoneLists[radarTab].length ? <Skeleton rows={3} label="热词雷达加载中" /> : zoneLists[radarTab].length === 0 ? (
