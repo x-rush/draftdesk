@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Ban, CheckCircle2, Globe, Sparkles, Zap } from "lucide-react";
 import { Select } from "../Select";
+import { Pagination } from "../Pagination";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 import { Empty, api, date, Skeleton } from "../ui";
 
@@ -68,12 +69,15 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
   const filtered = hasFilter ? (serverItems ?? []) : opportunities;
   // R10.27-C#15：渲染真分页——此前 300 张全 DOM（页面高 67 屏，mobile 74 千像素）；
   // 数据通道（300 缓存供 chips/关联卡查找）不动，只治渲染爆炸
-  const [visible, setVisible] = useState(50);
-  useEffect(() => { setVisible(50); }, [form, signal, source]);
+  // R10.58c（老大 11-08：「加载更多不好用」）：机会引擎改真翻页（Pagination 50/页，客户端切片）
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [form, signal, source]);
   // R10.45 P2⑥：忽略=会话级隐藏（头注释宣称的行为落地）；刷新恢复
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const visibleList = filtered.filter((o) => !ignored.has(o.id));
-  const shown = visibleList.slice(0, visible);
+  const OPP_PAGE_SIZE = 50;
+  const oppPages = Math.max(1, Math.ceil(visibleList.length / OPP_PAGE_SIZE));
+  const shown = visibleList.slice((Math.min(page, oppPages) - 1) * OPP_PAGE_SIZE, Math.min(page, oppPages) * OPP_PAGE_SIZE);
 
   return (
     <>
@@ -215,13 +219,7 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
             </article>
           ))}
 
-          {filtered.length > shown.length && (
-            <div style={{ textAlign: "center", padding: "18px 0" }}>
-              <button className="button-secondary" onClick={() => setVisible((v) => v + 50)}>
-                加载更多（已显示 {shown.length}/{filtered.length}）
-              </button>
-            </div>
-          )}
+          <Pagination info={{ page: Math.min(page, oppPages), pages: oppPages, pageSize: OPP_PAGE_SIZE, total: visibleList.length }} onChange={setPage} />
         </div>
       )}
     </>
@@ -232,6 +230,8 @@ function OpportunitiesTab({ ws, opportunities }: { ws: Workspace; opportunities:
 function SiteLaunchesTab({ siteLaunches, onJumpSites }: { siteLaunches: any[]; onJumpSites: (host: string) => void }) {
   const [motive, setMotive] = useState("");
   const [clashOnly, setClashOnly] = useState(false);
+  const [launchPage, setLaunchPage] = useState(1);
+  const PAGE = 50;
   const filtered = siteLaunches.filter((l) =>
     (!motive || (l.motive || "unclear") === motive) && (!clashOnly || (l.clashTerms || []).length > 0));
   const judged = siteLaunches.filter((l) => l.titleZh).length;
@@ -259,7 +259,7 @@ function SiteLaunchesTab({ siteLaunches, onJumpSites }: { siteLaunches: any[]; o
         </Empty>
       ) : (
         <div className="discovery-list">
-          {filtered.slice(0, 100).map((l) => (
+          {filtered.slice((launchPage - 1) * PAGE, launchPage * PAGE).map((l) => (
             <article className="discovery-row" key={l.host}>
               <div className="row-content">
                 <div className="row-meta">
@@ -291,6 +291,7 @@ function SiteLaunchesTab({ siteLaunches, onJumpSites }: { siteLaunches: any[]; o
               </div>
             </article>
           ))}
+          <Pagination info={{ page: Math.min(launchPage, Math.max(1, Math.ceil(filtered.length / PAGE))), pages: Math.max(1, Math.ceil(filtered.length / PAGE)), pageSize: PAGE, total: filtered.length }} onChange={setLaunchPage} />
         </div>
       )}
     </>
@@ -309,6 +310,10 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const [linkLoading, setLinkLoading] = useState(false);
   const [launchRefreshing, setLaunchRefreshing] = useState(false);
   const [siteSort, setSiteSort] = useState("ref");
+  // R10.58c（老大 11-08）：站点发现/新站发现两长列表同步翻页化（原硬砍前 100 条）。
+  const [sitesPage, setSitesPage] = useState(1);
+  const [launchPage, setLaunchPage] = useState(1);
+  const LIST_PAGE_SIZE = 50;
   const discoveries = siteDiscoveries || [];
   // R10.58b（老大 11-08 质疑「数量一直没变」）：ws 快照取数有 200/300 上限，集合超限后
   // tab 徽章（discoveries.length/launchList.length）永久钉死——改用 limit=1 的路由真实 total。
@@ -387,7 +392,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
             <span className="muted">portfolio 个人作品集降权折叠 · 撞词 = 命中词命中我们热词库高分词</span>
           </div>
           <div className="discovery-list">
-            {siteSorted.slice(0, 100).map((s) => (
+            {siteSorted.slice((sitesPage - 1) * LIST_PAGE_SIZE, sitesPage * LIST_PAGE_SIZE).map((s) => (
               <article className="discovery-row" key={s.host}>
                 <div className="row-content">
                   <div className="row-meta">
@@ -411,6 +416,7 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
                 </div>
               </article>
             ))}
+            <Pagination info={{ page: Math.min(sitesPage, Math.max(1, Math.ceil(siteSorted.length / LIST_PAGE_SIZE))), pages: Math.max(1, Math.ceil(siteSorted.length / LIST_PAGE_SIZE)), pageSize: LIST_PAGE_SIZE, total: siteSorted.length }} onChange={setSitesPage} />
           </div>
           </>
         )
