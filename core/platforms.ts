@@ -56,6 +56,15 @@ export function normalizeForm(value: unknown): OpportunityForm | undefined {
   return FORM_KEYS.includes(value as OpportunityForm) ? (value as OpportunityForm) : undefined;
 }
 
+// ---- 机会卡拍板状态机（R10.58，老大 11-08）：待拍板 → 已通过 → 开发中 → 已上线 ----
+// 写口唯一=POST /opportunities/:id/status（UI 会话口）；agent 写口永不携带 status。
+export type OpportunityStatus = "pending" | "approved" | "developing" | "launched";
+export const OPPORTUNITY_STATUS_LABELS: Record<string, string> = { pending: "待拍板", approved: "已通过", developing: "开发中", launched: "已上线" };
+export const OPPORTUNITY_STATUS_CYCLE: OpportunityStatus[] = ["pending", "approved", "developing", "launched"];
+export function normalizeOpportunityStatus(v: unknown): OpportunityStatus | undefined {
+  return (OPPORTUNITY_STATUS_CYCLE as string[]).includes(String(v)) ? (v as OpportunityStatus) : undefined;
+}
+
 export type CategoryKey = "newtech" | "news" | "oss" | "selfproduct" | "thinking" | "hot";
 export const CATEGORY_KEYS: CategoryKey[] = ["newtech", "news", "oss", "selfproduct", "thinking", "hot"];
 

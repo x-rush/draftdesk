@@ -15,7 +15,7 @@ const SIGNAL_LABELS: Record<string, string> = { complaint: "用户抱怨", newte
 const KIND_LABELS: Record<string, string> = { app: "应用", site: "站群/内容页" };
 // R10.2④：形态目录唯一定义在 core/platforms（六值+变现），客户端经共享目录取用
 import { FORM_LABELS, FORM_MONETIZATION } from "../../core/platforms";
-import { OPPORTUNITY_STATUS_LABELS, OPPORTUNITY_STATUS_CYCLE, type OpportunityStatus } from "../../core/opportunity";
+import { OPPORTUNITY_STATUS_LABELS, OPPORTUNITY_STATUS_CYCLE, type OpportunityStatus } from "../../core/platforms";
 const VERDICT_STYLE: Record<string, string> = { 推荐: "#1a7f4b", 可以试试: "#8a6d1a", 不值得做: "#8a3a3a", 待验证: "#5a6b7a" };
 const MOTIVE_LABELS: Record<string, string> = { keyword: "冲着关键词", pain: "解决自己痛点", others: "满足别人需求", hobby: "兴趣爱好", business: "商业机会", unclear: "没说清" };
 const MOTIVE_SOURCE_LABELS: Record<string, string> = { quote: "作者原话", guess: "推测" };
