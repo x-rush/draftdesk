@@ -3,7 +3,6 @@
 // （PHASE 5 自 Workbench.tsx 纯移动拆出；JSX 与拆分前逐字一致）。
 import { ActivityCard, ActivityTools } from "../Activities";
 import { DiscoveryLens } from "../DiscoveryLens";
-import { useTodaySummary } from "../useTodaySummary";
 import { api, date, Empty, kindLabels, Skeleton } from "../ui";
 import { Search, ArrowUpRight } from "lucide-react";
 import { creationLabels } from "../../core/workspace-ui";
@@ -12,7 +11,6 @@ import { Select } from "../Select";
 import type { Workspace, Snapshot } from "../useWorkspaceData";
 
 export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
-  const today = useTodaySummary();
   const { view, busy, navigate, refresh, act, setNotice, jobId, setJobId, quality, setQuality, kind, setKind,
     query, setQuery, activityPlatform, setActivityPlatform, activityTime, setActivityTime,
     creation, setCreation, page, setPage, loading, discoveryMode, setDiscoveryMode,
@@ -21,20 +19,7 @@ export function DiscoverView({ ws, data }: { ws: Workspace; data: Snapshot }) {
   return (
     <>
       {view === "activities" && <ActivityTools onChange={refresh} onRun={() => navigate("runs")} plans={data.plans} active={data.stats.activePlanIds.includes("creator-activities")} />}
-      {view === "discover" && <section className="daily-overview" aria-label="工作台概览">
-        <div className="daily-overview-head"><div><span>{data.discovery ? `最近研究 · ${data.discovery.planName} · ${date(data.discovery.at)}` : "尚无研究记录"}</span><h2>线索、判断和异常，都从这里进入</h2><p>{data.discovery ? `本轮读取 ${data.discovery.sources.reduce((n, s: any) => n + s.raw, 0)} 条，入模 ${data.discovery.sources.reduce((n, s: any) => n + s.selected, 0)} 条（共 ${(data.discovery as any).candidateCount ?? 0} 候选）。` : "配置来源后开始第一次研究，原始线索会单独保留。"}</p></div><button onClick={() => navigate(data.config.hasApiKey ? "plans" : "settings")}>{data.config.hasApiKey ? "查看研究策略" : "配置模型"} <ArrowUpRight size={15} /></button></div>
-        <div className="overview-links">
-          <button onClick={() => navigate("hotspots")}><span>原始热点 · 近 14 天</span><strong>{data.stats.hotspotRemaining}</strong><small>未消费 · 共 {data.stats.hotspotTotal} 条（已消费 {data.stats.hotspotConsumed}）↗</small></button>
-          <div className="overview-cell"><span>今日采集 · {today?.collectAll?.sources ?? "—"} 源</span><strong>{today?.collectAll?.raw ?? "—"}</strong><small>组 强{today?.groups?.strong ?? 0} / 潜{today?.groups?.potential ?? 0}</small></div>
-          <button onClick={() => navigate("decisions")}><span>选题待拍</span><strong>{today?.pendingOutlines ?? 0}</strong><small>与审查台同口径（outlines pending）· 点击跳审查台 ↗</small></button>
-          <div className="overview-cell"><span>今日已拍</span><strong>{today?.decidedToday ?? 0}</strong><small>机会卡 {today?.opportunities ?? 0} 张在库</small></div>
-          <button onClick={() => { setDiscoveryMode("results"); setQuality("ready"); setPage(1); }}><span>通过检查</span><strong>{data.stats.qualityCounts.ready}</strong><small>查看可考虑的推荐 ↗</small></button>
-          <button onClick={() => { setDiscoveryMode("results"); setQuality("review"); setPage(1); }}><span>待验证</span><strong>{data.stats.qualityCounts.review}</strong><small>查看缺失证据 ↗</small></button>
-          <button onClick={() => { setDiscoveryMode("results"); setQuality("rejected"); setPage(1); }}><span>已否决</span><strong>{data.stats.qualityCounts.rejected}</strong><small>查看排除理由 ↗</small></button>
-          <button onClick={() => navigate("hotspots")}><span>来源读取失败</span><strong>{data.stats.sourceFailures}</strong><small>查看失败来源与旧线索 ↗</small></button>
-          <button onClick={() => navigate("runs")}><span>失败任务</span><strong>{data.stats.failedRuns}</strong><small>查看原因与重试入口 ↗</small></button>
-        </div>
-      </section>}
+
       {view === "discover" && <button className="text-button" onClick={() => navigate("hotspots")}>查看全部原始热点 →</button>}
       {(view !== "discover" || discoveryMode === "results") && <>
         {jobId && <p className="context-note">正在查看本次研究的全部结果（含待验证和已否决）。<button onClick={() => { setJobId(""); setPage(1); }}>查看所有研究</button></p>}
