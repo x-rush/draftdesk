@@ -310,6 +310,14 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
   const [launchRefreshing, setLaunchRefreshing] = useState(false);
   const [siteSort, setSiteSort] = useState("ref");
   const discoveries = siteDiscoveries || [];
+  // R10.58b（老大 11-08 质疑「数量一直没变」）：ws 快照取数有 200/300 上限，集合超限后
+  // tab 徽章（discoveries.length/launchList.length）永久钉死——改用 limit=1 的路由真实 total。
+  const [tabTotals, setTabTotals] = useState<{ sites: number; launches: number } | null>(null);
+  useEffect(() => {
+    void Promise.all([api<any>("site-discoveries?limit=1"), api<any>("site-launches?limit=1")])
+      .then(([d, l]) => setTabTotals({ sites: Number(d.total) || 0, launches: Number(l.total) || 0 }))
+      .catch(() => {});
+  }, []);
   // 客户端排序兜底：useWorkspaceData 拉的是默认（可参考度）序；切「首见」时本地按首见重排。
   // portfolio 站折叠到列表尾部（展开按钮查看）。
   const siteSorted = useMemo(() => {
@@ -324,8 +332,8 @@ export function SiteEvaluatorView({ ws, data }: { ws: Workspace; data: Snapshot 
     <>
       <nav className="discovery-modes" aria-label="应用机会板块">
         <button className={tab === "opportunities" ? "active" : ""} aria-current={tab === "opportunities" ? "page" : undefined} onClick={() => setTab("opportunities")}><Sparkles size={13} /> 机会引擎 {opportunityList.length}</button>
-        <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}><Globe size={13} /> 站点发现 {discoveries.length}</button>
-        <button className={tab === "launches" ? "active" : ""} aria-current={tab === "launches" ? "page" : undefined} onClick={() => setTab("launches")}>🚀 新站发现 {launchList.length}</button>
+        <button className={tab === "sites" ? "active" : ""} aria-current={tab === "sites" ? "page" : undefined} onClick={() => setTab("sites")}><Globe size={13} /> 站点发现 {tabTotals?.sites ?? discoveries.length}</button>
+        <button className={tab === "launches" ? "active" : ""} aria-current={tab === "launches" ? "page" : undefined} onClick={() => setTab("launches")}>🚀 新站发现 {tabTotals?.launches ?? launchList.length}</button>
         <button className={tab === "links" ? "active" : ""} aria-current={tab === "links" ? "page" : undefined} onClick={() => { setTab("links"); void (async () => { setLinkLoading(true); try { const r = await api<{ items: any[] }>("link-prospects"); setLinkProspects(r.items); } catch (e) { setNotice("外链反推读取失败：" + (e as Error).message); } finally { setLinkLoading(false); } })(); }}>🔗 外链反推</button>
       </nav>
       {tab === "launches" && (
