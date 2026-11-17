@@ -54,7 +54,7 @@ test("budget exhaustion at review keeps the paid drafts as private unreviewed ar
  const dir=mkdtempSync(path.join(tmpdir(),"dd-review-budget-"));
  const db=new Store(dir);
  try{
-  db.put("config","main",{...db.config(),apiKey:"test-only-no-network"});
+  db.put("config","main",{...db.config(),apiKey: "fixture"});
   for(const item of evidence)db.put("evidence",item.id,item);
   const job=db.enqueue("daily-editorial",evidence.map(item=>item.id))!;
   db.claim();
@@ -80,7 +80,7 @@ test("non-budget review failures still fail the job instead of hiding them",asyn
  const dir=mkdtempSync(path.join(tmpdir(),"dd-review-contract-"));
  const db=new Store(dir);
  try{
-  db.put("config","main",{...db.config(),apiKey:"test-only-no-network"});
+  db.put("config","main",{...db.config(),apiKey: "fixture"});
   for(const item of evidence)db.put("evidence",item.id,item);
   const job=db.enqueue("daily-editorial",evidence.map(item=>item.id))!;
   db.claim();

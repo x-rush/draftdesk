@@ -10,7 +10,7 @@ import { metricComparison, type MetricSnapshot, type ResearchEvent } from "../co
 import { evaluateOutput } from "../core/evaluation";
 import { runJob } from "../core/pipeline";
 import type { Job, Artifact } from "../core/schema";
-async function fixture(fn:(db:Store)=>unknown) {const dir=mkdtempSync(path.join(tmpdir(),"dd-upgrade-"));const db=new Store(dir);db.put("config","main",{...db.config(),apiKey:"isolated-test-key"});try{await fn(db)}finally{db.close();rmSync(dir,{recursive:true,force:true})}}
+async function fixture(fn:(db:Store)=>unknown) {const dir=mkdtempSync(path.join(tmpdir(),"dd-upgrade-"));const db=new Store(dir);db.put("config","main",{...db.config(),apiKey: "fixture"});try{await fn(db)}finally{db.close();rmSync(dir,{recursive:true,force:true})}}
 const input = (n:number, extra:object={}) => {const {id,provenance,fingerprint,...rest}=evidence[0];return {...rest,title:"同一工具发布",url:`https://example.com/update-${n}`,excerpt:"同一公告明确开放功能并说明限制。".repeat(15),...extra};};
 test("三种检索分别覆盖官方、问题和指标方向，且受查询数量限制",()=>{
   for(const [kind,term] of [["editorial","官方"],["opportunity","求助"],["trends","指数"]] as const){const q=queryPlan({...plan,kind,keywords:["测试工具"]},2);assert.equal(q.length,2);assert.match(q[0].query,new RegExp(term));assert.notEqual(q[0].purpose,q[1].purpose)}
@@ -61,7 +61,7 @@ test("固定证据无新增则跨任务跳过，保留更新资料",async()=>fix
 }));
 test("补证共用总查询预算，失败被记录且缺口写入产物",async()=>fixture(async db=>{
   const p={...plan,maxQueries:2,maxEvidence:8,sourceIds:["web-test"]};db.put("plans",p.id,p);db.put("sources","web-test",{id:"web-test",type:"web",enabled:true});
-  db.put("config","main",{...db.config(),tavilyKey:"test-only"});const saved=db.addEvidence(input(1),"test");const job=db.enqueue(p.id)!;let stage=0,searches=0;
+  db.put("config","main",{...db.config(),tavilyKey: "fixture"});const saved=db.addEvidence(input(1),"test");const job=db.enqueue(p.id)!;let stage=0,searches=0;
   const draft={...topic,evidenceIds:[saved.id],claims:topic.claims.map(c=>({...c,evidenceIds:c.evidenceIds.length?[saved.id]:[]}))};
   await runJob(db,job,{collect:async()=>({evidence:[saved],warnings:[],searches:1}),search:async()=>{searches++;throw Error("offline failure")},
     structured:(async()=>{stage++;return stage===1?{clusters:[{label:"工具",summary:"更新",evidenceIds:[saved.id],contradictions:[],missing:["价格未知","地区限制"]}],excluded:[]}:stage===2?{items:[draft],rejected:[]}:{reviews:[{index:0,verdict:"revise",issues:[],note:"需补证"}]}}) as any});
@@ -102,7 +102,7 @@ test("固定评测区分引用存在、引文匹配与待人工评价，空输�
 test("整理员漏报需求缺口时仍定向补查，材料检查进入审稿且不能被pass绕过",async()=>fixture(async db=>{
   const p={...plan,kind:"opportunity" as const,sourceIds:["web-test"],maxQueries:2,maxEvidence:8};
   db.put("plans",p.id,p);db.put("sources","web-test",{type:"web",enabled:true});
-  db.put("config","main",{...db.config(),tavilyKey:"isolated-test-key"});
+  db.put("config","main",{...db.config(),tavilyKey: "fixture"});
   const e=db.addEvidence(input(1),"test");const job=db.enqueue(p.id)!;let calls=0,queries=0;
   const idea={...topic,kind:"idea",evidenceIds:[e.id],claims:[{statement:"假设",type:"hypothesis",evidenceIds:[]}],details:{job:"整理任务",trigger:"会议后",frequency:"未知",alternatives:["表格"],differentiation:"核对任务",mvp:["导入","核对"],nonGoals:[],willingnessToPay:"未知",experiment:"人工代办",successCriteria:"复用",stopCriteria:"无需要"}};
   await runJob(db,job,{collect:async()=>({evidence:[e],warnings:[],searches:1}),search:async(_db,_p,q)=>{queries++;assert.match(q,/用户问题/);return []},structured:(async(_db:any,_job:any,_skill:any,context:any)=>{
@@ -129,7 +129,7 @@ test("空聚类和空产物均正常结束，不继续花费审稿调用",async(
 test("补证结果进入分析和审稿；保留证据重试不额外搜索",async()=>{
   for(const external of [false,true]) await fixture(async db=>{
     const p={...plan,sourceIds:["web-test"],maxQueries:2,maxEvidence:8};db.put("plans",p.id,p);db.put("sources","web-test",{type:"web",enabled:true});
-    db.put("config","main",{...db.config(),tavilyKey:"test-only"});const e=db.addEvidence(input(1),"test");const job=db.enqueue(plan.id,external?[e.id]:[])!;let calls=0,searches=0;
+    db.put("config","main",{...db.config(),tavilyKey: "fixture"});const e=db.addEvidence(input(1),"test");const job=db.enqueue(plan.id,external?[e.id]:[])!;let calls=0,searches=0;
     await runJob(db,job,{collect:async()=>({evidence:[e],warnings:[],searches:1}),search:async()=>{searches++;return [input(3,{title:"官方收费页面",excerpt:"基础套餐不含导出。"})]},structured:(async(_db:any,_job:any,_skill:any,context:any)=>{
       calls++;if(calls===1)return {clusters:[{label:"工具",summary:"更新",evidenceIds:[e.id],missing:["免费范围"],contradictions:[]}],excluded:[]};
       assert.equal(context.evidence.length,external?1:2);assert.ok(context.verification.length);

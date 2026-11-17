@@ -23,7 +23,7 @@ function cleanup(dir: string) {
 }
 
 const enableSeo = (db: Store, budgets: { tier?: number; metrics?: number; collect?: number } = {}) =>
-  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100, autoMetrics: true, autoCollect: true });
+  db.put("config", "seoDataSource", { enabled: true, token: "fixture", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100, autoMetrics: true, autoCollect: true });
 
 const mkTerm = (term: string, extra: Record<string, unknown> = {}) => ({
   id: termId(term), term, status: "rising", observations: 9,
@@ -61,7 +61,7 @@ test("判定 rationale（W7-1 增补）：回填判定判据落词库", async ()
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     db.put("seen-terms", "工具词", mkTerm("工具词"));
     db.put("seen-terms", "无判据词", mkTerm("无判据词"));
     const model = (async () => ({

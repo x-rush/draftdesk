@@ -15,7 +15,7 @@ test("review without a note preserves the draft but never marks it ready",async(
  const db=new Store(dir);
  try{
   assert.equal(reviewSchema.safeParse({reviews:[{index:0,verdict:"pass",issues:[]}]}).success,true);
-  db.put("config","main",{...db.config(),apiKey:"test-only"});
+  db.put("config","main",{...db.config(),apiKey: "fixture"});
   for(const item of evidence)db.put("evidence",item.id,item);
   const job=db.enqueue("daily-editorial",evidence.map(item=>item.id))!;
   db.claim();
@@ -38,7 +38,7 @@ test("specific reviewer issues can serve as the review explanation when note is 
  const dir=mkdtempSync(path.join(tmpdir(),"dd-review-issue-"));
  const db=new Store(dir);
  try{
-  db.put("config","main",{...db.config(),apiKey:"test-only-no-network"});
+  db.put("config","main",{...db.config(),apiKey: "fixture"});
   for(const item of evidence)db.put("evidence",item.id,item);
   const job=db.enqueue("daily-editorial",evidence.map(item=>item.id))!;
   let calls=0;

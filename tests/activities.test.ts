@@ -21,7 +21,7 @@ test("全部默认策略符合配置合同",()=>{for(const p of defaultPlans)ass
 
 test("活动证据经整理、专项分析、审核后进入活动列表（模拟模型）",async()=>{
  const dir=mkdtempSync(path.join(tmpdir(),"dd-activity-flow-")),db=new Store(dir);
- try{db.put("config","main",{...db.config(),apiKey:"test-only-no-network"});for(const e of evidence)db.put("evidence",e.id,e);const j=db.enqueue("creator-activities",evidence.map(e=>e.id))!;db.claim();let calls=0;
+ try{db.put("config","main",{...db.config(),apiKey: "fixture"});for(const e of evidence)db.put("evidence",e.id,e);const j=db.enqueue("creator-activities",evidence.map(e=>e.id))!;db.claim();let calls=0;
  await runJob(db,j,{structured:(async()=>{calls++;return calls===1?{clusters:[{label:"AI活动",summary:"活动规则",evidenceIds:activity.evidenceIds,contradictions:[],missing:[]}],excluded:[]}:calls===2?{items:[activity],rejected:[]}:{reviews:[{index:0,verdict:"pass",issues:[],note:"测试样本"}]};}) as any});
  assert.equal(db.get<any>("jobs",j.id).state,"completed");assert.equal(calls,3);const a=(db.snapshot(new URLSearchParams("page=1&view=activities&activityTime=all&quality=review")) as any).artifacts[0];assert.equal(a.kind,"activity");assert.equal(a.details.directions.length,3);assert.equal(a.visibility,"private");assert.equal(a.quality,"review");
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
@@ -29,7 +29,7 @@ test("活动证据经整理、专项分析、审核后进入活动列表（模�
 
 test("按活动平台限定搜索域名，并丢弃搜索引擎混入的跨平台结果",async()=>{
  const dir=mkdtempSync(path.join(tmpdir(),"dd-activity-search-")),db=new Store(dir),original=globalThis.fetch;
- try{db.put("config","main",{...db.config(),tavilyKey:"test-only"});let requested:string[]=[];
+ try{db.put("config","main",{...db.config(),tavilyKey: "fixture"});let requested:string[]=[];
  globalThis.fetch=(async(_url,options)=>{requested=JSON.parse(String(options?.body)).include_domains;return new Response(JSON.stringify({results:[{title:"B站活动",url:"https://www.bilibili.com/blackboard/test.html",content:"其他平台活动"},{title:"抖音活动",url:"https://activity.douyin.com/rules",content:"AI创作活动规则"}]}),{status:200});}) as typeof fetch;
  const found=await searchWeb(db,defaultPlans.find(p=>p.kind==="activities")!,"抖音 AI 创作活动",new AbortController().signal);assert.deepEqual(requested,["douyin.com","douyinstatic.com"]);assert.equal(found.length,1);assert.match(found[0].url,/activity.douyin/);
  }finally{globalThis.fetch=original;db.close();rmSync(dir,{recursive:true,force:true});}
@@ -37,7 +37,7 @@ test("按活动平台限定搜索域名，并丢弃搜索引擎混入的跨平�
 
 test("活动模型短编号精确还原，未知引用仍拒绝",async()=>{
  const dir=mkdtempSync(path.join(tmpdir(),"dd-activity-alias-")),db=new Store(dir);
- try{db.put("config","main",{...db.config(),apiKey:"test-only"});const j=db.enqueue("creator-activities")!;
+ try{db.put("config","main",{...db.config(),apiKey: "fixture"});const j=db.enqueue("creator-activities")!;
  const short=JSON.parse(JSON.stringify(activity).replaceAll("ev-one","ref_1").replaceAll("ev-two","ref_2"));
  const request=(async(_db:any,messages:any)=>{assert.equal(JSON.parse(messages[1].content).evidence[0].id,"ref_1");return {text:JSON.stringify({items:[short],rejected:[]}),usage:0,reservation:0};}) as any;
  const result=await structured(db,j,"test",{evidence},researchBatchSchema("activities",4,evidence.map(e=>e.id)),new AbortController().signal,request);assert.deepEqual(result.items[0].evidenceIds,activity.evidenceIds);

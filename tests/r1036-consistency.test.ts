@@ -38,7 +38,7 @@ test("R10.36 ①：AgentSetup 引导与 SKILL.md 同口径——一选题一条�
 
 test("R10.36 ②：方案 B——builtin 兜底只按主平台出稿，多平台行 platforms 不被出稿改写", async () => {
   const db = store();
-  db.put("config", "main", { ...db.config(), apiKey: "test-only" });
+  db.put("config", "main", { ...db.config(), apiKey: "fixture" });
   db.put("config", "consumerMode", "builtin");
   db.put("outlines", "out-b36", {
     id: "out-b36", clusterId: "clu-b36", platform: "gzh", platforms: ["gzh", "xhs-note", "tiebuhao"],

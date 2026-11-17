@@ -16,7 +16,7 @@ function cleanup(dir: string) {
 function setup(dir: string) {
   const db = new Store(dir);
   db.put("plans", "p1", { id: "p1", name: "策略一", scheduleEnabled: true, dailyTime: "01:00", sourceIds: [], kind: "editorial", maxEvidence: 10, maxQueries: 4, maxModelCalls: 8, maxTokens: 400000 });
-  db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+  db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
   db.put("discovery", "fb-j", { jobId: "fb-j", at: new Date().toISOString(), planName: "p", candidates: [{ url: "https://f.example/1", title: "兜底流标题一", sourceId: "s", sourceName: "S", status: "watch", reason: "r", observedAt: new Date().toISOString() }], sources: [] });
   return db;
 }
@@ -112,7 +112,7 @@ test("判定吞吐扩容（第五轮 §5）：judgeBackfillTick 日多批 + 批�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     // 501 词待判 → busy 档（3 批/日）
     for (let i = 0; i < 501; i++) {
       const term = `待判词${String(i).padStart(3, "0")}`;
@@ -160,7 +160,7 @@ test("fixture 探针词黑名单（收尾批 §7①）：测试探针词不得�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     const { collectSeeds } = await import("../core/seen-dig");
     const { judgeSeenTerm, termId } = await import("../core/seen-terms");
     // 历史fixture 探针词族：即使被误写入词库（联想展开/测试残留），也绝不能回流种子池
@@ -189,7 +189,7 @@ test("判定标尺统一读 persona.termPolicy（第六轮 §2.6）：覆盖/回
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     const { buildRelevanceRubric, extractRedLineKeywords, redLineMatch, judgeUnjudgedTerms } = await import("../core/seen-extract");
     // ④ 回退：不配 termPolicy 行为与现在完全一致（prompt 含内置默认三档标准）
     const fallback = buildRelevanceRubric(db);

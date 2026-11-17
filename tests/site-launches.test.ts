@@ -92,7 +92,7 @@ test("入库去重 + LLM 六类判定 + 撞词标记 + 交叉标注 + tick 日�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     // 撞词素材：seen-terms 高分词「saas tool」（observations≥3）
     db.put("seen-terms", "saastool", { id: "saastool", term: "saas tool", status: "rising", observations: 5, sources: [], relatedSearches: [], daysSeen: [], firstSeenAt: "", lastSeenAt: "" });
     // strong 低观测词也进撞词池（首批实测教训：obs>=3 口径把英文 strong 全挡在外面）
@@ -146,7 +146,7 @@ test("分类失败静默：坏模型输出不写判定字段，批次计数后�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     upsertSiteLaunch(db, { host: "fail.example.com", title: "Fail Tool", sourceUrl: "s", source: "showhn" });
     const badModel = (async () => ({ text: "not json at all" })) as any;
     const r = await classifyLaunches(db, badModel, outer);

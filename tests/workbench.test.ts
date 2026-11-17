@@ -22,7 +22,7 @@ const fixture = async (fn: (db: Store, dir: string) => unknown) => {
     db = new Store(dir);
   db.put("config", "main", {
     ...db.config(),
-    apiKey: "test-key",
+    apiKey: "fixture",
     baseUrl: "https://test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
   });
   try {

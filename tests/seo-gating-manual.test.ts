@@ -21,7 +21,7 @@ function cleanup(dir: string) {
 }
 
 const enableSeo = (db: Store, extra: Record<string, unknown> = {}) =>
-  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: 60, builtinMetricsBudget: 30, builtinCollectBudget: 100, autoMetrics: false, autoCollect: false, ...extra });
+  db.put("config", "seoDataSource", { enabled: true, token: "fixture", builtinTierBudget: 60, builtinMetricsBudget: 30, builtinCollectBudget: 100, autoMetrics: false, autoCollect: false, ...extra });
 
 const mkStrong = (db: Store, term: string, obs: number, extra: Record<string, unknown> = {}) => {
   const now = new Date().toISOString();

@@ -108,7 +108,7 @@ test("judgeUnjudgedTerms 产出 demandIntent（W7-1）：strong 落库 / weak �
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     db.put("seen-terms", "转换器词", mkTerm("转换器词"));
     db.put("seen-terms", "资讯词", mkTerm("资讯词"));
     const model = (async () => ({

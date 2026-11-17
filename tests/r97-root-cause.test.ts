@@ -19,7 +19,7 @@ function setup(dir: string, dailyTokenLimit = 600000) {
   db.put("config", "main", {
     ...(db.get<any>("config", "main") || {}),
     baseUrl: "https://dashscope.example/compatible-mode/v1",
-    model: "test-model", profile: "测试", apiKey: "test-key", dailyTokenLimit,
+    model: "test-model", profile: "测试", apiKey: "fixture", dailyTokenLimit,
   });
   return db;
 }

@@ -38,7 +38,7 @@ test("搜索诊断独立于模型，未配置时不发请求，配置后验证�
   const original = globalThis.fetch;
   let calls = 0;
   try {
-    db.put("config", "main", { ...config, tavilyKey: "test-tavily", webSearchProvider: "tavily" });
+    db.put("config", "main", { ...config, tavilyKey: "fixture", webSearchProvider: "tavily" });
     globalThis.fetch = async (url, init) => {
       assert.equal(url, "https://api.tavily.com/search");
       const body = JSON.parse(String(init?.body));
@@ -106,8 +106,8 @@ test("HTTP 公开投影不泄露证据、讨论、应用与密钥", async () => 
   const db = store();
   db.put("config", "main", {
     ...db.config(),
-    apiKey: "private-api-key",
-    tavilyKey: "private-search-key",
+    apiKey: "noleak",
+    tavilyKey: "noleak-search",
   });
   const a = db.saveArtifact(topic, "job", "ready", []);
   db.updateArtifact({ id: a.id, revision: 1, visibility: "public" });
@@ -121,13 +121,13 @@ test("HTTP 公开投影不泄露证据、讨论、应用与密钥", async () => 
   const publicRes = await request("public");
   assert.equal(publicRes.status, 404, "public 端点已删除");
   [
-    "private-api-key",
-    "private-search-key",
+    "noleak",
+    "noleak-search",
     "不能公开",
   ].forEach((s) => assert.ok(!JSON.stringify(publicRes).includes(s)));
   const config = await (await request("workspace")).json();
   assert.equal(config.config.hasApiKey, true);
-  assert.ok(!JSON.stringify(config).includes("private-api-key"));
+  assert.ok(!JSON.stringify(config).includes("noleak"));
 });
 test("HTTP 拒绝跨站提交与超限正文，下载技能包是真实 tar", async () => {
   assert.equal(

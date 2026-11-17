@@ -14,7 +14,7 @@ test("预检验证结构与引用，不把无效草稿当通过",()=>{
 test("收件任务关联幂等，只有失败/取消能明确重试，回执提供完整状态",()=>{
  const dir=mkdtempSync(path.join(tmpdir(),"dd-intake-"));const db=new Store(dir);
  try{
-  db.put("config","main",{...db.config(),apiKey:"test-only"});db.put("plans",plan.id,plan);
+  db.put("config","main",{...db.config(),apiKey: "fixture"});db.put("plans",plan.id,plan);
   const receipt=db.intake(envelope(),"test");
   const first=db.enqueue(plan.id,[],undefined,receipt.id)!;
   assert.equal(db.enqueue(plan.id,[],undefined,receipt.id)?.id,first.id);

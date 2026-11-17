@@ -26,10 +26,14 @@ if (!args.includes("--live")) {
   process.once("SIGTERM", stop);
   try {
     if (!db.config().apiKey || db.config().baseUrl.includes("YOUR-WORKSPACE")) throw new AppError("先在工作台保存可用百炼连接；未调用模型。");
+    // R10.61 扫描守卫：skill 名白名单（防路径穿越）——合法名仅字母数字与连字符
+    if (!/^[a-z0-9][a-z0-9-]*$/i.test(c.skill)) throw new AppError(`非法 skill 名：${c.skill}`);
     const current = loadSkill(c.skill);
     const baseline = args.includes("--baseline-v1.1") ? "baseline-v1.1" : "baseline-v1";
     const variants = [
-      { name: baseline, content: readFileSync(path.join("evals", baseline, c.skill + ".md"), "utf8"), version: baseline },
+      const evalVariantPath = path.resolve("evals", baseline, c.skill + ".md");
+      if (!evalVariantPath.startsWith(path.resolve("evals") + path.sep)) throw new AppError("评测变体路径越界");
+      { name: baseline, content: readFileSync(evalVariantPath, "utf8"), version: baseline },
       { name: "current", content: current.content, version: current.version + "@" + current.digest },
     ];
     if (randomInt(2)) variants.reverse();

@@ -21,7 +21,7 @@ function cleanup(dir: string) {
 }
 
 const enableSeo = (db: Store, budgets: { tier?: number; metrics?: number; collect?: number } = {}) =>
-  db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100 });
+  db.put("config", "seoDataSource", { enabled: true, token: "fixture", builtinTierBudget: budgets.tier ?? 60, builtinMetricsBudget: budgets.metrics ?? 200, builtinCollectBudget: budgets.collect ?? 100 });
 
 // mock 哥飞端点：三指标 / serp（带流量）/ domain_traffic
 function mockGephei(overrides: { volume?: number; kd?: number; cpc?: number } = {}) {
@@ -94,7 +94,7 @@ test("积分断路器（R8-3 按次）：预算不足一对请求（<2 次）→
     assert.equal(seoBudgetUsed(db, "metrics"), 0);
     assert.equal(seoBudgetLeft(db, "metrics"), 1);
     // 充值到 5 次：词三单批（+2）成功后剩 3，词四再一批（+2）后剩 1 → 凑不齐一对
-    db.put("config", "seoDataSource", { enabled: true, token: "test-token", builtinTierBudget: 60, builtinMetricsBudget: 5, builtinCollectBudget: 100, autoMetrics: true, autoCollect: false });
+    db.put("config", "seoDataSource", { enabled: true, token: "fixture", builtinTierBudget: 60, builtinMetricsBudget: 5, builtinCollectBudget: 100, autoMetrics: true, autoCollect: false });
     const m2 = await fetchKeywordMetrics(db, ["词三"], fakeFetch);
     assert.equal(m2.size, 1, "剩 3 次可发一批");
     const m3 = await fetchKeywordMetrics(db, ["词四"], fakeFetch);

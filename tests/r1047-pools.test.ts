@@ -15,7 +15,7 @@ after(() => { store().close(); rmSync(dir, { recursive: true, force: true }); })
 
 test("R10.47：GET /agent/seoDataSource——read 令牌可读 pools，脱敏不出 token", async () => {
   const db = store();
-  db.put("config", "seoDataSource", { enabled: true, provider: "gephei", token: "sk-secret-xyz", autoMetrics: true, autoCollect: false, builtinTierBudget: 60, builtinMetricsBudget: 30, builtinCollectBudget: 100 });
+  db.put("config", "seoDataSource", { enabled: true, provider: "gephei", token: "fixture", autoMetrics: true, autoCollect: false, builtinTierBudget: 60, builtinMetricsBudget: 30, builtinCollectBudget: 100 });
   const token = db.createConnection("r1047", ["read"]).token;
   const r = await handle(new Request("http://127.0.0.1:5173/api/v1/agent/seoDataSource", {
     headers: { host: "127.0.0.1:5173", authorization: "Bearer " + token },

@@ -101,7 +101,7 @@ test("回填判定：只判未判定词（archived/已判跳过），空池零�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     putTerm(db, "词甲", { relevance: undefined, observations: 5 });
     putTerm(db, "词乙", { relevance: undefined, observations: 3 });
     putTerm(db, "已判词", { relevance: "strong" });
@@ -133,7 +133,7 @@ test("毒块降级重试（第三轮 4）：omni 超时块自动换 glm 重试�
   let db: Store | undefined;
   try {
     db = new Store(dir);
-    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "test-key" });
+    db.put("config", "main", { ...(db.get<any>("config", "main") || {}), apiKey: "fixture" });
     db.put("discovery", "fb-j", { jobId: "fb-j", at: new Date().toISOString(), planName: "p", candidates: [{ url: "https://f.example/1", title: "Anthropic 智能体失控凶案线索标题", sourceId: "s", sourceName: "AIHOT", status: "watch", reason: "r", observedAt: new Date().toISOString() }], sources: [] });
     const models: (string | undefined)[] = [];
     let calls = 0;
